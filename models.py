@@ -779,25 +779,30 @@ def get_last_invoice_from_recurring(sale_id: int) -> int:
     conn = get_conn()
     cur = conn.cursor()
     
-    # Como la tabla invoices no tiene recurring_sale_id, buscamos por unit_id y descripción
-    cur.execute("SELECT unit_id, description FROM recurring_sales WHERE id = ?", (sale_id,))
-    sale_row = cur.fetchone()
-    
-    if not sale_row:
-        conn.close()
-        return None
-    
-    sale = dict(sale_row)
-    
-    # Buscar la factura más reciente con el mismo unit_id y descripción similar
+    # Buscar facturas por recurring_sale_id (preferido)
     cur.execute("""
         SELECT id FROM invoices 
-        WHERE unit_id = ? AND description LIKE ?
+        WHERE recurring_sale_id = ?
         ORDER BY issued_date DESC, id DESC
         LIMIT 1
-    """, (sale['unit_id'], f"%{sale['description']}%"))
+    """, (sale_id,))
     
     invoice_row = cur.fetchone()
+    
+    # Fallback: buscar por unit_id y descripción si no hay recurring_sale_id
+    if not invoice_row:
+        cur.execute("SELECT unit_id, description FROM recurring_sales WHERE id = ?", (sale_id,))
+        sale_row = cur.fetchone()
+        if sale_row:
+            sale = dict(sale_row)
+            cur.execute("""
+                SELECT id FROM invoices 
+                WHERE unit_id = ? AND description LIKE ?
+                ORDER BY issued_date DESC, id DESC
+                LIMIT 1
+            """, (sale['unit_id'], f"%{sale['description']}%"))
+            invoice_row = cur.fetchone()
+    
     conn.close()
     
     return invoice_row['id'] if invoice_row else None
@@ -903,17 +908,30 @@ def generate_invoice_from_recurring(sale_id: int) -> int:
         conn.close()
         raise Exception(f"Apartamento #{sale['unit_id']} no encontrado")
     
-    # Validar que tenga datos del residente
-    if not apartment.get('resident_email'):
-        conn.close()
-        raise Exception(f"El apartamento #{apartment.get('number', sale['unit_id'])} no tiene email registrado")
+    # Validar que tenga datos del residente (email es opcional)
+    # if not apartment.get('resident_email'):
+    #     conn.close()
+    #     raise Exception(f"El apartamento #{apartment.get('number', sale['unit_id'])} no tiene email registrado")
     
     unit_id = apartment['id']
     
-    # Calcular fecha de vencimiento (30 días)
+    # Verificar duplicado: no generar si ya existe una factura de esta recurrente este mes
     from datetime import datetime, timedelta
-    issued_date = datetime.now().strftime('%Y-%m-%d')
-    due_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
+    now = datetime.now()
+    first_of_month = now.strftime('%Y-%m-01')
+    cur.execute("""
+        SELECT id FROM invoices 
+        WHERE recurring_sale_id = ? AND issued_date >= ?
+        LIMIT 1
+    """, (sale_id, first_of_month))
+    existing = cur.fetchone()
+    if existing:
+        conn.close()
+        raise Exception(f"Ya existe una factura #{existing['id']} generada este mes para esta venta recurrente")
+    
+    # Calcular fecha de vencimiento (30 días)
+    issued_date = now.strftime('%Y-%m-%d')
+    due_date = (now + timedelta(days=30)).strftime('%Y-%m-%d')
 
     # Obtener información del producto/servicio para la descripción
     service_name = sale['description'] or "Venta recurrente"
@@ -927,14 +945,18 @@ def generate_invoice_from_recurring(sale_id: int) -> int:
         except Exception as e:
             _log(f"Error obteniendo producto/servicio {sale['service_id']}: {e}")
 
-    # Crear la factura con el nombre del servicio
+    # Crear la factura con el nombre del servicio y enlace a la recurrente
     cur.execute("""
-        INSERT INTO invoices (unit_id, amount, issued_date, due_date, description, paid)
-        VALUES (?, ?, ?, ?, ?, 0)
-    """, (unit_id, sale['amount'], issued_date, due_date, service_name))
+        INSERT INTO invoices (unit_id, amount, issued_date, due_date, description, paid, recurring_sale_id)
+        VALUES (?, ?, ?, ?, ?, 0, ?)
+    """, (unit_id, sale['amount'], issued_date, due_date, service_name, sale_id))
 
     conn.commit()
     invoice_id = cur.lastrowid
+    
+    # Actualizar last_generated en la venta recurrente
+    cur.execute("UPDATE recurring_sales SET last_generated = ? WHERE id = ?", (issued_date, sale_id))
+    conn.commit()
     conn.close()
 
     # Generar PDF y enviar notificación
