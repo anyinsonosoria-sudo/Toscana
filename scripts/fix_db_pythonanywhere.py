@@ -215,6 +215,26 @@ def main():
     rows = cur.rowcount
     print(f"  ✓ {rows} facturas pendientes actualizadas con saldo correcto")
 
+    # ── Asegurar company_info tiene email del admin ──────────────────────────
+    print("\n[company_info - email admin]")
+    cur.execute("SELECT COUNT(*) FROM company_info")
+    count = cur.fetchone()[0]
+    if count == 0:
+        cur.execute("""
+            INSERT INTO company_info (name, email) 
+            VALUES ('Toscana', 'invoicetoscana@gmail.com')
+        """)
+        print("  ✓ company_info creada con email admin: invoicetoscana@gmail.com")
+    else:
+        cur.execute("SELECT email FROM company_info LIMIT 1")
+        row = cur.fetchone()
+        current_email = row[0] if row else None
+        if not current_email:
+            cur.execute("UPDATE company_info SET email = 'invoicetoscana@gmail.com'")
+            print("  ✓ company_info actualizada con email admin: invoicetoscana@gmail.com")
+        else:
+            print(f"  - company_info ya tiene email: {current_email}")
+
     conn.commit()
     conn.close()
     print("\n✅ Base de datos reparada correctamente.\n")

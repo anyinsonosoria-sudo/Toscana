@@ -4,6 +4,7 @@ Models Module
 Funciones de acceso a datos para el sistema de facturación.
 """
 import logging
+import os
 from db import get_conn, get_db
 from typing import List, Dict, Optional
 
@@ -140,14 +141,28 @@ def create_invoice(unit_id: int, description: str, amount: float, due_date: Opti
             # Don't raise, PDF generation is not critical
     
     # send notifications if requested; log failures but do not raise
-    if notify_email or notify_phone:
+    # Siempre obtener admin_email para enviar copia
+    admin_email = None
+    try:
+        from company import get_company_info
+        ci = get_company_info()
+        admin_email = ci.get('email') if ci else None
+    except Exception:
+        pass
+    if not admin_email:
+        admin_email = os.environ.get('SMTP_FROM') or os.environ.get('SMTP_USER')
+    
+    if notify_email or notify_phone or admin_email:
         if HAS_SENDERS:
             try:
                 senders.send_invoice_notification(
                     invoice, 
                     unit, 
                     client_email=notify_email,
-                    client_phone=notify_phone
+                    admin_email=admin_email,
+                    client_phone=notify_phone,
+                    attach_pdf=pdf_filename is not None,
+                    pdf_path=str(Path(__file__).parent / 'static' / 'invoices' / pdf_filename) if pdf_filename else None
                 )
             except Exception as e:
                 try:
@@ -484,6 +499,9 @@ def _send_payment_notifications(payment_id: int, invoice: Dict, amount: float,
         client_email = contact_info['email']
         client_phone = contact_info['phone']
         admin_email = company_info.get('email')
+        # Fallback: usar SMTP_FROM como admin email
+        if not admin_email:
+            admin_email = os.environ.get('SMTP_FROM') or os.environ.get('SMTP_USER')
         apt = contact_info['apartment']
         
         if not (client_email or admin_email or client_phone):
@@ -1015,6 +1033,8 @@ def generate_invoice_from_recurring(sale_id: int) -> int:
             }
             
             admin_email = company_info.get('email') if company_info else None
+            if not admin_email:
+                admin_email = os.environ.get('SMTP_FROM') or os.environ.get('SMTP_USER')
             senders.send_invoice_notification(
                 invoice_dict,
                 unit_dict,
