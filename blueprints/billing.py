@@ -381,7 +381,7 @@ def create_invoice():
         else:
             flash(f"✅ Factura #{inv_id} creada (sin notificación automática)", "info")
             
-        cache.delete_memoized(invoices)
+        cache.clear()
     except Exception as e:
         print(f"\n❌ ERROR creando factura: {e}\n")
         import traceback
@@ -415,7 +415,7 @@ def edit_invoice(invoice_id):
             conn.close()
             
             flash(f"Factura #{invoice_id} actualizada exitosamente.", "success")
-            cache.delete_memoized(invoices)
+            cache.clear()
         except Exception as e:
             flash(f"Error al actualizar factura: {e}", "error")
         return redirect(url_for("billing.invoices", tab="invoices"))
@@ -473,7 +473,7 @@ def delete_invoice(invoice_id):
             logger.warning(f"Error eliminando PDF: {e}")
         
         flash(f"Factura #{invoice_id} eliminada exitosamente", "success")
-        cache.delete_memoized(invoices)
+        cache.clear()
     except Exception as e:
         flash(f"Error al eliminar factura: {e}", "error")
     
@@ -616,8 +616,7 @@ def partial_payment(invoice_id):
         else:
             flash(f"Pago completo de RD${amount_to_register:.2f} registrado exitosamente.", "success")
         
-        cache.delete_memoized(invoices)
-        cache.delete_memoized(payments)
+        cache.clear()
     except Exception as e:
         flash(f"Error al registrar pago: {e}", "error")
     
@@ -674,8 +673,7 @@ def delete_payment(payment_id):
             
             conn.close()
             flash(f"Pago #{payment_id} eliminado correctamente", "success")
-            cache.delete_memoized(invoices)
-            cache.delete_memoized(payments)
+            cache.clear()
         else:
             flash(f"Pago #{payment_id} no encontrado", "error")
             
@@ -733,8 +731,7 @@ def create_recurring():
         except Exception as gen_error:
             flash(f"Venta recurrente #{sale_id} creada, pero hubo un error al generar la primera factura: {gen_error}", "warning")
         
-        cache.delete_memoized(invoices)
-        cache.delete_memoized(recurring_sales)
+        cache.clear()
     except Exception as e:
         flash(f"Error al crear venta recurrente: {e}", "error")
     
@@ -748,7 +745,7 @@ def toggle_recurring(sale_id):
     """Activar/desactivar venta recurrente"""
     try:
         models.toggle_recurring_sale(sale_id)
-        cache.delete_memoized(recurring_sales)
+        cache.clear()
     except Exception as e:
         logger.error(f"Error toggling recurring sale: {e}")
     return redirect(url_for('billing.invoices', tab='recurring'))
@@ -762,7 +759,7 @@ def generate_recurring(sale_id):
     """Generar factura desde venta recurrente"""
     try:
         invoice_id = models.generate_invoice_from_recurring(sale_id)
-        cache.delete_memoized(invoices)
+        cache.clear()
         return jsonify({"success": True, "invoice_id": invoice_id})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -791,7 +788,7 @@ def duplicate_recurring(sale_id):
     """Duplicar venta recurrente"""
     try:
         models.duplicate_recurring_sale(sale_id)
-        cache.delete_memoized(recurring_sales)
+        cache.clear()
     except Exception as e:
         logger.error(f"Error duplicating recurring sale: {e}")
     return redirect(url_for('billing.invoices', tab='recurring'))
@@ -804,10 +801,15 @@ def duplicate_recurring(sale_id):
 def delete_recurring(sale_id):
     """Eliminar venta recurrente"""
     try:
-        models.delete_recurring_sale(sale_id)
-        cache.delete_memoized(recurring_sales)
+        result = models.delete_recurring_sale(sale_id, confirmed=True)
+        if result.get('deleted'):
+            flash(f"Venta recurrente #{sale_id} eliminada con {result.get('invoice_count', 0)} facturas asociadas", "success")
+        else:
+            flash(f"No se pudo eliminar la venta recurrente #{sale_id}", "error")
+        cache.clear()
     except Exception as e:
         logger.error(f"Error deleting recurring sale: {e}")
+        flash(f"Error al eliminar venta recurrente: {e}", "error")
     return redirect(url_for('billing.invoices', tab='recurring'))
 
 

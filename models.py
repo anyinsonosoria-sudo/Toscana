@@ -1021,7 +1021,11 @@ def generate_invoice_from_recurring(sale_id: int) -> int:
         
         # Enviar email con PDF adjunto
         notify_email = apartment.get('resident_email')
-        if notify_email:
+        admin_email = company_info.get('email') if company_info else None
+        if not admin_email:
+            admin_email = os.environ.get('SMTP_FROM') or os.environ.get('SMTP_USER')
+        
+        if notify_email or admin_email:
             import senders
             unit_dict = {'id': unit_id, 'number': apartment.get('number', '')}
             invoice_dict = {
@@ -1032,9 +1036,6 @@ def generate_invoice_from_recurring(sale_id: int) -> int:
                 'due_date': due_date
             }
             
-            admin_email = company_info.get('email') if company_info else None
-            if not admin_email:
-                admin_email = os.environ.get('SMTP_FROM') or os.environ.get('SMTP_USER')
             senders.send_invoice_notification(
                 invoice_dict,
                 unit_dict,
@@ -1043,7 +1044,8 @@ def generate_invoice_from_recurring(sale_id: int) -> int:
                 attach_pdf=True,
                 pdf_path=pdf_path
             )
-            print(f"✓ Factura #{invoice_id} enviada a {notify_email}")
+            if notify_email:
+                print(f"✓ Factura #{invoice_id} enviada a {notify_email}")
             if admin_email:
                 print(f"✓ Copia enviada al admin: {admin_email}")
     except Exception as e:
