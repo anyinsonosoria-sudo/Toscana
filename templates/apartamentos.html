@@ -30,7 +30,12 @@
                     <tr>
                         <td data-label="Apto"><strong>{{ apt.number }}</strong></td>
                         <td data-label="Piso">{{ apt.floor or '-' }}</td>
-                        <td data-label="Residente">{{ apt.resident_name or '-' }}</td>
+                        <td data-label="Residente">
+                            {{ apt.resident_name or '-' }}
+                            {% if apt.extra_residents %}
+                            <br><small class="text-muted"><i class="bi bi-people-fill"></i> +{{ apt.extra_residents|length }} residente(s) más</small>
+                            {% endif %}
+                        </td>
                         <td data-label="Tipo">
                             {% if apt.resident_role == 'owner' %}
                                 <span class="badge-status badge-active"><i class="bi bi-house-fill"></i> Propietario</span>
@@ -117,18 +122,23 @@
                     </div>
                 </div>
 
-                <!-- Step 2: Residente -->
+                <!-- Step 2: Residentes -->
                 <div class="wizard-step">
-                    <div class="wizard-step-label">Residente</div>
+                    <div class="wizard-step-label">Residentes</div>
                     <div class="wizard-step-title">¿Quién vive aquí?</div>
-                    <input type="text" name="resident_name" class="wizard-input" placeholder="Nombre completo del residente">
-                    <div class="mt-3">
+                    <div class="mb-1"><small class="text-muted"><i class="bi bi-person-fill"></i> Residente Principal <span class="text-danger">*</span></small></div>
+                    <input type="text" name="resident_name" class="wizard-input" placeholder="Nombre completo del residente" required>
+                    <div class="mt-2">
                         <label class="wizard-step-label">Tipo de residente</label>
                         <select name="resident_role" class="wizard-select">
                             <option value="tenant">Inquilino</option>
                             <option value="owner">Propietario</option>
                         </select>
                     </div>
+                    <div id="extraResidentsAdd"></div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-3 w-100" id="btnAddExtraResident">
+                        <i class="bi bi-plus-circle"></i> Agregar otro residente (opcional)
+                    </button>
                 </div>
 
                 <!-- Step 3: Contacto -->
@@ -192,18 +202,23 @@
                     </div>
                 </div>
 
-                <!-- Step 2: Residente -->
+                <!-- Step 2: Residentes -->
                 <div class="wizard-step">
-                    <div class="wizard-step-label">Residente</div>
+                    <div class="wizard-step-label">Residentes</div>
                     <div class="wizard-step-title">Datos del residente</div>
-                    <input type="text" name="resident_name" class="wizard-input" id="editResidentName" placeholder="Nombre del residente">
-                    <div class="mt-3">
+                    <div class="mb-1"><small class="text-muted"><i class="bi bi-person-fill"></i> Residente Principal <span class="text-danger">*</span></small></div>
+                    <input type="text" name="resident_name" class="wizard-input" id="editResidentName" placeholder="Nombre del residente" required>
+                    <div class="mt-2">
                         <label class="wizard-step-label">Tipo</label>
                         <select name="resident_role" class="wizard-select" id="editResidentRole">
                             <option value="tenant">Inquilino</option>
                             <option value="owner">Propietario</option>
                         </select>
                     </div>
+                    <div id="extraResidentsEdit"></div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-3 w-100" id="btnAddExtraResidentEdit">
+                        <i class="bi bi-plus-circle"></i> Agregar otro residente (opcional)
+                    </button>
                 </div>
 
                 <!-- Step 3: Contacto -->
@@ -238,6 +253,26 @@
 
 {% block extra_js %}
 <script>
+// Helper: construir bloque de residente adicional
+function buildExtraResidentBlock(containerId, idx, data) {
+    data = data || {};
+    const tenantSel = (data.role || 'tenant') === 'tenant' ? 'selected' : '';
+    const ownerSel = data.role === 'owner' ? 'selected' : '';
+    return `<div class="mt-3 p-2 border rounded" id="extra_${containerId}_${idx}" style="background:var(--sidebar-hover,#f8f9fa);">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <small class="text-muted"><i class="bi bi-person"></i> Residente adicional ${idx}</small>
+            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="document.getElementById('extra_${containerId}_${idx}').remove()"><i class="bi bi-x"></i></button>
+        </div>
+        <input type="text" name="extra_name[]" class="wizard-input mb-2" placeholder="Nombre completo" value="${data.name || ''}">
+        <select name="extra_role[]" class="wizard-select mb-2">
+            <option value="tenant" ${tenantSel}>Inquilino</option>
+            <option value="owner" ${ownerSel}>Propietario</option>
+        </select>
+        <input type="email" name="extra_email[]" class="wizard-input mb-2" placeholder="Email (opcional)" value="${data.email || ''}">
+        <input type="tel" name="extra_phone[]" class="wizard-input" placeholder="Teléfono (opcional)" value="${data.phone || ''}">
+    </div>`;
+}
+
 // Create Wizard
 const wizardApt = new XpackWizard('wizardAptContainer', {
     onStepChange: function(step, data) {
@@ -263,8 +298,20 @@ const wizardApt = new XpackWizard('wizardAptContainer', {
     }
 });
 
+let extraAddCount = 0;
+document.getElementById('btnAddExtraResident').addEventListener('click', function() {
+    extraAddCount++;
+    document.getElementById('extraResidentsAdd').insertAdjacentHTML('beforeend', buildExtraResidentBlock('add', extraAddCount));
+});
+
 // Edit Wizard
 const wizardEditApt = new XpackWizard('wizardEditAptContainer');
+
+let extraEditCount = 0;
+document.getElementById('btnAddExtraResidentEdit').addEventListener('click', function() {
+    extraEditCount++;
+    document.getElementById('extraResidentsEdit').insertAdjacentHTML('beforeend', buildExtraResidentBlock('edit', extraEditCount));
+});
 
 function editApt(apt) {
     const form = document.getElementById('formEditApt');
@@ -277,6 +324,15 @@ function editApt(apt) {
     document.getElementById('editPhone').value = apt.resident_phone || '';
     document.getElementById('editPaymentTerms').value = apt.payment_terms || 30;
     document.getElementById('editNotes').value = apt.notes || '';
+    // Cargar residentes adicionales existentes
+    const container = document.getElementById('extraResidentsEdit');
+    container.innerHTML = '';
+    extraEditCount = 0;
+    const extras = apt.extra_residents || [];
+    extras.forEach(function(r) {
+        extraEditCount++;
+        container.insertAdjacentHTML('beforeend', buildExtraResidentBlock('edit', extraEditCount, r));
+    });
     wizardEditApt.open();
 }
 </script>

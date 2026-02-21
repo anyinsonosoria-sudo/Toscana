@@ -63,7 +63,7 @@ def add():
 
     try:
         payment_terms_int = int(payment_terms) if payment_terms else 30
-        apartments.add_apartment(
+        apt_id = apartments.add_apartment(
             number, 
             floor or None, 
             notes or None,
@@ -73,6 +73,23 @@ def add():
             resident_phone or None,
             payment_terms_int
         )
+        # Procesar residentes adicionales
+        extra_names = request.form.getlist('extra_name[]')
+        extra_roles = request.form.getlist('extra_role[]')
+        extra_emails = request.form.getlist('extra_email[]')
+        extra_phones = request.form.getlist('extra_phone[]')
+        extras = []
+        for i, name in enumerate(extra_names):
+            name = name.strip()
+            if name:
+                extras.append({
+                    'name': name,
+                    'role': extra_roles[i] if i < len(extra_roles) else 'tenant',
+                    'email': extra_emails[i].strip() if i < len(extra_emails) else '',
+                    'phone': extra_phones[i].strip() if i < len(extra_phones) else '',
+                })
+        if extras:
+            apartments.save_extra_residents(apt_id, extras)
         # Invalidar cache
         cache.delete_memoized(list)
         flash("Apartamento agregado exitosamente.", "success")
@@ -112,6 +129,22 @@ def edit(id):
     
     try:
         apartments.update_apartment(id, **fields)
+        # Procesar residentes adicionales (reemplaza los anteriores)
+        extra_names = request.form.getlist('extra_name[]')
+        extra_roles = request.form.getlist('extra_role[]')
+        extra_emails = request.form.getlist('extra_email[]')
+        extra_phones = request.form.getlist('extra_phone[]')
+        extras = []
+        for i, name in enumerate(extra_names):
+            name = name.strip()
+            if name:
+                extras.append({
+                    'name': name,
+                    'role': extra_roles[i] if i < len(extra_roles) else 'tenant',
+                    'email': extra_emails[i].strip() if i < len(extra_emails) else '',
+                    'phone': extra_phones[i].strip() if i < len(extra_phones) else '',
+                })
+        apartments.save_extra_residents(id, extras)
         # Invalidar cache
         cache.delete_memoized(list)
         flash("Apartamento actualizado exitosamente.", "success")

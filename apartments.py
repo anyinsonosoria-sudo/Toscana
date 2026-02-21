@@ -43,7 +43,29 @@ def list_apartments() -> List[Dict]:
                               resident_phone, payment_terms 
                        FROM apartments ORDER BY number""")
         rows = cur.fetchall()
-        return [dict(r) for r in rows]
+        result = [dict(r) for r in rows]
+        # Agregar residentes adicionales de la tabla residents
+        for apt in result:
+            cur.execute(
+                "SELECT id, name, role, email, phone FROM residents WHERE unit_id=? ORDER BY id",
+                (apt['id'],)
+            )
+            apt['extra_residents'] = [dict(r) for r in cur.fetchall()]
+        return result
+
+
+def save_extra_residents(apartment_id: int, residents_list: list) -> None:
+    """Guarda residentes adicionales de un apartamento (reemplaza los anteriores)"""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM residents WHERE unit_id=?", (apartment_id,))
+        for r in residents_list:
+            if r.get('name'):
+                cur.execute(
+                    "INSERT INTO residents (unit_id, name, email, phone, role) VALUES (?, ?, ?, ?, ?)",
+                    (apartment_id, r['name'], r.get('email', ''), r.get('phone', ''), r.get('role', 'tenant'))
+                )
+        conn.commit()
 
 
 def get_apartment(apartment_id: int) -> Optional[Dict]:
