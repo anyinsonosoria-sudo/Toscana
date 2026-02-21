@@ -31,9 +31,9 @@
                         <p><i class="bi bi-person-circle"></i> <strong>Usuario actual:</strong> {{ current_user.username }}</p>
                         <p>
                             <i class="bi bi-shield"></i> <strong>Tu rol:</strong> 
-                            {% if current_user.is_admin() %}
+                            {% if current_user.is_authenticated and current_user.role == 'admin' %}
                                 <span class="badge bg-danger">Administrador</span>
-                            {% elif current_user.is_operator() %}
+                            {% elif current_user.is_authenticated and current_user.role == 'operator' %}
                                 <span class="badge bg-primary">Operador</span>
                             {% else %}
                                 <span class="badge bg-secondary">Residente</span>
