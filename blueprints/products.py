@@ -92,7 +92,7 @@ def add():
             name, type_val, price, code, None, additional_notes, 1
         )
         # Invalidar cache
-        cache.delete_memoized(list)
+        cache.clear()
         flash("Producto/Servicio agregado exitosamente.", "success")
     except Exception as e:
         flash(f"Error al agregar producto/servicio: {e}", "error")
@@ -152,7 +152,7 @@ def edit(id):
             active=active
         )
         # Invalidar cache
-        cache.delete_memoized(list)
+        cache.clear()
         flash("Producto/Servicio actualizado exitosamente.", "success")
     except Exception as e:
         flash(f"Error al actualizar producto/servicio: {e}", "error")
@@ -169,7 +169,7 @@ def delete(id):
     try:
         products_services.delete_product_service(id)
         # Invalidar cache
-        cache.delete_memoized(list)
+        cache.clear()
         flash("Producto/Servicio eliminado exitosamente.", "success")
     except Exception as e:
         flash(f"Error al eliminar producto/servicio: {e}", "error")

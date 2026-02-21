@@ -80,7 +80,7 @@ def add():
     try:
         expenses.add_expense(description, amount, category, supplier_id, date, payment_method, notes)
         flash("Gasto registrado exitosamente.", "success")
-        cache.delete_memoized(list)
+        cache.clear()
     except Exception as e:
         flash(f"Error al registrar gasto: {e}", "error")
     
@@ -112,7 +112,7 @@ def edit(id):
                               category=category, supplier_id=supplier_id,
                               date=date, payment_method=payment_method, notes=notes)
         flash("Gasto actualizado exitosamente.", "success")
-        cache.delete_memoized(list)
+        cache.clear()
     except Exception as e:
         flash(f"Error al actualizar gasto: {e}", "error")
     
@@ -128,7 +128,7 @@ def delete(id):
     try:
         expenses.delete_expense(id)
         flash("Gasto eliminado exitosamente.", "success")
-        cache.delete_memoized(list)
+        cache.clear()
     except Exception as e:
         flash(f"Error al eliminar gasto: {e}", "error")
     
@@ -258,7 +258,7 @@ def save_with_receipt():
                 expenses.update_expense(expense_id, receipt_path=receipt_path)
         
         flash("Gasto registrado con éxito.", "success")
-        cache.delete_memoized(list)
+        cache.clear()
     except Exception as e:
         flash(f"Error al registrar gasto: {e}", "error")
     

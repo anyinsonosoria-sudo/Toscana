@@ -91,7 +91,7 @@ def add():
         if extras:
             apartments.save_extra_residents(apt_id, extras)
         # Invalidar cache
-        cache.delete_memoized(list)
+        cache.clear()
         flash("Apartamento agregado exitosamente.", "success")
     except Exception as e:
         flash(f"Error al agregar apartamento: {e}", "error")
@@ -146,7 +146,7 @@ def edit(id):
                 })
         apartments.save_extra_residents(id, extras)
         # Invalidar cache
-        cache.delete_memoized(list)
+        cache.clear()
         flash("Apartamento actualizado exitosamente.", "success")
     except Exception as e:
         flash(f"Error al actualizar apartamento: {e}", "error")
@@ -163,7 +163,7 @@ def delete(id):
     try:
         apartments.delete_apartment(id)
         # Invalidar cache
-        cache.delete_memoized(list)
+        cache.clear()
         flash("Apartamento eliminado exitosamente.", "success")
     except Exception as e:
         flash(f"Error al eliminar apartamento: {e}", "error")

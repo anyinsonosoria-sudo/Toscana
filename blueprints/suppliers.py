@@ -79,7 +79,7 @@ def add():
             tax_id, payment_terms
         )
         # Invalidar cache
-        cache.delete_memoized(list)
+        cache.clear()
         flash("Suplidor agregado exitosamente.", "success")
     except Exception as e:
         flash(f"Error al agregar suplidor: {e}", "error")
@@ -126,7 +126,7 @@ def edit(id):
             payment_terms=payment_terms
         )
         # Invalidar cache
-        cache.delete_memoized(list)
+        cache.clear()
         flash("Suplidor actualizado exitosamente.", "success")
     except Exception as e:
         flash(f"Error al actualizar suplidor: {e}", "error")
@@ -143,7 +143,7 @@ def delete(id):
     try:
         suppliers.delete_supplier(id)
         # Invalidar cache
-        cache.delete_memoized(list)
+        cache.clear()
         flash("Suplidor eliminado exitosamente.", "success")
     except Exception as e:
         flash(f"Error al eliminar suplidor: {e}", "error")
@@ -184,7 +184,7 @@ def api_create():
         phone = data.get('phone', '').strip() or None
         email = data.get('email', '').strip() or None
         new_id = suppliers.add_supplier(name, supplier_type, phone=phone, email=email)
-        cache.delete_memoized(list)
+        cache.clear()
         return jsonify({'success': True, 'id': new_id, 'name': name})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
