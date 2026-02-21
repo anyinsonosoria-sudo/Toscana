@@ -102,6 +102,7 @@
                     <div class="sidebar-user-name">{{ current_user.full_name or current_user.username }}</div>
                     <div class="sidebar-user-role">
                         {% if current_user.is_admin() %}Administrador
+                            {% if current_user.is_authenticated and current_user.role == 'admin' %}Administrador
                         {% elif current_user.is_operator() %}Operador
                         {% else %}Residente{% endif %}
                     </div>
