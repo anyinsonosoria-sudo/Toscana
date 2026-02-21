@@ -191,11 +191,12 @@ def get_income_statement(date_from: Optional[str] = None, date_to: Optional[str]
     """, (date_from, date_to))
     operating_income_detail = [dict(r) for r in cur.fetchall()]
 
-    # ── OTROS INGRESOS (transacciones contables tipo income) ──
+    # ── OTROS INGRESOS (transacciones contables tipo income, excluyendo pagos de facturas) ──
     cur.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM accounting_transactions
         WHERE type = 'income' AND DATE(date) BETWEEN ? AND ?
+          AND (reference IS NULL OR reference NOT LIKE 'INV-%')
     """, (date_from, date_to))
     other_income = cur.fetchone()[0] or 0
 
@@ -203,6 +204,7 @@ def get_income_statement(date_from: Optional[str] = None, date_to: Optional[str]
         SELECT COALESCE(category, 'Sin Categoría') as category, SUM(amount) as total
         FROM accounting_transactions
         WHERE type = 'income' AND DATE(date) BETWEEN ? AND ?
+          AND (reference IS NULL OR reference NOT LIKE 'INV-%')
         GROUP BY category
         ORDER BY total DESC
     """, (date_from, date_to))
@@ -225,11 +227,12 @@ def get_income_statement(date_from: Optional[str] = None, date_to: Optional[str]
     """, (date_from, date_to))
     operating_expenses_detail = [dict(r) for r in cur.fetchall()]
 
-    # ── OTROS GASTOS (transacciones contables tipo expense) ──
+    # ── OTROS GASTOS (transacciones contables tipo expense, excluyendo gastos operacionales) ──
     cur.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM accounting_transactions
         WHERE type = 'expense' AND DATE(date) BETWEEN ? AND ?
+          AND (reference IS NULL OR reference NOT LIKE 'EXP-%')
     """, (date_from, date_to))
     other_expenses = cur.fetchone()[0] or 0
 
@@ -237,6 +240,7 @@ def get_income_statement(date_from: Optional[str] = None, date_to: Optional[str]
         SELECT COALESCE(category, 'Sin Categoría') as category, SUM(amount) as total
         FROM accounting_transactions
         WHERE type = 'expense' AND DATE(date) BETWEEN ? AND ?
+          AND (reference IS NULL OR reference NOT LIKE 'EXP-%')
         GROUP BY category
         ORDER BY total DESC
     """, (date_from, date_to))
@@ -336,10 +340,12 @@ def get_cash_flow_statement(date_from: Optional[str] = None, date_to: Optional[s
 
     # ── 3. ACTIVIDADES DE FINANCIAMIENTO ──
     # Income transactions from accounting_transactions as financing inflows
+    # Excluir los que ya se contaron como ingresos operacionales (pagos de facturas)
     cur.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM accounting_transactions
         WHERE type = 'income' AND DATE(date) BETWEEN ? AND ?
+          AND (reference IS NULL OR reference NOT LIKE 'INV-%')
     """, (date_from, date_to))
     financing_inflows = cur.fetchone()[0] or 0
 
@@ -347,15 +353,18 @@ def get_cash_flow_statement(date_from: Optional[str] = None, date_to: Optional[s
         SELECT COALESCE(category, 'Sin Categoría') as category, SUM(amount) as total
         FROM accounting_transactions
         WHERE type = 'income' AND DATE(date) BETWEEN ? AND ?
+          AND (reference IS NULL OR reference NOT LIKE 'INV-%')
         GROUP BY category ORDER BY total DESC
     """, (date_from, date_to))
     financing_inflows_detail = [dict(r) for r in cur.fetchall()]
 
     # Expense transactions from accounting_transactions as financing outflows
+    # Excluir los que ya se contaron como gastos operacionales
     cur.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM accounting_transactions
         WHERE type = 'expense' AND DATE(date) BETWEEN ? AND ?
+          AND (reference IS NULL OR reference NOT LIKE 'EXP-%')
     """, (date_from, date_to))
     financing_outflows = cur.fetchone()[0] or 0
 
@@ -363,6 +372,7 @@ def get_cash_flow_statement(date_from: Optional[str] = None, date_to: Optional[s
         SELECT COALESCE(category, 'Sin Categoría') as category, SUM(amount) as total
         FROM accounting_transactions
         WHERE type = 'expense' AND DATE(date) BETWEEN ? AND ?
+          AND (reference IS NULL OR reference NOT LIKE 'EXP-%')
         GROUP BY category ORDER BY total DESC
     """, (date_from, date_to))
     financing_outflows_detail = [dict(r) for r in cur.fetchall()]
@@ -385,6 +395,11 @@ def get_cash_flow_statement(date_from: Optional[str] = None, date_to: Optional[s
     cur.execute("""
         SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE -amount END), 0)
         FROM accounting_transactions WHERE DATE(date) < ?
+          AND (
+            (type = 'income' AND (reference IS NULL OR reference NOT LIKE 'INV-%'))
+            OR
+            (type = 'expense' AND (reference IS NULL OR reference NOT LIKE 'EXP-%'))
+          )
     """, (date_from,))
     opening_acct = cur.fetchone()[0] or 0
 
