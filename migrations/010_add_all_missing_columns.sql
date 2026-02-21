@@ -14,3 +14,7 @@ ALTER TABLE invoices ADD COLUMN notes TEXT;
 ALTER TABLE payments ADD COLUMN notes TEXT;
 
 ALTER TABLE suppliers ADD COLUMN supplier_type TEXT DEFAULT 'general';
+ALTER TABLE suppliers ADD COLUMN supplier_type_other TEXT;
+ALTER TABLE suppliers ADD COLUMN contact_name TEXT;
+ALTER TABLE suppliers ADD COLUMN tax_id TEXT;
+ALTER TABLE suppliers ADD COLUMN payment_terms INTEGER DEFAULT 30;

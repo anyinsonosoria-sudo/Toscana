@@ -170,10 +170,14 @@ def _create_schema(cur):
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         contact TEXT,
+        contact_name TEXT,
         email TEXT,
         phone TEXT,
         address TEXT,
         supplier_type TEXT DEFAULT 'general',
+        supplier_type_other TEXT,
+        tax_id TEXT,
+        payment_terms INTEGER DEFAULT 30,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
     """)

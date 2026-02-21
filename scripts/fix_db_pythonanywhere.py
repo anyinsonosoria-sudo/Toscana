@@ -105,6 +105,9 @@ def main():
     add_column_if_missing(cur, "suppliers", "notes", "TEXT")
     add_column_if_missing(cur, "suppliers", "tax_id", "TEXT")
     add_column_if_missing(cur, "suppliers", "supplier_type", "TEXT DEFAULT 'general'")
+    add_column_if_missing(cur, "suppliers", "supplier_type_other", "TEXT")
+    add_column_if_missing(cur, "suppliers", "contact_name", "TEXT")
+    add_column_if_missing(cur, "suppliers", "payment_terms", "INTEGER DEFAULT 30")
     add_column_if_missing(cur, "suppliers", "updated_at", "TEXT DEFAULT CURRENT_TIMESTAMP")
 
     # ── accounting_transactions ────────────────────────────────────────────────
