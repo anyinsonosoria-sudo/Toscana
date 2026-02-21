@@ -127,6 +127,9 @@ def _create_schema(cur):
         issued_date TEXT DEFAULT CURRENT_TIMESTAMP,
         due_date TEXT,
         paid INTEGER DEFAULT 0,
+        pending_amount REAL DEFAULT 0,
+        recurring_sale_id INTEGER,
+        notes TEXT,
         FOREIGN KEY(unit_id) REFERENCES apartments(id) ON DELETE SET NULL
     )
     """)
@@ -139,6 +142,7 @@ def _create_schema(cur):
         amount REAL,
         paid_date TEXT DEFAULT CURRENT_TIMESTAMP,
         method TEXT,
+        notes TEXT,
         FOREIGN KEY(invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
     )
     """)
@@ -169,6 +173,7 @@ def _create_schema(cur):
         email TEXT,
         phone TEXT,
         address TEXT,
+        supplier_type TEXT DEFAULT 'general',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
     """)
@@ -278,7 +283,18 @@ def _apply_migrations():
             
             try:
                 sql_text = sql_file.read_text(encoding='utf-8')
-                conn.executescript(sql_text)
+                # Ejecutar cada sentencia por separado para tolerar columnas ya existentes
+                statements = [s.strip() for s in sql_text.split(';') if s.strip() and not s.strip().startswith('--')]
+                for stmt in statements:
+                    try:
+                        conn.execute(stmt)
+                    except Exception as stmt_err:
+                        msg = str(stmt_err).lower()
+                        # Ignorar errores de columna/índice ya existente
+                        if 'already has a column' in msg or 'already exists' in msg:
+                            print(f"[MIGRATION] SKIP (ya existe): {stmt[:60]}...")
+                        else:
+                            raise stmt_err
                 cur.execute(
                     "INSERT INTO _migrations (filename) VALUES (?)",
                     (sql_file.name,)

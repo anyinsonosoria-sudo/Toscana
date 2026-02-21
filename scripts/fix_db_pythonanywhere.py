@@ -9,11 +9,17 @@ from pathlib import Path
 DB_PATH = Path(__file__).parent.parent / "data" / "data.db"
 
 def add_column_if_missing(cur, table, column, definition):
-    """Agrega una columna si no existe."""
+    """Agrega una columna si no existe.
+    
+    SQLite ALTER TABLE no acepta DEFAULT CURRENT_TIMESTAMP (valor no constante).
+    Se reemplaza automáticamente por DEFAULT NULL para evitar el error.
+    """
     cur.execute(f"PRAGMA table_info({table})")
     cols = [row[1] for row in cur.fetchall()]
     if column not in cols:
-        cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+        # Normalizar defaults no constantes que SQLite rechaza en ALTER TABLE
+        safe_def = definition.replace("DEFAULT CURRENT_TIMESTAMP", "DEFAULT NULL")
+        cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {safe_def}")
         print(f"  ✓ {table}.{column} agregada")
     else:
         print(f"  - {table}.{column} ya existe")
@@ -73,7 +79,8 @@ def main():
     add_column_if_missing(cur, "invoices", "tax_rate", "REAL DEFAULT 0")
     add_column_if_missing(cur, "invoices", "tax_amount", "REAL DEFAULT 0")
     add_column_if_missing(cur, "invoices", "subtotal", "REAL DEFAULT 0")
-    add_column_if_missing(cur, "invoices", "recurring_id", "INTEGER")
+    add_column_if_missing(cur, "invoices", "recurring_sale_id", "INTEGER")
+    add_column_if_missing(cur, "invoices", "pending_amount", "REAL DEFAULT 0")
 
     # ── payments ───────────────────────────────────────────────────────────────
     print("\n[payments]")
@@ -97,6 +104,7 @@ def main():
     print("\n[suppliers]")
     add_column_if_missing(cur, "suppliers", "notes", "TEXT")
     add_column_if_missing(cur, "suppliers", "tax_id", "TEXT")
+    add_column_if_missing(cur, "suppliers", "supplier_type", "TEXT DEFAULT 'general'")
     add_column_if_missing(cur, "suppliers", "updated_at", "TEXT DEFAULT CURRENT_TIMESTAMP")
 
     # ── accounting_transactions ────────────────────────────────────────────────
@@ -176,6 +184,19 @@ def main():
     for name, ddl in indexes:
         cur.execute(ddl)
         print(f"  ✓ Índice {name}")
+
+    # ── Actualizar pending_amount en facturas existentes ───────────────────────
+    print("\n[pending_amount - sincronización]")
+    cur.execute("""
+        UPDATE invoices
+        SET pending_amount = MAX(
+            amount - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = invoices.id), 0),
+            0
+        )
+        WHERE paid = 0
+    """)
+    rows = cur.rowcount
+    print(f"  ✓ {rows} facturas pendientes actualizadas con saldo correcto")
 
     conn.commit()
     conn.close()
