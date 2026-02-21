@@ -3,7 +3,7 @@ Blueprint: Company
 Gestion de informacion de la empresa/administrador
 """
 import logging
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, session
 from flask_login import login_required
 from werkzeug.utils import secure_filename
 from pathlib import Path
@@ -120,6 +120,10 @@ def update():
     except Exception as e:
         flash(f"Error al actualizar información: {e}", "error")
     
+    # Redirigir al origen: si vino de /configuracion/, volver allí
+    referrer = request.referrer or ''
+    if '/configuracion' in referrer:
+        return redirect(url_for('settings.view'))
     return redirect(url_for("company.view"))
 
 

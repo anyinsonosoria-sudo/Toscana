@@ -36,31 +36,35 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Nombre de la Empresa *</label>
-                            <input type="text" class="form-control" name="name" value="{{ company.name or '' }}" required>
+                            <input type="text" class="form-control" name="name" value="{{ company.get('name', '') if company else '' }}" required>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">RNC/Cédula</label>
-                            <input type="text" class="form-control" name="legal_id" value="{{ company.legal_id or '' }}">
+                            <label class="form-label">Administrador</label>
+                            <input type="text" class="form-control" name="legal_id" value="{{ company.get('legal_id', '') if company else '' }}" placeholder="Nombre del administrador">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Contacto</label>
+                            <input type="text" class="form-control" name="tax_id" value="{{ company.get('tax_id', '') if company else '' }}" placeholder="Teléfono o email de contacto">
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Teléfono</label>
-                            <input type="text" class="form-control" name="phone" value="{{ company.phone or '' }}">
+                            <input type="text" class="form-control" name="phone" value="{{ company.get('phone', '') if company else '' }}">
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Email</label>
-                            <input type="email" class="form-control" name="email" value="{{ company.email or '' }}">
+                            <input type="email" class="form-control" name="email" value="{{ company.get('email', '') if company else '' }}">
                         </div>
                         <div class="col-md-12 mb-3">
                             <label class="form-label">Dirección</label>
-                            <input type="text" class="form-control" name="address" value="{{ company.address or '' }}">
+                            <input type="text" class="form-control" name="address" value="{{ company.get('address', '') if company else '' }}">
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Ciudad</label>
-                            <input type="text" class="form-control" name="city" value="{{ company.city or '' }}">
+                            <input type="text" class="form-control" name="city" value="{{ company.get('city', '') if company else '' }}">
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">País</label>
-                            <input type="text" class="form-control" name="country" value="{{ company.country or '' }}">
+                            <input type="text" class="form-control" name="country" value="{{ company.get('country', '') if company else '' }}">
                         </div>
                     </div>
                     <button type="submit" class="btn btn-primary">

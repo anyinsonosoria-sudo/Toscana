@@ -15,7 +15,7 @@ settings_bp = Blueprint('settings', __name__, url_prefix='/configuracion')
 # @permission_required('configuracion.view')
 def configuracion_view():
     try:
-        company_info = company.get_company_info()
+        company_info = company.get_company_info() or {}
     except Exception:
         company_info = {}
     try:

@@ -40,17 +40,17 @@
                         </div>
 
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">RUT/ID Legal</label>
+                            <label class="form-label">Administrador</label>
                             <input type="text" class="form-control" name="legal_id" 
                                    value="{{ company.legal_id if company else '' }}" 
-                                   placeholder="Ej: 12.345.678-9">
+                                   placeholder="Nombre del administrador">
                         </div>
 
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">ID Tributario (Tax ID)</label>
+                            <label class="form-label">Contacto</label>
                             <input type="text" class="form-control" name="tax_id" 
                                    value="{{ company.tax_id if company else '' }}" 
-                                   placeholder="Ej: RFC, NIT, etc.">
+                                   placeholder="Teléfono o email de contacto">
                         </div>
 
                         <!-- Dirección -->
@@ -146,12 +146,10 @@
                                      alt="Logo actual" class="img-thumbnail" style="max-height: 80px;">
                                 <div>
                                     <small class="d-block text-muted">Logo actual: {{ company.logo_path }}</small>
-                                    <form method="POST" action="{{ url_for('company.delete_logo') }}" class="d-inline" 
-                                          onsubmit="return confirm('¿Estás seguro de eliminar el logo?');">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger mt-1">
-                                            <i class="bi bi-trash"></i> Eliminar logo
-                                        </button>
-                                    </form>
+                                    <button type="button" class="btn btn-sm btn-outline-danger mt-1"
+                                            onclick="if(confirm('¿Estás seguro de eliminar el logo?')){var f=document.createElement('form');f.method='POST';f.action='{{ url_for('company.delete_logo') }}';var t=document.createElement('input');t.type='hidden';t.name='csrf_token';t.value='{{ csrf_token() }}';f.appendChild(t);document.body.appendChild(f);f.submit();}">
+                                        <i class="bi bi-trash"></i> Eliminar logo
+                                    </button>
                                 </div>
                             </div>
                             {% endif %}
@@ -190,10 +188,10 @@
                         {% endif %}
                         <h5>{{ company.name }}</h5>
                         {% if company.legal_id %}
-                            <p class="mb-1"><strong>RUT/ID:</strong> {{ company.legal_id }}</p>
+                            <p class="mb-1"><strong>Administrador:</strong> {{ company.legal_id }}</p>
                         {% endif %}
                         {% if company.tax_id %}
-                            <p class="mb-1"><strong>Tax ID:</strong> {{ company.tax_id }}</p>
+                            <p class="mb-1"><strong>Contacto:</strong> {{ company.tax_id }}</p>
                         {% endif %}
                         {% if company.address %}
                             <p class="mb-1"><i class="bi bi-geo-alt"></i> {{ company.address }}</p>
