@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Pagos - Xpack{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-cash-coin"></i> Pagos Recibidos</h1>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if payments %}
+        <div class="data-table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Factura</th>
+                        <th>Cliente</th>
+                        <th>Monto</th>
+                        <th>Método</th>
+                        <th>Fecha</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in payments %}
+                    <tr>
+                        <td data-label="#">{{ p.id }}</td>
+                        <td data-label="Factura"><strong>#{{ p.invoice_id }}</strong></td>
+                        <td data-label="Cliente">{{ p.client_name or p.invoice_desc or '-' }}</td>
+                        <td data-label="Monto" style="font-weight: 700; color: var(--success);">RD$ {{ "{:,.2f}".format(p.amount or 0) }}</td>
+                        <td data-label="Método"><span class="badge-status badge-active">{{ p.method or '-' }}</span></td>
+                        <td data-label="Fecha"><small>{{ p.paid_date or '-' }}</small></td>
+                        <td data-label="Acciones">
+                            <form method="POST" action="{{ url_for('billing.delete_payment', payment_id=p.id) }}" style="display:inline;"
+                                  onsubmit="return confirm('¿Eliminar pago #{{ p.id }}?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action delete" title="Eliminar">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-cash-coin"></i>
+            <p>No hay pagos registrados</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

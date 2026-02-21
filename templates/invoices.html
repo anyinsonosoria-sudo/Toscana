@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Facturas</title></head>
+<body>
+<h1>Facturas</h1>
+<a href="{{ url_for('index') }}">Inicio</a> | <a href="{{ url_for('view_units') }}">Unidades</a>
+<hr>
+<h2>Crear factura</h2>
+<form action="{{ url_for('billing.create_factura') }}" method="post">
+  Unidad:
+  <select name="unit_id">
+    {% for u in units.values() %}
+      <option value="{{ u.id }}">{{ u.number }} - {{ u.owner }}</option>
+    {% endfor %}
+  </select><br>
+  Descripción: <input name="description"><br>
+  Monto: <input name="amount" type="number" step="0.01"><br>
+  Due (YYYY-MM-DD): <input name="due"><br>
+  <button type="submit">Crear</button>
+</form>
+<hr>
+<h2>Listado de facturas</h2>
+<ul>
+  {% for inv in invoices %}
+    <li>
+      {{ inv.id }} - U{{ inv.unit_id }} ({{ units.get(inv.unit_id).number if units.get(inv.unit_id) else inv.unit_id }}) :
+      {{ inv.description }} — {{ inv.amount }} — paid={{ inv.paid }}
+      <form action="{{ url_for('billing.register_payment') }}" method="post" style="display:inline">
+        <input type="hidden" name="invoice_id" value="{{ inv.id }}">
+        <input name="amount" type="number" step="0.01" placeholder="monto">
+        <input name="method" placeholder="método">
+        <button type="submit">Pagar</button>
+      </form>
+    </li>
+  {% else %}
+    <li>No hay facturas.</li>
+  {% endfor %}
+</ul>
+</body>
+</html>

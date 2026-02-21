@@ -1,0 +1,965 @@
+{% extends "base.html" %}
+
+{% block title %}Configuración - Building Maintenance{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 class="h3"><i class="bi bi-gear"></i> Configuración del Sistema</h1>
+    <p class="text-muted">Administra la información de la empresa, apartamentos (con residentes) y suplidores</p>
+</div>
+
+<!-- Nav tabs -->
+<ul class="nav nav-tabs mb-4" id="configTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="empresa-tab" data-bs-toggle="tab" data-bs-target="#empresa" type="button" role="tab">
+            <i class="bi bi-building-gear"></i> Empresa
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="personalizacion-tab" data-bs-toggle="tab" data-bs-target="#personalizacion" type="button" role="tab">
+            <i class="bi bi-palette"></i> Personalización
+        </button>
+    </li>
+</ul>
+
+<!-- Tab content -->
+<div class="tab-content" id="configTabContent">
+    <!-- EMPRESA TAB -->
+    <div class="tab-pane fade show active" id="empresa" role="tabpanel">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-building-gear"></i> Información de la Empresa</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('company.update') }}" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nombre de la Empresa *</label>
+                            <input type="text" class="form-control" name="name" value="{{ company.name or '' }}" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">RNC/Cédula</label>
+                            <input type="text" class="form-control" name="legal_id" value="{{ company.legal_id or '' }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" class="form-control" name="phone" value="{{ company.phone or '' }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" name="email" value="{{ company.email or '' }}">
+                        </div>
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Dirección</label>
+                            <input type="text" class="form-control" name="address" value="{{ company.address or '' }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Ciudad</label>
+                            <input type="text" class="form-control" name="city" value="{{ company.city or '' }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">País</label>
+                            <input type="text" class="form-control" name="country" value="{{ company.country or '' }}">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Guardar Cambios
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- PERSONALIZACIÓN TAB -->
+    <div class="tab-pane fade" id="personalizacion" role="tabpanel">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-palette"></i> Personalización de la Interfaz</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('settings.update_customization') }}" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="mb-3"><i class="bi bi-image"></i> Logo</h6>
+                            <div class="mb-3">
+                                {% if customization.logo_url %}
+                                <div class="mb-2">
+                                    <img src="{{ customization.logo_url }}" alt="Logo" class="img-thumbnail" style="max-height: 150px;">
+                                </div>
+                                {% endif %}
+                                <label class="form-label">Subir Nuevo Logo</label>
+                                <input type="file" class="form-control" name="logo" accept="image/*">
+                                <small class="text-muted">Formatos: JPG, PNG. Tamaño recomendado: 300x100px</small>
+                            </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="display_logo" name="display_logo" value="1" 
+                                       {% if customization.display_logo == '1' %}checked{% endif %}>
+                                <label class="form-check-label" for="display_logo">
+                                    Mostrar logo en documentos
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="mb-3"><i class="bi bi-palette-fill"></i> Colores</h6>
+                            <div class="mb-3">
+                                <label class="form-label">Color de Acento</label>
+                                <div class="input-group">
+                                    <input type="color" class="form-control form-control-color" name="accent_color" 
+                                           value="{{ customization.accent_color or '#795547' }}">
+                                    <input type="text" class="form-control" id="accent_color_text" 
+                                           value="{{ customization.accent_color or '#795547' }}" maxlength="7">
+                                </div>
+                                <small class="text-muted">Este color se usará en encabezados y elementos destacados</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4">
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <h6 class="mb-3"><i class="bi bi-file-earmark-text"></i> Plantillas de Documentos</h6>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Plantilla de Facturas</label>
+                                <select class="form-select" name="invoice_template">
+                                    <option value="modern" {% if customization.invoice_template == 'modern' %}selected{% endif %}>Moderna</option>
+                                    <option value="classic" {% if customization.invoice_template == 'classic' %}selected{% endif %}>Clásica</option>
+                                    <option value="contemporary" {% if customization.invoice_template == 'contemporary' %}selected{% endif %}>Contemporánea</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <button type="button" class="btn btn-outline-secondary" onclick="previewChanges()">
+                            <i class="bi bi-eye"></i> Vista Previa
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Guardar Cambios
+                        </button>
+                    </div>
+                </form>
+                <hr class="my-4">
+                <!-- Diseño de Página -->
+                <div class="card mt-4">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0"><i class="bi bi-layout-sidebar"></i> Diseño de Página</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('settings.update_sidebar_order') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                            <div class="mb-3">
+                                <label class="form-label">Ordenar Menús del Panel Lateral</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="sidebar_order_mode" id="order_custom" value="custom" {% if customization.sidebar_order_mode != 'alphabetical' %}checked{% endif %}>
+                                    <label class="form-check-label" for="order_custom">Orden Personalizado</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="sidebar_order_mode" id="order_alpha" value="alphabetical" {% if customization.sidebar_order_mode == 'alphabetical' %}checked{% endif %}>
+                                    <label class="form-check-label" for="order_alpha">Orden Alfabético</label>
+                                </div>
+                                <ul id="sidebarMenuList" class="list-group mb-2" style="max-width:500px;">
+                                    {% for menu in customization.sidebar_menu_order %}
+                                    <li class="list-group-item {% if menu.type == 'dropdown' %}bg-light{% endif %}" data-menu="{{ menu.key }}">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span>
+                                                <i class="{{ menu.icon }}"></i> <strong>{{ menu.label }}</strong>
+                                                {% if menu.type == 'dropdown' %}<span class="badge bg-info ms-2">Dropdown</span>{% endif %}
+                                            </span>
+                                            <span>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary move-up" title="Subir"><i class="bi bi-arrow-up"></i></button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary move-down" title="Bajar"><i class="bi bi-arrow-down"></i></button>
+                                            </span>
+                                            <input type="hidden" name="sidebar_menu_order[]" value="{{ menu.key }}">
+                                        </div>
+                                        {% if menu.type == 'dropdown' and menu.children %}
+                                        <ul class="list-group list-group-flush mt-2 ms-3">
+                                            {% for child in menu.children %}
+                                            <li class="list-group-item list-group-item-light py-1 px-2 border-0">
+                                                <small>
+                                                    <i class="{{ child.icon }}"></i> {{ child.label }}
+                                                    {% if child.placeholder %}<span class="badge bg-warning text-dark ms-1">En desarrollo</span>{% endif %}
+                                                </small>
+                                            </li>
+                                            {% endfor %}
+                                        </ul>
+                                        {% endif %}
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                                <small class="text-muted">Arrastra o usa las flechas para reordenar los menús. El orden personalizado solo aplica si está seleccionado.</small>
+                            </div>
+                            <div class="d-flex justify-content-end">
+                                <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Guardar Diseño</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODALS -->
+
+<!-- Add Product/Service Modal -->
+<div class="modal fade" id="addProductModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Nuevo Producto/Servicio</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('products.add') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Código *</label>
+                        <input type="text" class="form-control" name="code" placeholder="Ej: CMM-001" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción *</label>
+                        <input type="text" class="form-control" name="name" placeholder="Ej: CARGO MANTENIMIENTO MENSUAL" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tipo *</label>
+                        <select class="form-select" name="type" id="add_type" required onchange="togglePriceFields('add')">
+                            <option value="">Seleccionar...</option>
+                            <option value="Producto">Producto</option>
+                            <option value="Servicio">Servicio</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="add_service_price" style="display:none;">
+                        <label class="form-label">Precio (Servicio)</label>
+                        <input type="number" step="0.01" class="form-control" name="price" placeholder="0.00">
+                    </div>
+                    <div id="add_product_prices" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label">Costo (Producto)</label>
+                            <input type="number" step="0.01" class="form-control" name="cost" placeholder="0.00">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Precio (Producto)</label>
+                            <input type="number" step="0.01" class="form-control" name="price" placeholder="0.00">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notas</label>
+                        <textarea class="form-control" name="additional_notes" rows="3" placeholder="Notas adicionales..."></textarea>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="add_active" name="active" value="1" checked>
+                        <label class="form-check-label" for="add_active">
+                            Activo
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Product/Service Modal -->
+<div class="modal fade" id="editProductModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Producto/Servicio</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="editProductForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Código *</label>
+                        <input type="text" class="form-control" name="code" id="edit_prod_code" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción *</label>
+                        <input type="text" class="form-control" name="name" id="edit_prod_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tipo *</label>
+                        <select class="form-select" name="type" id="edit_prod_type" required onchange="togglePriceFields('edit')">
+                            <option value="Producto">Producto</option>
+                            <option value="Servicio">Servicio</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="edit_service_price" style="display:none;">
+                        <label class="form-label">Precio (Servicio)</label>
+                        <input type="number" step="0.01" class="form-control" name="price" id="edit_prod_price" placeholder="0.00">
+                    </div>
+                    <div id="edit_product_prices" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label">Costo (Producto)</label>
+                            <input type="number" step="0.01" class="form-control" name="cost" id="edit_prod_cost" placeholder="0.00">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Precio (Producto)</label>
+                            <input type="number" step="0.01" class="form-control" name="price" id="edit_prod_price2" placeholder="0.00">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notas</label>
+                        <textarea class="form-control" name="additional_notes" id="edit_prod_notes" rows="3" placeholder="Notas adicionales..."></textarea>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="edit_prod_active" name="active" value="1">
+                        <label class="form-check-label" for="edit_prod_active">
+                            Activo
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Actualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Add Apartment Modal -->
+<div class="modal fade" id="addApartmentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Nuevo Apartamento</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('apartments.add') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Número *</label>
+                        <input type="text" class="form-control" name="number" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Piso</label>
+                        <input type="text" class="form-control" name="floor">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Comentario</label>
+                        <textarea class="form-control" name="notes" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Apartment Modal -->
+<div class="modal fade" id="editApartmentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Apartamento</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="editApartmentForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Número *</label>
+                        <input type="text" class="form-control" name="number" id="edit_apt_number" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Piso</label>
+                        <input type="text" class="form-control" name="floor" id="edit_apt_floor">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Comentario</label>
+                        <textarea class="form-control" name="notes" id="edit_apt_notes" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Actualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Add Resident Modal - DEPRECATED: Los residentes se gestionan desde Apartamentos -->
+<!-- <div class="modal fade" id="addResidentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Nuevo Residente</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="#">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre *</label>
+                        <input type="text" class="form-control" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Apartamento</label>
+                        <select class="form-select" name="unit_id">
+                            <option value="">Sin asignar</option>
+                            {% for apt in apartments %}
+                            <option value="{{ apt.id }}">{{ apt.number }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Teléfono</label>
+                        <input type="text" class="form-control" name="phone">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Rol</label>
+                        <select class="form-select" name="role" id="add_res_role" onchange="toggleOtherRole('add')">
+                            <option value="Propietario">Propietario</option>
+                            <option value="Inquilino">Inquilino</option>
+                            <option value="Otro">Otro</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="add_role_other_div" style="display:none;">
+                        <label class="form-label">Especificar otro rol *</label>
+                        <input type="text" class="form-control" name="role_other" id="add_role_other">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Resident Modal -->
+<div class="modal fade" id="editResidentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Residente</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="editResidentForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre *</label>
+                        <input type="text" class="form-control" name="name" id="edit_res_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Apartamento</label>
+                        <select class="form-select" name="unit_id" id="edit_res_unit">
+                            <option value="">Sin asignar</option>
+                            {% for apt in apartments %}
+                            <option value="{{ apt.id }}">{{ apt.number }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email" id="edit_res_email">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Teléfono</label>
+                        <input type="text" class="form-control" name="phone" id="edit_res_phone">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Rol</label>
+                        <select class="form-select" name="role" id="edit_res_role" onchange="toggleOtherRole('edit')">
+                            <option value="Propietario">Propietario</option>
+                            <option value="Inquilino">Inquilino</option>
+                            <option value="Otro">Otro</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="edit_role_other_div" style="display:none;">
+                        <label class="form-label">Especificar otro rol *</label>
+                        <input type="text" class="form-control" name="role_other" id="edit_role_other">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Términos de Pago (días)</label>
+                        <input type="number" class="form-control" name="payment_terms" id="edit_res_payment_terms" value="30" min="0">
+                        <small class="form-text text-muted">Días para vencimiento de facturas</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Actualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div> -->
+
+<!-- Add Supplier Modal -->
+<div class="modal fade" id="addSupplierModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Nuevo Suplidor</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('suppliers.add') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre *</label>
+                        <input type="text" class="form-control" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tipo de Suplidor *</label>
+                        <select class="form-select" name="supplier_type" id="add_sup_type" onchange="toggleSupplierType('add')" required>
+                            <option value="">Seleccionar...</option>
+                            <option value="Plomero">Plomero</option>
+                            <option value="Electricista">Electricista</option>
+                            <option value="Constructor">Constructor</option>
+                            <option value="Tecnología">Tecnología</option>
+                            <option value="Vendedor">Vendedor</option>
+                            <option value="Otros">Otros</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="add_sup_type_other_div" style="display:none;">
+                        <label class="form-label">Especificar Tipo</label>
+                        <input type="text" class="form-control" name="supplier_type_other" id="add_sup_type_other">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Persona de Contacto</label>
+                        <input type="text" class="form-control" name="contact_name">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Teléfono</label>
+                        <input type="text" class="form-control" name="phone">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Dirección</label>
+                        <input type="text" class="form-control" name="address">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">RNC/Cédula</label>
+                        <input type="text" class="form-control" name="tax_id">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Términos de Pago (días)</label>
+                        <input type="number" class="form-control" name="payment_terms" value="30" min="0">
+                        <small class="text-muted">Días para vencimiento de pagos</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Supplier Modal -->
+<div class="modal fade" id="editSupplierModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Suplidor</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="editSupplierForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre *</label>
+                        <input type="text" class="form-control" name="name" id="edit_sup_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tipo de Suplidor *</label>
+                        <select class="form-select" name="supplier_type" id="edit_sup_type" onchange="toggleSupplierType('edit')" required>
+                            <option value="">Seleccionar...</option>
+                            <option value="Plomero">Plomero</option>
+                            <option value="Electricista">Electricista</option>
+                            <option value="Constructor">Constructor</option>
+                            <option value="Tecnología">Tecnología</option>
+                            <option value="Vendedor">Vendedor</option>
+                            <option value="Otros">Otros</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="edit_sup_type_other_div" style="display:none;">
+                        <label class="form-label">Especificar Tipo</label>
+                        <input type="text" class="form-control" name="supplier_type_other" id="edit_sup_type_other">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Persona de Contacto</label>
+                        <input type="text" class="form-control" name="contact_name" id="edit_sup_contact">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email" id="edit_sup_email">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Teléfono</label>
+                        <input type="text" class="form-control" name="phone" id="edit_sup_phone">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Dirección</label>
+                        <input type="text" class="form-control" name="address" id="edit_sup_address">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">RNC/Cédula</label>
+                        <input type="text" class="form-control" name="tax_id" id="edit_sup_tax">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Términos de Pago (días)</label>
+                        <input type="number" class="form-control" name="payment_terms" id="edit_sup_payment_terms" value="30" min="0">
+                        <small class="text-muted">Días para vencimiento de pagos</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Actualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header text-white" id="previewHeader">
+                <h5 class="modal-title"><i class="bi bi-eye"></i> Vista Previa de Personalización</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-4">Así se verán los elementos con tus cambios de personalización:</p>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h6>Encabezados de Tarjetas</h6>
+                        <div class="card">
+                            <div class="card-header text-white" id="previewCardHeader1">
+                                <h5 class="mb-0"><i class="bi bi-gear"></i> Ejemplo de Encabezado</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="mb-0">Este es un ejemplo de cómo se verán las tarjetas con el nuevo color.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Botones Primarios</h6>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button class="btn text-white" id="previewBtn1">
+                                <i class="bi bi-plus-circle"></i> Nuevo
+                            </button>
+                            <button class="btn text-white" id="previewBtn2">
+                                <i class="bi bi-save"></i> Guardar
+                            </button>
+                            <button class="btn text-white" id="previewBtn3">
+                                <i class="bi bi-check-circle"></i> Confirmar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h6>Ejemplo de Factura (Encabezado)</h6>
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center mb-3 p-3 text-white" id="previewInvoiceHeader">
+                                    <div>
+                                        <h4 class="mb-0">FACTURA</h4>
+                                        <p class="mb-0">No. 001-2026</p>
+                                    </div>
+                                    <div class="text-end" id="previewLogoArea">
+                                        <i class="bi bi-building" style="font-size: 2rem;"></i>
+                                        <p class="mb-0 small" id="previewLogoText">Logo aparecerá aquí</p>
+                                    </div>
+                                </div>
+                                <p class="text-muted mb-0">El color de acento se aplicará en encabezados de documentos como facturas, recibos y reportes.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-12">
+                        <h6>Plantilla de Factura Seleccionada</h6>
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> 
+                            <strong>Plantilla: </strong><span id="previewTemplate"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// --- Drag & Drop para ordenar menús del sidebar ---
+document.addEventListener('DOMContentLoaded', function() {
+    const list = document.getElementById('sidebarMenuList');
+    if (list) {
+        let dragged;
+        list.querySelectorAll('li').forEach(item => {
+            item.draggable = true;
+            item.addEventListener('dragstart', function(e) {
+                dragged = this;
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/html', this.outerHTML);
+                this.classList.add('dragging');
+            });
+            item.addEventListener('dragend', function() {
+                this.classList.remove('dragging');
+            });
+            item.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                this.classList.add('drag-over');
+            });
+            item.addEventListener('dragleave', function() {
+                this.classList.remove('drag-over');
+            });
+            item.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.classList.remove('drag-over');
+                if (dragged !== this) {
+                    this.parentNode.insertBefore(dragged, this.nextSibling);
+                    updateSidebarOrderInputs();
+                }
+            });
+        });
+        // Flechas subir/bajar
+        list.querySelectorAll('.move-up').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const li = this.closest('li');
+                if (li.previousElementSibling) {
+                    li.parentNode.insertBefore(li, li.previousElementSibling);
+                    updateSidebarOrderInputs();
+                }
+            });
+        });
+        list.querySelectorAll('.move-down').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const li = this.closest('li');
+                if (li.nextElementSibling) {
+                    li.parentNode.insertBefore(li.nextElementSibling, li);
+                    updateSidebarOrderInputs();
+                }
+            });
+        });
+        function updateSidebarOrderInputs() {
+            const items = list.querySelectorAll('li');
+            items.forEach((li, idx) => {
+                li.querySelector('input[type="hidden"]').setAttribute('name', 'sidebar_menu_order[]');
+            });
+        }
+    }
+    
+    // Preserve active tab on page reload
+    const hash = window.location.hash;
+    if (hash) {
+        const tab = document.querySelector(`button[data-bs-target="${hash}"]`);
+        if (tab) {
+            new bootstrap.Tab(tab).show();
+        }
+    }
+    
+    // Update URL hash when tab is shown
+    document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(tab => {
+        tab.addEventListener('shown.bs.tab', function (e) {
+            window.location.hash = e.target.dataset.bsTarget;
+        });
+    });
+});
+
+function editApartment(id, number, floor, notes) {
+    document.getElementById('editApartmentForm').action = "{{ url_for('apartments.edit', id=0) }}".replace('/0', '/' + id);
+    document.getElementById('edit_apt_number').value = number;
+    document.getElementById('edit_apt_floor').value = floor;
+    document.getElementById('edit_apt_notes').value = notes;
+    new bootstrap.Modal(document.getElementById('editApartmentModal')).show();
+}
+
+// editResident - DEPRECATED: Los residentes se gestionan desde Apartamentos
+/*
+function editResident(id, name, unit_id, email, phone, role, payment_terms) {
+    document.getElementById('editResidentForm').action = "#";
+    document.getElementById('edit_res_name').value = name;
+    document.getElementById('edit_res_unit').value = unit_id || '';
+    document.getElementById('edit_res_email').value = email;
+    document.getElementById('edit_res_phone').value = phone;
+    document.getElementById('edit_res_payment_terms').value = payment_terms || 30;
+    
+    const roleSelect = document.getElementById('edit_res_role');
+    const roleOtherDiv = document.getElementById('edit_role_other_div');
+    const roleOtherInput = document.getElementById('edit_role_other');
+    
+    if (role === 'Propietario' || role === 'Inquilino') {
+        roleSelect.value = role;
+        roleOtherDiv.style.display = 'none';
+        roleOtherInput.value = '';
+    } else {
+        roleSelect.value = 'Otro';
+        roleOtherDiv.style.display = 'block';
+        roleOtherInput.value = role || '';
+    }
+    
+    new bootstrap.Modal(document.getElementById('editResidentModal')).show();
+}
+*/
+
+function editSupplier(id, name, supplier_type, supplier_type_other, contact, email, phone, address, tax_id, payment_terms) {
+    document.getElementById('editSupplierForm').action = "{{ url_for('suppliers.edit', id=0) }}".replace('/0', '/' + id);
+    document.getElementById('edit_sup_name').value = name;
+    document.getElementById('edit_sup_type').value = supplier_type || '';
+    document.getElementById('edit_sup_type_other').value = supplier_type_other || '';
+    toggleSupplierType('edit');
+    document.getElementById('edit_sup_contact').value = contact;
+    document.getElementById('edit_sup_email').value = email;
+    document.getElementById('edit_sup_phone').value = phone;
+    document.getElementById('edit_sup_address').value = address;
+    document.getElementById('edit_sup_tax').value = tax_id;
+    document.getElementById('edit_sup_payment_terms').value = payment_terms || 30;
+    new bootstrap.Modal(document.getElementById('editSupplierModal')).show();
+}
+
+function toggleSupplierType(mode) {
+    const typeSelect = document.getElementById(mode + '_sup_type');
+    const otherDiv = document.getElementById(mode + '_sup_type_other_div');
+    const otherInput = document.getElementById(mode + '_sup_type_other');
+    
+    if (typeSelect.value === 'Otros') {
+        otherDiv.style.display = 'block';
+        otherInput.required = true;
+    } else {
+        otherDiv.style.display = 'none';
+        otherInput.required = false;
+        otherInput.value = '';
+    }
+}
+
+function editProduct(id, code, name, type, description, additional_notes, price, active) {
+    document.getElementById('editProductForm').action = "{{ url_for('products.edit', id=0) }}".replace('/0', '/' + id);
+    document.getElementById('edit_prod_code').value = code || '';
+    document.getElementById('edit_prod_name').value = name;
+    document.getElementById('edit_prod_type').value = type;
+    document.getElementById('edit_prod_notes').value = additional_notes || '';
+    document.getElementById('edit_prod_price').value = price || '';
+    document.getElementById('edit_prod_price2').value = price || '';
+    document.getElementById('edit_prod_active').checked = active == 1;
+    
+    // Mostrar campos según tipo
+    togglePriceFields('edit');
+    
+    new bootstrap.Modal(document.getElementById('editProductModal')).show();
+}
+
+function togglePriceFields(mode) {
+    const typeSelect = document.getElementById(mode + '_type');
+    const type = typeSelect.value;
+    
+    if (mode === 'add') {
+        const servicePrice = document.getElementById('add_service_price');
+        const productPrices = document.getElementById('add_product_prices');
+        
+        if (type === 'Servicio') {
+            servicePrice.style.display = 'block';
+            productPrices.style.display = 'none';
+        } else if (type === 'Producto') {
+            servicePrice.style.display = 'none';
+            productPrices.style.display = 'block';
+        } else {
+            servicePrice.style.display = 'none';
+            productPrices.style.display = 'none';
+        }
+    } else if (mode === 'edit') {
+        const servicePrice = document.getElementById('edit_service_price');
+        const productPrices = document.getElementById('edit_product_prices');
+        
+        if (type === 'Servicio') {
+            servicePrice.style.display = 'block';
+            productPrices.style.display = 'none';
+        } else if (type === 'Producto') {
+            servicePrice.style.display = 'none';
+            productPrices.style.display = 'block';
+        } else {
+            servicePrice.style.display = 'none';
+            productPrices.style.display = 'none';
+        }
+    }
+}
+
+function previewChanges() {
+    const accentColor = document.querySelector('input[name="accent_color"]').value;
+    const displayLogo = document.querySelector('input[name="display_logo"]').checked;
+    const invoiceTemplate = document.querySelector('select[name="invoice_template"]').value;
+    
+    const previewElements = [
+        'previewHeader',
+        'previewCardHeader1',
+        'previewBtn1',
+        'previewBtn2',
+        'previewBtn3',
+        'previewInvoiceHeader'
+    ];
+    
+    previewElements.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.style.backgroundColor = accentColor;
+        }
+    });
+    
+    const templateNames = {
+        'modern': 'Moderna',
+        'classic': 'Clásica',
+        'contemporary': 'Contemporánea'
+    };
+    document.getElementById('previewTemplate').textContent = templateNames[invoiceTemplate] || invoiceTemplate;
+    
+    const logoText = displayLogo ? 'Logo será visible en documentos' : 'Logo estará oculto en documentos';
+    document.getElementById('previewLogoText').textContent = logoText;
+    
+    new bootstrap.Modal(document.getElementById('previewModal')).show();
+}
+
+function toggleOtherRole(mode) {
+    const roleSelect = document.getElementById(mode + '_res_role');
+    const otherDiv = document.getElementById(mode + '_role_other_div');
+    const otherInput = document.getElementById(mode + '_role_other');
+    
+    if (roleSelect.value === 'Otro') {
+        otherDiv.style.display = 'block';
+        otherInput.required = true;
+    } else {
+        otherDiv.style.display = 'none';
+        otherInput.required = false;
+        otherInput.value = '';
+    }
+}
+</script>
+{% endblock %}

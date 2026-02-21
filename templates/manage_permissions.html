@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Permisos - {{ user.username }} - Xpack{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-shield-lock"></i> Permisos de {{ user.username }}</h1>
+    <a href="{{ url_for('auth.list_users') }}" class="btn" style="background:var(--bg-secondary);color:var(--text);border-radius:10px;padding:0.5rem 1rem;">
+        <i class="bi bi-arrow-left"></i> Volver
+    </a>
+</div>
+
+<!-- User Info + Quick Actions -->
+<div style="display:flex;gap:1rem;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;">
+    <div style="background:var(--bg-secondary);padding:0.6rem 1rem;border-radius:10px;font-size:0.9rem;">
+        <i class="bi bi-person"></i> <strong>{{ user.username }}</strong>
+        <span class="badge-status" style="margin-left:0.5rem;">{{ user.role }}</span>
+    </div>
+    <div style="display:flex;gap:0.5rem;margin-left:auto;">
+        <button type="button" class="btn btn-sm" style="background:var(--success);color:white;border-radius:8px;padding:0.4rem 0.75rem;font-size:0.8rem;border:none;cursor:pointer;" onclick="selectAll()">
+            <i class="bi bi-check-all"></i> Todos
+        </button>
+        <button type="button" class="btn btn-sm" style="background:var(--danger);color:white;border-radius:8px;padding:0.4rem 0.75rem;font-size:0.8rem;border:none;cursor:pointer;" onclick="deselectAll()">
+            <i class="bi bi-x-circle"></i> Ninguno
+        </button>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('auth.manage_user_permissions', user_id=user.id) }}" id="permissionsForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-bottom:1.5rem;">
+        {% for module, permissions in permissions_by_module.items() %}
+        <div class="card">
+            <div style="padding:0.75rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-weight:700;font-size:0.9rem;text-transform:capitalize;">
+                    <i class="bi bi-folder"></i> {{ module }}
+                </span>
+                <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.75rem;color:var(--text-muted);">
+                    Todo
+                    <input type="checkbox" class="module-toggle" id="toggle_{{ module }}"
+                           onchange="toggleModule('{{ module }}')"
+                           style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer;">
+                </label>
+            </div>
+            <div style="padding:0.75rem 1rem;">
+                {% for perm in permissions %}
+                <label style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.4rem 0;cursor:pointer;">
+                    <input type="checkbox" class="permission-checkbox module-{{ module }}"
+                           name="permissions" value="{{ perm.name }}"
+                           {% if perm.name in user_permissions %}checked{% endif %}
+                           onchange="updateModuleToggle('{{ module }}')"
+                           style="width:16px;height:16px;accent-color:var(--primary);margin-top:2px;cursor:pointer;">
+                    <div>
+                        <span style="font-weight:600;font-size:0.85rem;">
+                            {% if perm.action == 'view' %}<i class="bi bi-eye" style="color:var(--info);"></i> Ver
+                            {% elif perm.action == 'create' %}<i class="bi bi-plus-circle" style="color:var(--success);"></i> Crear
+                            {% elif perm.action == 'edit' %}<i class="bi bi-pencil" style="color:#f59e0b;"></i> Editar
+                            {% elif perm.action == 'delete' %}<i class="bi bi-trash" style="color:var(--danger);"></i> Eliminar
+                            {% elif perm.action == 'duplicate' %}<i class="bi bi-files" style="color:var(--primary);"></i> Duplicar
+                            {% elif perm.action == 'export' %}<i class="bi bi-download" style="color:var(--text-muted);"></i> Exportar
+                            {% elif perm.action == 'send_receipt' %}<i class="bi bi-send" style="color:var(--info);"></i> Enviar
+                            {% elif perm.action == 'manage_permissions' %}<i class="bi bi-shield-lock" style="color:var(--danger);"></i> Gestionar
+                            {% else %}<i class="bi bi-check-circle"></i> {{ perm.action|capitalize }}
+                            {% endif %}
+                        </span>
+                        <div style="font-size:0.75rem;color:var(--text-muted);">{{ perm.description }}</div>
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div style="position:sticky;bottom:0;background:var(--bg);padding:1rem 0;z-index:5;">
+        <button type="submit" class="btn btn-primary" style="width:100%;max-width:400px;">
+            <i class="bi bi-check-lg"></i> Guardar Permisos
+        </button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function selectAll() {
+    document.querySelectorAll('.permission-checkbox').forEach(cb => cb.checked = true);
+    document.querySelectorAll('.module-toggle').forEach(t => { t.checked = true; t.indeterminate = false; });
+}
+function deselectAll() {
+    document.querySelectorAll('.permission-checkbox').forEach(cb => cb.checked = false);
+    document.querySelectorAll('.module-toggle').forEach(t => { t.checked = false; t.indeterminate = false; });
+}
+function toggleModule(mod) {
+    const t = document.getElementById('toggle_' + mod);
+    document.querySelectorAll('.module-' + mod).forEach(cb => cb.checked = t.checked);
+}
+function updateModuleToggle(mod) {
+    const cbs = document.querySelectorAll('.module-' + mod);
+    const t = document.getElementById('toggle_' + mod);
+    const all = Array.from(cbs).every(c => c.checked);
+    const none = Array.from(cbs).every(c => !c.checked);
+    t.checked = all;
+    t.indeterminate = !all && !none;
+}
+document.addEventListener('DOMContentLoaded', () => {
+    {% for module in permissions_by_module.keys() %}
+    updateModuleToggle('{{ module }}');
+    {% endfor %}
+});
+</script>
+{% endblock %}

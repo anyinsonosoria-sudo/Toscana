@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Factura #{{ invoice.id }} - Xpack{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-pencil-square"></i> Editar Factura #{{ invoice.id }}</h1>
+    <a href="{{ url_for('billing.invoices') }}" class="btn" style="background:var(--bg-secondary);color:var(--text);border-radius:10px;padding:0.5rem 1rem;">
+        <i class="bi bi-arrow-left"></i> Volver
+    </a>
+</div>
+
+<div class="card" style="max-width: 600px;">
+    <div class="card-body">
+        <div style="display:flex;gap:1rem;margin-bottom:1.5rem;">
+            <div style="flex:1;background:var(--bg-secondary);padding:0.75rem 1rem;border-radius:10px;">
+                <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;">Factura</div>
+                <div style="font-weight:700;font-size:1.1rem;">#{{ invoice.id }}</div>
+            </div>
+            <div style="flex:1;background:var(--bg-secondary);padding:0.75rem 1rem;border-radius:10px;">
+                <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;">Emitida</div>
+                <div style="font-weight:600;">{{ invoice.issued_date }}</div>
+            </div>
+        </div>
+
+        <form method="POST" action="{{ url_for('billing.edit_factura', invoice_id=invoice.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div style="margin-bottom:1.25rem;">
+                <label class="wizard-step-label">Descripción del Servicio</label>
+                <textarea name="description" class="wizard-input" rows="3" required style="min-height:80px;resize:vertical;" placeholder="Ej: Mantenimiento mensual, Consumo de agua...">{{ invoice.description }}</textarea>
+            </div>
+
+            <div style="display:flex;gap:1rem;margin-bottom:1.25rem;">
+                <div style="flex:1;">
+                    <label class="wizard-step-label">Monto (RD$)</label>
+                    <input type="number" name="amount" class="wizard-input" step="0.01" min="0" value="{{ invoice.amount }}" required>
+                </div>
+                <div style="flex:1;">
+                    <label class="wizard-step-label">Fecha de Vencimiento</label>
+                    <input type="date" name="due_date" class="wizard-input" value="{{ invoice.due_date }}" required>
+                </div>
+            </div>
+
+            <div style="margin-bottom:1.5rem;">
+                <label class="wizard-step-label">Notas Adicionales</label>
+                <textarea name="notes" class="wizard-input" rows="2" style="min-height:60px;resize:vertical;" placeholder="Notas opcionales...">{{ invoice.notes or '' }}</textarea>
+            </div>
+
+            <div style="background:#fef3c7;padding:0.75rem 1rem;border-radius:10px;margin-bottom:1.5rem;font-size:0.85rem;color:#92400e;">
+                <i class="bi bi-exclamation-triangle"></i> Los cambios se reflejarán en el PDF regenerado.
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width:100%;">
+                <i class="bi bi-check-lg"></i> Guardar Cambios
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

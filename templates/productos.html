@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}Productos y Servicios - Xpack{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-box-seam"></i> Productos y Servicios</h1>
+    <button class="btn btn-primary" onclick="wizardProd.open()">
+        <i class="bi bi-plus-lg"></i> Nuevo
+    </button>
+</div>
+
+<!-- Lista -->
+<div class="card">
+    <div class="card-body">
+        {% if products_services %}
+        <div class="data-table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Descripción</th>
+                        <th>Tipo</th>
+                        <th>Precio</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in products_services %}
+                    <tr>
+                        <td data-label="Código"><code>{{ item.code or '-' }}</code></td>
+                        <td data-label="Descripción"><strong>{{ item.name }}</strong>
+                            {% if item.additional_notes %}
+                            <br><small class="text-muted">{{ item.additional_notes }}</small>
+                            {% endif %}
+                        </td>
+                        <td data-label="Tipo">
+                            {% if item.type == 'product' %}
+                                <span class="badge-status badge-active"><i class="bi bi-box"></i> Producto</span>
+                            {% else %}
+                                <span class="badge-status badge-pending"><i class="bi bi-tools"></i> Servicio</span>
+                            {% endif %}
+                        </td>
+                        <td data-label="Precio" style="font-weight: 600;">RD$ {{ "{:,.2f}".format(item.price or 0) }}</td>
+                        <td data-label="Estado">
+                            {% if item.active %}
+                                <span class="badge-status badge-active">Activo</span>
+                            {% else %}
+                                <span class="badge-status badge-inactive">Inactivo</span>
+                            {% endif %}
+                        </td>
+                        <td data-label="Acciones">
+                            <button class="btn-action edit" onclick="editProd({{ item | tojson }})" title="Editar">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <form method="POST" action="{{ url_for('products.delete', id=item.id) }}" style="display:inline;"
+                                  onsubmit="return confirm('¿Eliminar {{ item.name }}?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action delete" title="Eliminar">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if pagination.pages > 1 %}
+        <nav class="mt-3">
+            <ul class="pagination pagination-sm justify-content-center mb-0">
+                {% for page in range(1, pagination.pages + 1) %}
+                <li class="page-item {% if page == pagination.page %}active{% endif %}">
+                    <a class="page-link" href="?page={{ page }}">{{ page }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-box-seam"></i>
+            <p>No hay productos o servicios registrados</p>
+            <button class="btn btn-primary mt-2" onclick="wizardProd.open()">
+                <i class="bi bi-plus-lg"></i> Crear Primero
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ===== WIZARD: Nuevo Producto/Servicio ===== -->
+<div class="wizard-overlay" id="wizardProdOverlay">
+    <div class="wizard-container" id="wizardProdContainer">
+        <div class="wizard-header">
+            <div class="wizard-title"><i class="bi bi-box-seam"></i> Nuevo Producto/Servicio</div>
+            <button class="wizard-close"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="wizard-progress">
+            <div class="wizard-progress-step"></div>
+            <div class="wizard-progress-step"></div>
+            <div class="wizard-progress-step"></div>
+        </div>
+        <div class="wizard-step-counter"></div>
+
+        <form method="POST" action="{{ url_for('products.add') }}" id="formAddProd">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="wizard-body">
+                <!-- Step 1: Tipo y Código -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Identificación</div>
+                    <div class="wizard-step-title">¿Qué tipo de item es?</div>
+                    <select name="type" class="wizard-select" required>
+                        <option value="">Seleccionar...</option>
+                        <option value="Producto">Producto</option>
+                        <option value="Servicio">Servicio</option>
+                    </select>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Código</label>
+                        <input type="text" name="code" class="wizard-input" placeholder="Ej: PROD-001, SVC-001..." required>
+                    </div>
+                </div>
+
+                <!-- Step 2: Descripción y Precio -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Detalles</div>
+                    <div class="wizard-step-title">¿Cuál es la descripción?</div>
+                    <input type="text" name="name" class="wizard-input" placeholder="Nombre o descripción" required>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Precio (RD$)</label>
+                        <input type="number" name="price" class="wizard-input" step="0.01" min="0" placeholder="0.00" required>
+                    </div>
+                </div>
+
+                <!-- Step 3: Notas + Resumen -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Resumen</div>
+                    <div class="wizard-step-title">Verifica los datos</div>
+                    <textarea name="additional_notes" class="wizard-textarea" placeholder="Notas adicionales (opcional)" rows="2"></textarea>
+                    <div class="wizard-summary mt-3" id="prodSummary"></div>
+                </div>
+            </div>
+
+            <div class="wizard-footer">
+                <button type="button" class="wizard-btn wizard-btn-back"><i class="bi bi-arrow-left"></i> Atrás</button>
+                <button type="button" class="wizard-btn wizard-btn-next">Siguiente <i class="bi bi-arrow-right"></i></button>
+                <button type="submit" class="wizard-btn wizard-btn-submit"><i class="bi bi-check-lg"></i> Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ===== WIZARD: Editar Producto/Servicio ===== -->
+<div class="wizard-overlay" id="wizardEditProdOverlay">
+    <div class="wizard-container" id="wizardEditProdContainer">
+        <div class="wizard-header">
+            <div class="wizard-title"><i class="bi bi-pencil"></i> Editar Producto/Servicio</div>
+            <button class="wizard-close"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="wizard-progress">
+            <div class="wizard-progress-step"></div>
+            <div class="wizard-progress-step"></div>
+            <div class="wizard-progress-step"></div>
+        </div>
+        <div class="wizard-step-counter"></div>
+
+        <form method="POST" id="formEditProd">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="wizard-body">
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Identificación</div>
+                    <div class="wizard-step-title">Tipo y Código</div>
+                    <select name="type" class="wizard-select" id="editProdType" required>
+                        <option value="Producto">Producto</option>
+                        <option value="Servicio">Servicio</option>
+                    </select>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Código</label>
+                        <input type="text" name="code" class="wizard-input" id="editProdCode" required>
+                    </div>
+                </div>
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Detalles</div>
+                    <div class="wizard-step-title">Descripción y Precio</div>
+                    <input type="text" name="name" class="wizard-input" id="editProdName" required>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Precio (RD$)</label>
+                        <input type="number" name="price" class="wizard-input" id="editProdPrice" step="0.01" min="0">
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Estado</label>
+                        <select name="active" class="wizard-select" id="editProdActive">
+                            <option value="1">Activo</option>
+                            <option value="">Inactivo</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Notas</div>
+                    <div class="wizard-step-title">Notas adicionales</div>
+                    <textarea name="additional_notes" class="wizard-textarea" id="editProdNotes" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button type="button" class="wizard-btn wizard-btn-back"><i class="bi bi-arrow-left"></i> Atrás</button>
+                <button type="button" class="wizard-btn wizard-btn-next">Siguiente <i class="bi bi-arrow-right"></i></button>
+                <button type="submit" class="wizard-btn wizard-btn-submit"><i class="bi bi-check-lg"></i> Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const wizardProd = new XpackWizard('wizardProdContainer', {
+    onStepChange: function(step) {
+        if (step === 2) {
+            const form = document.getElementById('formAddProd');
+            const fd = new FormData(form);
+            let html = '';
+            [['Tipo','type'],['Código','code'],['Descripción','name'],['Precio','price']].forEach(([l,k]) => {
+                let v = fd.get(k) || '-';
+                if (k === 'price' && v !== '-') v = 'RD$ ' + parseFloat(v).toLocaleString('es-DO', {minimumFractionDigits:2});
+                html += `<div class="wizard-summary-item"><span class="wizard-summary-label">${l}</span><span class="wizard-summary-value">${v}</span></div>`;
+            });
+            document.getElementById('prodSummary').innerHTML = html;
+        }
+    }
+});
+
+const wizardEditProd = new XpackWizard('wizardEditProdContainer');
+
+function editProd(item) {
+    const form = document.getElementById('formEditProd');
+    form.action = '/productos/edit/' + item.id;
+    document.getElementById('editProdType').value = item.type === 'product' ? 'Producto' : 'Servicio';
+    document.getElementById('editProdCode').value = item.code || '';
+    document.getElementById('editProdName').value = item.name || '';
+    document.getElementById('editProdPrice').value = item.price || 0;
+    document.getElementById('editProdActive').value = item.active ? '1' : '';
+    document.getElementById('editProdNotes').value = item.additional_notes || '';
+    wizardEditProd.open();
+}
+</script>
+{% endblock %}

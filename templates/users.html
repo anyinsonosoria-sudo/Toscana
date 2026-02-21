@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Usuarios - Xpack{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-people"></i> Usuarios</h1>
+    <button class="btn btn-primary" onclick="wizardUser.open()">
+        <i class="bi bi-person-plus"></i> Nuevo Usuario
+    </button>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); margin-bottom: 1.5rem;">
+    {% set total = users|length %}
+    {% set admins = users|selectattr('role','equalto','admin')|list|length %}
+    {% set active = users|selectattr('is_active')|list|length %}
+    <div class="stat-card">
+        <div class="stat-label">Total</div>
+        <div class="stat-value">{{ total }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Administradores</div>
+        <div class="stat-value" style="color: var(--primary);">{{ admins }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Activos</div>
+        <div class="stat-value" style="color: var(--success);">{{ active }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Inactivos</div>
+        <div class="stat-value" style="color: var(--danger);">{{ total - active }}</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if users %}
+        <div class="data-table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Usuario</th>
+                        <th>Nombre</th>
+                        <th>Email</th>
+                        <th>Rol</th>
+                        <th>Estado</th>
+                        <th>Último acceso</th>
+                        <th style="text-align:right;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td data-label="Usuario" style="font-weight: 600;">{{ user.username }}</td>
+                        <td data-label="Nombre">{{ user.full_name or '-' }}</td>
+                        <td data-label="Email">{{ user.email or '-' }}</td>
+                        <td data-label="Rol">
+                            {% if user.role == 'admin' %}
+                                <span class="badge-status" style="background: #ede9fe; color: #7c3aed;">Admin</span>
+                            {% elif user.role == 'operator' %}
+                                <span class="badge-status badge-active">Operador</span>
+                            {% else %}
+                                <span class="badge-status" style="background: #e0f2fe; color: #0284c7;">Residente</span>
+                            {% endif %}
+                        </td>
+                        <td data-label="Estado">
+                            {% if user.is_active %}
+                                <span class="badge-status badge-active">Activo</span>
+                            {% else %}
+                                <span class="badge-status badge-inactive">Inactivo</span>
+                            {% endif %}
+                        </td>
+                        <td data-label="Último acceso" style="font-size: 0.85rem; color: var(--text-muted);">
+                            {{ user.last_login or 'Nunca' }}
+                        </td>
+                        <td data-label="Acciones" style="text-align:right;">
+                            <div style="display:flex; gap:0.5rem; justify-content:flex-end; flex-wrap:wrap;">
+                                <a href="{{ url_for('auth.edit_user', user_id=user.id) }}" class="btn btn-sm" style="background:var(--primary);color:white;padding:0.35rem 0.75rem;border-radius:8px;font-size:0.8rem;text-decoration:none;">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <a href="{{ url_for('auth.manage_user_permissions', user_id=user.id) }}" class="btn btn-sm" style="background:#f59e0b;color:white;padding:0.35rem 0.75rem;border-radius:8px;font-size:0.8rem;text-decoration:none;">
+                                    <i class="bi bi-shield-lock"></i>
+                                </a>
+                                {% if user.id != current_user.id %}
+                                    {% if user.is_active %}
+                                    <form method="POST" action="{{ url_for('auth.deactivate_user', user_id=user.id) }}" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm" style="background:var(--danger);color:white;padding:0.35rem 0.75rem;border-radius:8px;font-size:0.8rem;border:none;cursor:pointer;" onclick="return confirm('¿Desactivar este usuario?')">
+                                            <i class="bi bi-person-x"></i>
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <form method="POST" action="{{ url_for('auth.activate_user', user_id=user.id) }}" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm" style="background:var(--success);color:white;padding:0.35rem 0.75rem;border-radius:8px;font-size:0.8rem;border:none;cursor:pointer;">
+                                            <i class="bi bi-person-check"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                    <form method="POST" action="{{ url_for('auth.delete_user', user_id=user.id) }}" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm" style="background:#991b1b;color:white;padding:0.35rem 0.75rem;border-radius:8px;font-size:0.8rem;border:none;cursor:pointer;" onclick="return confirm('¿ELIMINAR este usuario permanentemente?')">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-people"></i>
+            <p>No hay usuarios registrados</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ===== WIZARD: Nuevo Usuario ===== -->
+<div class="wizard-overlay" id="wizardUserOverlay">
+    <div class="wizard-container" id="wizardUserContainer">
+        <div class="wizard-header">
+            <div class="wizard-title"><i class="bi bi-person-plus"></i> Nuevo Usuario</div>
+            <button class="wizard-close"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="wizard-progress">
+            <div class="wizard-progress-step"></div>
+            <div class="wizard-progress-step"></div>
+            <div class="wizard-progress-step"></div>
+        </div>
+        <div class="wizard-step-counter"></div>
+
+        <form method="POST" action="{{ url_for('auth.register') }}" id="formAddUser">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="wizard-body">
+                <!-- Step 1: Credenciales -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Credenciales</div>
+                    <div class="wizard-step-title">Datos de acceso</div>
+                    <input type="text" name="username" class="wizard-input" placeholder="Nombre de usuario" required minlength="3">
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Contraseña</label>
+                        <input type="password" name="password" class="wizard-input" placeholder="Mínimo 6 caracteres" required minlength="6">
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Confirmar Contraseña</label>
+                        <input type="password" name="password_confirm" class="wizard-input" placeholder="Repetir contraseña" required>
+                    </div>
+                </div>
+                <!-- Step 2: Datos personales -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Información</div>
+                    <div class="wizard-step-title">Datos personales</div>
+                    <input type="text" name="full_name" class="wizard-input" placeholder="Nombre completo">
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Email</label>
+                        <input type="email" name="email" class="wizard-input" placeholder="correo@ejemplo.com" required>
+                    </div>
+                </div>
+                <!-- Step 3: Rol -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Rol</div>
+                    <div class="wizard-step-title">¿Qué rol tendrá?</div>
+                    <div style="display:flex;flex-direction:column;gap:0.75rem;margin-top:0.5rem;">
+                        <label style="display:flex;align-items:center;gap:1rem;padding:1rem;border:2px solid var(--border);border-radius:12px;cursor:pointer;transition:all 0.2s;" onclick="this.querySelector('input').checked=true;document.querySelectorAll('.role-opt').forEach(o=>o.style.borderColor='var(--border)');this.style.borderColor='var(--primary)';" class="role-opt">
+                            <input type="radio" name="role" value="admin" style="width:20px;height:20px;accent-color:var(--primary);">
+                            <div>
+                                <div style="font-weight:600;font-size:1rem;"><i class="bi bi-shield-check"></i> Administrador</div>
+                                <div style="font-size:0.8rem;color:var(--text-muted);">Acceso total al sistema</div>
+                            </div>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:1rem;padding:1rem;border:2px solid var(--primary);border-radius:12px;cursor:pointer;transition:all 0.2s;" onclick="this.querySelector('input').checked=true;document.querySelectorAll('.role-opt').forEach(o=>o.style.borderColor='var(--border)');this.style.borderColor='var(--primary)';" class="role-opt">
+                            <input type="radio" name="role" value="operator" checked style="width:20px;height:20px;accent-color:var(--primary);">
+                            <div>
+                                <div style="font-weight:600;font-size:1rem;"><i class="bi bi-gear"></i> Operador</div>
+                                <div style="font-size:0.8rem;color:var(--text-muted);">Gestión diaria del edificio</div>
+                            </div>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:1rem;padding:1rem;border:2px solid var(--border);border-radius:12px;cursor:pointer;transition:all 0.2s;" onclick="this.querySelector('input').checked=true;document.querySelectorAll('.role-opt').forEach(o=>o.style.borderColor='var(--border)');this.style.borderColor='var(--primary)';" class="role-opt">
+                            <input type="radio" name="role" value="resident" style="width:20px;height:20px;accent-color:var(--primary);">
+                            <div>
+                                <div style="font-weight:600;font-size:1rem;"><i class="bi bi-person"></i> Residente</div>
+                                <div style="font-size:0.8rem;color:var(--text-muted);">Solo acceso a su cuenta</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button type="button" class="wizard-btn wizard-btn-back"><i class="bi bi-arrow-left"></i> Atrás</button>
+                <button type="button" class="wizard-btn wizard-btn-next">Siguiente <i class="bi bi-arrow-right"></i></button>
+                <button type="submit" class="wizard-btn wizard-btn-submit"><i class="bi bi-check-lg"></i> Crear Usuario</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const wizardUser = new XpackWizard('wizardUserContainer');
+</script>
+{% endblock %}

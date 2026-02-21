@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% block title %}Flujo de Efectivo - Xpack{% endblock %}
+
+{% block extra_css %}
+<style>
+    .statement-page { max-width: 900px; margin: 0 auto; }
+
+    .statement-paper {
+        background: var(--card-bg, #fff);
+        border: 1px solid var(--gray-200, #e5e7eb);
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    }
+
+    .statement-header {
+        background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
+        color: #fff;
+        padding: 2rem 2.5rem;
+        text-align: center;
+    }
+    .statement-header .company-name { font-size: 1.5rem; font-weight: 800; letter-spacing: 0.02em; }
+    .statement-header .company-rnc { font-size: 0.85rem; opacity: 0.85; margin-top: 0.15rem; }
+    .statement-header .statement-title {
+        font-size: 1.1rem; font-weight: 600; text-transform: uppercase;
+        letter-spacing: 0.12em; margin-top: 1rem;
+        padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.25);
+    }
+    .statement-header .statement-period {
+        font-size: 0.88rem; opacity: 0.9; margin-top: 0.3rem;
+    }
+
+    .statement-body { padding: 2rem 2.5rem; }
+
+    .stmt-section { margin-bottom: 1.5rem; }
+    .stmt-section-title {
+        font-size: 0.82rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.1em; color: #0f766e;
+        padding-bottom: 0.4rem; border-bottom: 2px solid #0f766e;
+        margin-bottom: 0.6rem;
+    }
+    .stmt-section-title.investing { color: #7c3aed; border-color: #7c3aed; }
+    .stmt-section-title.financing { color: #2563eb; border-color: #2563eb; }
+
+    .stmt-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.45rem 0; font-size: 0.92rem;
+    }
+    .stmt-row.indent { padding-left: 1.5rem; }
+    .stmt-row .label { color: var(--text-body, #374151); }
+    .stmt-row .amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    .stmt-subtotal {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.55rem 0; margin-top: 0.3rem;
+        border-top: 1px solid var(--gray-200, #e5e7eb);
+        font-weight: 700; font-size: 0.95rem;
+    }
+
+    .stmt-net-box {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.65rem 1rem; margin-top: 0.4rem;
+        border-radius: 10px; font-weight: 700; font-size: 1rem;
+    }
+    .stmt-net-box.positive { background: rgba(16,185,129,0.08); color: #059669; }
+    .stmt-net-box.negative { background: rgba(239,68,68,0.08); color: #dc2626; }
+    .stmt-net-box.neutral  { background: rgba(107,114,128,0.08); color: #6b7280; }
+
+    .stmt-total {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.85rem 1.2rem; margin-top: 0.5rem;
+        border-radius: 12px; font-weight: 800; font-size: 1.15rem;
+    }
+    .stmt-total.positive { background: rgba(16,185,129,0.1); color: #059669; }
+    .stmt-total.negative { background: rgba(239,68,68,0.1); color: #dc2626; }
+
+    .stmt-divider { border: none; border-top: 1px dashed var(--gray-200, #e5e7eb); margin: 1rem 0; }
+
+    .stmt-balance-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.5rem 0; font-size: 0.95rem; font-weight: 600;
+    }
+
+    .date-filter-bar {
+        display: flex; align-items: center; gap: 0.75rem;
+        flex-wrap: wrap; margin-bottom: 1.5rem;
+    }
+    .date-filter-bar input[type="date"] {
+        border: 1px solid var(--gray-200); border-radius: 8px;
+        padding: 0.4rem 0.75rem; font-size: 0.88rem;
+        background: var(--card-bg, #fff); color: var(--text-body);
+    }
+    .date-filter-bar .btn-filter {
+        background: #0f766e; color: #fff; border: none;
+        border-radius: 8px; padding: 0.4rem 1rem; font-size: 0.88rem;
+        font-weight: 600; cursor: pointer;
+    }
+    .date-filter-bar .btn-filter:hover { opacity: 0.9; }
+
+    .stmt-empty {
+        text-align: center; padding: 0.75rem 0;
+        color: var(--text-muted, #9ca3af); font-size: 0.9rem; font-style: italic;
+    }
+
+    @media print {
+        .sidebar, .mobile-header, .sidebar-backdrop, .page-header, .date-filter-bar, .btn-print { display: none !important; }
+        .main-content { margin: 0 !important; padding: 0 !important; }
+        .statement-paper { box-shadow: none; border: none; }
+    }
+    @media (max-width: 768px) {
+        .statement-body { padding: 1.2rem 1rem; }
+        .statement-header { padding: 1.5rem 1rem; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-water"></i> Estado de Flujo de Efectivo</h1>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('accounting.list') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> Contabilidad
+        </a>
+        <button class="btn btn-sm btn-primary btn-print" onclick="window.print()" style="background:#0f766e;border-color:#0f766e;">
+            <i class="bi bi-printer"></i> Imprimir
+        </button>
+    </div>
+</div>
+
+<!-- Date Filter -->
+<form method="GET" class="date-filter-bar">
+    <label style="font-size:0.88rem;font-weight:600;color:var(--text-body);">Período:</label>
+    <input type="date" name="date_from" value="{{ data.date_from }}">
+    <span style="color:var(--text-muted);">—</span>
+    <input type="date" name="date_to" value="{{ data.date_to }}">
+    <button type="submit" class="btn-filter"><i class="bi bi-funnel"></i> Filtrar</button>
+</form>
+
+<div class="statement-page">
+    <div class="statement-paper">
+        <!-- Professional Header -->
+        <div class="statement-header">
+            {% if company and company.logo_path %}
+            <div style="margin-bottom:0.75rem;">
+                <img src="{{ url_for('static', filename='uploads/' + company.logo_path) }}"
+                     alt="Logo" style="max-height:50px;border-radius:8px;background:#fff;padding:4px;">
+            </div>
+            {% endif %}
+            <div class="company-name">{{ company.name if company and company.name else 'Nombre de la Empresa' }}</div>
+            {% if company and company.rnc %}
+                <div class="company-rnc">RNC: {{ company.rnc }}</div>
+            {% endif %}
+            {% if company and company.address %}
+                <div class="company-rnc">{{ company.address }}</div>
+            {% endif %}
+            <div class="statement-title">Estado de Flujo de Efectivo</div>
+            <div class="statement-period">
+                Del {{ data.date_from }} al {{ data.date_to }}
+            </div>
+        </div>
+
+        <!-- Statement Body -->
+        <div class="statement-body">
+
+            <!-- Saldo Inicial -->
+            <div class="stmt-balance-row" style="margin-bottom:1rem;">
+                <span><i class="bi bi-safe2" style="color:#6b7280;"></i> Saldo Inicial de Efectivo</span>
+                <span style="font-size:1.05rem;">RD$ {{ "{:,.2f}".format(data.opening_balance or 0) }}</span>
+            </div>
+
+            <hr class="stmt-divider" style="margin-top:0;">
+
+            <!-- ═══ 1. ACTIVIDADES DE OPERACIÓN ═══ -->
+            <div class="stmt-section">
+                <div class="stmt-section-title"><i class="bi bi-gear"></i> 1. Actividades de Operación</div>
+
+                <!-- Entradas -->
+                <div class="stmt-row">
+                    <span class="label" style="font-weight:600;">Cobros a Clientes</span>
+                    <span class="amount" style="color:#059669;">RD$ {{ "{:,.2f}".format(data.collections or 0) }}</span>
+                </div>
+                {% if data.collections_by_month %}
+                    {% for m in data.collections_by_month %}
+                    <div class="stmt-row indent">
+                        <span class="label" style="color:var(--text-muted);">{{ m.period }}</span>
+                        <span class="amount" style="color:#059669;">RD$ {{ "{:,.2f}".format(m.total or 0) }}</span>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+
+                <!-- Salidas -->
+                <div class="stmt-row" style="margin-top:0.5rem;">
+                    <span class="label" style="font-weight:600;">Pagos Operacionales</span>
+                    <span class="amount" style="color:#dc2626;">(RD$ {{ "{:,.2f}".format(data.operational_payments or 0) }})</span>
+                </div>
+                {% if data.expenses_by_month %}
+                    {% for m in data.expenses_by_month %}
+                    <div class="stmt-row indent">
+                        <span class="label" style="color:var(--text-muted);">{{ m.period }}</span>
+                        <span class="amount" style="color:#dc2626;">(RD$ {{ "{:,.2f}".format(m.total or 0) }})</span>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+
+                <div class="stmt-net-box {{ 'positive' if data.net_operating >= 0 else 'negative' }}" style="margin-top:0.6rem;">
+                    <span>Flujo Neto de Operación</span>
+                    <span>RD$ {{ "{:,.2f}".format(data.net_operating or 0) }}</span>
+                </div>
+            </div>
+
+            <hr class="stmt-divider">
+
+            <!-- ═══ 2. ACTIVIDADES DE INVERSIÓN ═══ -->
+            <div class="stmt-section">
+                <div class="stmt-section-title investing"><i class="bi bi-building-gear"></i> 2. Actividades de Inversión</div>
+
+                {% if data.investing_inflows or data.investing_outflows %}
+                <div class="stmt-row indent">
+                    <span class="label">Adquisición de activos</span>
+                    <span class="amount" style="color:#dc2626;">(RD$ {{ "{:,.2f}".format(data.investing_outflows or 0) }})</span>
+                </div>
+                <div class="stmt-row indent">
+                    <span class="label">Venta de activos</span>
+                    <span class="amount" style="color:#059669;">RD$ {{ "{:,.2f}".format(data.investing_inflows or 0) }}</span>
+                </div>
+                {% else %}
+                <div class="stmt-empty">Sin actividades de inversión en el período</div>
+                {% endif %}
+
+                <div class="stmt-net-box {{ 'positive' if data.net_investing > 0 else ('negative' if data.net_investing < 0 else 'neutral') }}">
+                    <span>Flujo Neto de Inversión</span>
+                    <span>RD$ {{ "{:,.2f}".format(data.net_investing or 0) }}</span>
+                </div>
+            </div>
+
+            <hr class="stmt-divider">
+
+            <!-- ═══ 3. ACTIVIDADES DE FINANCIAMIENTO ═══ -->
+            <div class="stmt-section">
+                <div class="stmt-section-title financing"><i class="bi bi-bank"></i> 3. Actividades de Financiamiento</div>
+
+                <!-- Entradas -->
+                <div class="stmt-row">
+                    <span class="label" style="font-weight:600;">Ingresos de Financiamiento</span>
+                    <span class="amount" style="color:#059669;">RD$ {{ "{:,.2f}".format(data.financing_inflows or 0) }}</span>
+                </div>
+                {% if data.financing_inflows_detail %}
+                    {% for item in data.financing_inflows_detail %}
+                    <div class="stmt-row indent">
+                        <span class="label">{{ item.category }}</span>
+                        <span class="amount" style="color:#059669;">RD$ {{ "{:,.2f}".format(item.total or 0) }}</span>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+
+                <!-- Salidas -->
+                <div class="stmt-row" style="margin-top:0.4rem;">
+                    <span class="label" style="font-weight:600;">Egresos de Financiamiento</span>
+                    <span class="amount" style="color:#dc2626;">(RD$ {{ "{:,.2f}".format(data.financing_outflows or 0) }})</span>
+                </div>
+                {% if data.financing_outflows_detail %}
+                    {% for item in data.financing_outflows_detail %}
+                    <div class="stmt-row indent">
+                        <span class="label">{{ item.category }}</span>
+                        <span class="amount" style="color:#dc2626;">(RD$ {{ "{:,.2f}".format(item.total or 0) }})</span>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+
+                <div class="stmt-net-box {{ 'positive' if data.net_financing >= 0 else 'negative' }}">
+                    <span>Flujo Neto de Financiamiento</span>
+                    <span>RD$ {{ "{:,.2f}".format(data.net_financing or 0) }}</span>
+                </div>
+            </div>
+
+            <hr class="stmt-divider">
+
+            <!-- ═══ RESUMEN FINAL ═══ -->
+            <div class="stmt-section">
+                <div class="stmt-section-title" style="color:var(--text-body);border-color:var(--text-body);">
+                    <i class="bi bi-clipboard-data"></i> Resumen del Período
+                </div>
+
+                <div class="stmt-balance-row">
+                    <span>Saldo Inicial</span>
+                    <span>RD$ {{ "{:,.2f}".format(data.opening_balance or 0) }}</span>
+                </div>
+                <div class="stmt-row indent">
+                    <span class="label">+ Flujo de Operación</span>
+                    <span class="amount" style="color:{{ '#059669' if data.net_operating >= 0 else '#dc2626' }};">
+                        RD$ {{ "{:,.2f}".format(data.net_operating or 0) }}
+                    </span>
+                </div>
+                <div class="stmt-row indent">
+                    <span class="label">+ Flujo de Inversión</span>
+                    <span class="amount" style="color:{{ '#059669' if data.net_investing >= 0 else '#dc2626' }};">
+                        RD$ {{ "{:,.2f}".format(data.net_investing or 0) }}
+                    </span>
+                </div>
+                <div class="stmt-row indent">
+                    <span class="label">+ Flujo de Financiamiento</span>
+                    <span class="amount" style="color:{{ '#059669' if data.net_financing >= 0 else '#dc2626' }};">
+                        RD$ {{ "{:,.2f}".format(data.net_financing or 0) }}
+                    </span>
+                </div>
+                <div class="stmt-subtotal">
+                    <span>Variación Neta del Efectivo</span>
+                    <span style="color:{{ '#059669' if data.net_change >= 0 else '#dc2626' }};">
+                        RD$ {{ "{:,.2f}".format(data.net_change or 0) }}
+                    </span>
+                </div>
+
+                <div class="stmt-total {{ 'positive' if data.closing_balance >= 0 else 'negative' }}">
+                    <span>Saldo Final de Efectivo</span>
+                    <span>RD$ {{ "{:,.2f}".format(data.closing_balance or 0) }}</span>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div style="text-align:center;margin-top:2rem;padding-top:1rem;border-top:1px solid var(--gray-200);color:var(--text-muted);font-size:0.78rem;">
+                Generado por Xpack &bull; {{ data.date_to }}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

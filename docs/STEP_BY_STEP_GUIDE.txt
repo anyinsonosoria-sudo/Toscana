@@ -1,0 +1,453 @@
+# 🚀 GUÍA PASO A PASO: Instalar y Usar Sistema OCR
+
+## PARTE 1: INSTALACIÓN (UNA SOLA VEZ)
+
+### Paso 1: Instalar Tesseract-OCR en tu Sistema Operativo
+
+#### 💻 Si usas WINDOWS:
+
+1. Abre navegador y ve a:
+   ```
+   https://github.com/UB-Mannheim/tesseract/wiki
+   ```
+
+2. En la sección "Downloads", busca el enlace de descarga:
+   ```
+   Tesseract-OCR-w64-v5.x.exe
+   ```
+   (busca la versión más reciente disponible)
+
+3. Descarga el archivo ejecutable
+
+4. Haz doble clic en el instalador descargado
+
+5. En el asistente de instalación:
+   - Acepta términos y condiciones
+   - Deja la ruta de instalación por defecto: `C:\Program Files\Tesseract-OCR`
+   - Continúa siguiente hasta completar
+   - Haz clic en "Finish" cuando termine
+
+6. **IMPORTANTE**: Reinicia la aplicación Flask después
+
+#### 🍎 Si usas macOS:
+
+Abre Terminal y ejecuta:
+```bash
+brew install tesseract
+```
+
+Reinicia la aplicación Flask.
+
+#### 🐧 Si usas Linux (Ubuntu/Debian):
+
+Abre Terminal y ejecuta:
+```bash
+sudo apt-get update
+sudo apt-get install tesseract-ocr
+```
+
+Reinicia la aplicación Flask.
+
+### Paso 2: Verificar que Todo Funciona
+
+Desde la carpeta del proyecto (`building_maintenance`), ejecuta:
+
+```bash
+python test_ocr.py
+```
+
+Deberías ver algo como:
+```
+======================================================================
+TEST DE CONFIGURACIÓN OCR
+======================================================================
+
+Verificando imports...
+✓ ocr_processing importado correctamente
+✓ Pillow importado correctamente
+✓ pytesseract importado correctamente
+
+Verificando Tesseract-OCR...
+✓ Tesseract v5.x.x disponible
+
+Probando funciones OCR...
+✓ Extracción de monto funciona
+✓ Extracción de fecha funciona
+✓ Cálculo de confianza funciona
+
+Verificando estructura de carpetas...
+✓ Carpeta static\uploads existe
+✓ ocr_processing.py existe
+✓ ocr_setup.py existe
+✓ expenses.py existe
+✓ app.py existe
+✓ templates/gastos.html existe
+
+======================================================================
+RESUMEN DE TESTS
+======================================================================
+Imports........................................... ✓ PASADO
+Tesseract-OCR..................................... ✓ PASADO
+Procesamiento OCR................................. ✓ PASADO
+Estructura de carpetas............................ ✓ PASADO
+
+✓ Sistema OCR listo para usar!
+```
+
+Si ves los ✓ para todos, ¡estás listo!
+
+---
+
+## PARTE 2: USO DIARIO (CADA VEZ QUE NECESITES REGISTRAR UN GASTO)
+
+### Paso 1: Preparar la Foto del Recibo
+
+1. Toma una **foto clara** del recibo
+   - Asegúrate que esté bien iluminada
+   - Todo el recibo debe ser visible
+   - Intenta un ángulo recto (no de lado)
+
+2. Guarda la foto en tu teléfono o cámara
+
+### Paso 2: Abrír la Aplicación Web
+
+1. Abre tu navegador (Chrome, Firefox, Edge, Safari)
+
+2. Ve a:
+   ```
+   http://localhost:5000/gastos
+   ```
+   
+   (Si tienes la app en otro servidor, usa esa dirección)
+
+3. Deberías ver la página de "Gestión de Gastos"
+
+### Paso 3: Cargar la Foto del Recibo
+
+1. Busca el botón verde grande que dice:
+   ```
+   🟢 Cargar Recibo (OCR)
+   ```
+
+2. Haz clic en ese botón
+
+3. Se abrirá una ventana modal con el título:
+   ```
+   Cargar Recibo - Extracción OCR
+   ```
+
+### Paso 4: Seleccionar la Imagen
+
+En la sección "Paso 1: Cargar Imagen":
+
+1. Haz clic en:
+   ```
+   [Selecciona una imagen de recibo]
+   ```
+
+2. Se abrirá el explorador de archivos
+
+3. Busca y selecciona la foto del recibo que tomaste
+
+4. Haz clic en "Abrir"
+
+5. Verás una **vista previa** de la foto dentro de la modal
+
+### Paso 5: Procesar con OCR
+
+1. Haz clic en el botón:
+   ```
+   ⚡ Procesar con OCR
+   ```
+
+2. Verás un mensaje:
+   ```
+   ⏳ Extrayendo información del recibo...
+   ```
+
+3. Espera 1-2 segundos mientras procesa
+
+4. El sistema automáticamente extrae:
+   - 📝 **Descripción**: Qué es el gasto
+   - 💰 **Monto**: Cuánto cuesta
+   - 📅 **Fecha**: Cuándo fue
+   - 🏪 **Suplidor**: Quién vendió
+
+### Paso 6: Revisar los Datos Extraídos
+
+Ahora ves la sección "Paso 2: Revisar y Ajustar Información Extraída"
+
+**Verás:**
+- ⭐ Un indicador de confianza (ej: "Confianza: 85%")
+- Varios campos editables ya rellenos
+- El texto completo extraído abajo en "Texto Extraído (RAW)"
+
+**Los campos son:**
+```
+Descripción:  [FERRETERIA ABC - Compra de materiales]  ← puedes cambiar
+Monto:        [2500.00]                                 ← puedes cambiar
+Categoría:    [_____________]                           ← completa si quieres
+Suplidor:     [FERRETERIA ABC]                          ← puedes cambiar
+Fecha:        [2024-01-09]                              ← puedes cambiar
+Método Pago:  [Seleccionar]                             ← completa si quieres
+Notas:        [_____________]                           ← agrega notas si quieres
+```
+
+### Paso 7: Ajustar Datos (Si es Necesario)
+
+Si el OCR extrajo información incorrecta:
+
+1. Haz clic en el campo que quieras cambiar
+2. Borra el contenido actual
+3. Escribe la información correcta
+4. Continúa al siguiente paso
+
+**Nota importante:** Si la confianza es **< 60%** (baja), revisa cuidadosamente todos los datos, especialmente el **monto**.
+
+### Paso 8: Guardar el Gasto
+
+1. Cuando estés seguro de que todos los datos son correctos
+
+2. Haz clic en el botón azul:
+   ```
+   ✅ Guardar Gasto
+   ```
+
+3. El sistema:
+   - Guarda el gasto en la base de datos
+   - Guarda la foto en la carpeta `static/uploads/`
+   - Te redirige a la lista de gastos
+
+4. Verás un mensaje verde que dice:
+   ```
+   ✅ Gasto registrado con éxito
+   ```
+
+### Paso 9: ¡Listo! Gasto Registrado
+
+Tu nuevo gasto ahora aparece en la tabla de gastos:
+- Ves todos sus datos
+- Puedes editar o eliminar si lo necesitas
+- Tienes la foto como evidencia
+
+---
+
+## DIFICULTADES Y SOLUCIONES
+
+### ❌ Problema: "No se pudo extraer texto de la imagen"
+
+**Posibles causas:**
+- La foto está borrosa
+- El recibo está de lado o parcial
+- Muy oscuro o de mala iluminación
+- El archivo no es una imagen válida
+
+**Solución:**
+1. Intenta de nuevo con una foto más clara
+2. Asegúrate de que el recibo esté completamente visible
+3. Toma la foto en mejor iluminación
+4. Si sigue fallando, completa los datos manualmente sin OCR
+
+### ❌ Problema: "Tesseract OCR no disponible"
+
+**Causa:** No instalaste Tesseract-OCR en tu sistema operativo
+
+**Solución:**
+1. Sigue la "PARTE 1: INSTALACIÓN" de arriba
+2. Descarga e instala Tesseract según tu sistema operativo
+3. Reinicia la aplicación Flask
+4. Intenta de nuevo
+
+### ❌ Problema: Confianza muy baja (< 60%)
+
+**Causa:** El OCR tuvo dificultad para extraer información
+
+**Solución:**
+1. Revisa muy cuidadosamente todos los campos, especialmente el **monto**
+2. Ajusta manualmente los valores que veas incorrectos
+3. Si el monto parece estar mal, cámbialo antes de guardar
+
+### ⚠️ Problema: El monto extraído es incorrecto
+
+**Ejemplo:** 
+- Recibo dice: "2.500,00"
+- Sistema extrajo: "2.50"
+
+**Solución:**
+1. Haz clic en el campo "Monto"
+2. Borra lo que está
+3. Escribe el monto correcto: `2500.00`
+4. Guarda
+
+### 📋 Problema: Necesito volver a la pantalla anterior
+
+**Solución:**
+Haz clic en el botón:
+```
+⬅️ Volver
+```
+
+Esto te regresa al "Paso 1" para cargar otra imagen.
+
+### ❓ Problema: No sé qué es la "Confianza"
+
+**Explicación:**
+- **Confianza**: Es un porcentaje que indica qué tan seguro está el sistema de la información extraída
+- **80%+**: ✓ Muy confiable, los datos están probablemente correctos
+- **60-79%**: ~ Decente, revisa los datos cuidadosamente
+- **< 60%**: ⚠️ Baja, verifica todo, especialmente el monto
+
+---
+
+## EJEMPLO COMPLETO PASO A PASO
+
+### Escenario: Tienes un recibo de una compra en ferretería
+
+```
+PASO 1: Tienes foto del recibo
+        ↓
+PASO 2: Abres http://localhost:5000/gastos
+        ↓
+PASO 3: Haces clic en "Cargar Recibo (OCR)"
+        ↓
+PASO 4: Seleccionas la foto
+        ↓
+PASO 5: Haces clic en "Procesar con OCR"
+        ↓
+PASO 6: Sistema muestra:
+        - Descripción: "FERRETERIA ABC - Venta de materiales"
+        - Monto: 2500.00
+        - Fecha: 2024-01-09
+        - Suplidor: "FERRETERIA ABC"
+        - Confianza: 85% ⭐
+        ↓
+PASO 7: Revisas los datos, todos están bien ✓
+        ↓
+PASO 8: Haces clic en "Guardar Gasto"
+        ↓
+PASO 9: ¡Listo! Gasto registrado
+        Ves en la lista:
+        - ID: 42
+        - Fecha: 2024-01-09
+        - Descripción: FERRETERIA ABC - Venta de materiales
+        - Monto: 2.500,00
+        - Foto: [está guardada]
+```
+
+---
+
+## CARACTERÍSTICAS ÚTILES
+
+### 📸 Vista Previa de Imagen
+- Antes de procesar, ves una vista previa
+- Puedes verificar que la foto esté correcta
+
+### ✏️ Campos Editables
+- Puedes cambiar cualquier dato antes de guardar
+- Útil si el OCR se equivocó en algo
+
+### 📝 Categoría y Notas
+- Puedes agregar categoría (opcional)
+- Puedes agregar notas adicionales (opcional)
+
+### 🏪 Seleccionar Suplidor
+- De una lista de suplidores existentes
+- O dejar en blanco
+
+### 💳 Método de Pago
+- Efectivo
+- Transferencia
+- Cheque
+- Tarjeta
+
+---
+
+## CONSEJOS PARA MEJOR OCR
+
+✅ **HACER:**
+- Tomar fotos en **buena iluminación**
+- Foto **enfocada** y **clara**
+- Recibo **completamente visible**
+- Ángulo **perpendicular** (no de lado)
+- Fondos **neutros** (blanco, gris)
+
+❌ **NO HACER:**
+- Fotos **borrosas** o fuera de foco
+- Recibos **parcialmente** visibles
+- **Sombras** o mala iluminación
+- Fotos de **lado** o en ángulo
+- Fondos con **patrones** complicados
+
+---
+
+## ATAJOS TECLADO
+
+| Tecla | Acción |
+|-------|--------|
+| `Esc` | Cierra la modal OCR |
+| `Tab` | Se mueve entre campos |
+| `Enter` | En ciertos campos, puede enviar |
+
+---
+
+## PREGUNTAS FRECUENTES
+
+### P: ¿Funciona con cualquier tipo de recibo?
+R: Sí, con la mayoría. Funciona mejor con recibos en español. Si el diseño es muy especial puede ser menos preciso.
+
+### P: ¿Puedo procesar múltiples recibos a la vez?
+R: No, uno a la vez. Pero es muy rápido, así que no toma mucho tiempo.
+
+### P: ¿Se borran las fotos al eliminar un gasto?
+R: No está automático. Si necesitas borrar archivos, hazlo manualmente en `static/uploads/`.
+
+### P: ¿Qué pasa si carbo la foto sin procesar OCR?
+R: Si vuelves sin procesar, no pasa nada. Simplemente no se guarda.
+
+### P: ¿Puedo ver la foto después de guardar?
+R: Actualmente se guarda pero no hay visualizador. Puedes verla en `static/uploads/`.
+
+---
+
+## SOPORTE
+
+Si tienes problemas:
+
+1. **Verifica la instalación:**
+   ```bash
+   python test_ocr.py
+   ```
+
+2. **Revisa los logs** de la aplicación Flask (console)
+
+3. **Intenta de nuevo** con una foto diferente
+
+4. **Consulta** la documentación completa en `OCR_README.md`
+
+---
+
+## RESUMEN RÁPIDO
+
+```
+Instalar una vez:
+  1. Descargar Tesseract-OCR
+  2. Ejecutar instalador
+  3. Reiniciar app
+
+Usar cada vez:
+  1. Tomar foto del recibo
+  2. Abrir /gastos
+  3. Clic "Cargar Recibo"
+  4. Seleccionar foto
+  5. Clic "Procesar"
+  6. Revisar datos
+  7. Clic "Guardar"
+  ✅ ¡Listo!
+```
+
+---
+
+**¡Disfruta del sistema OCR! 🎉**
+
+Creado: 9 de enero de 2024
+Versión: 1.0

@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Proveedores - Xpack{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-truck"></i> Proveedores</h1>
+</div>
+
+<!-- Lista -->
+<div class="card">
+    <div class="card-body">
+        {% if suppliers %}
+        <div class="data-table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Tipo</th>
+                        <th>Contacto</th>
+                        <th>Teléfono</th>
+                        <th>RNC/Cédula</th>
+                        <th>Plazo</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sup in suppliers %}
+                    <tr>
+                        <td data-label="Nombre"><strong>{{ sup.name }}</strong></td>
+                        <td data-label="Tipo"><span class="badge-status badge-active">{{ sup.supplier_type or '-' }}</span></td>
+                        <td data-label="Contacto">
+                            <small>
+                                {% if sup.contact_name %}{{ sup.contact_name }}<br>{% endif %}
+                                {% if sup.email %}<i class="bi bi-envelope"></i> {{ sup.email }}{% endif %}
+                            </small>
+                        </td>
+                        <td data-label="Teléfono">{{ sup.phone or '-' }}</td>
+                        <td data-label="RNC/Cédula"><code>{{ sup.tax_id or '-' }}</code></td>
+                        <td data-label="Plazo">{{ sup.payment_terms or 30 }} días</td>
+                        <td data-label="Acciones">
+                            <button class="btn-action edit" onclick="editSup({{ sup | tojson }})" title="Editar">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <form method="POST" action="{{ url_for('suppliers.delete', id=sup.id) }}" style="display:inline;"
+                                  onsubmit="return confirm('¿Eliminar {{ sup.name }}?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action delete" title="Eliminar">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if pagination.pages > 1 %}
+        <nav class="mt-3">
+            <ul class="pagination pagination-sm justify-content-center mb-0">
+                {% for page in range(1, pagination.pages + 1) %}
+                <li class="page-item {% if page == pagination.page %}active{% endif %}">
+                    <a class="page-link" href="?page={{ page }}">{{ page }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-truck"></i>
+            <p>No hay proveedores registrados</p>
+            <a href="/" class="btn btn-primary mt-2">
+                <i class="bi bi-plus-lg"></i> Ir al Dashboard para crear
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ===== WIZARD: Editar Proveedor ===== -->
+<div class="wizard-overlay" id="wizardEditSupOverlay">
+    <div class="wizard-container" id="wizardEditSupContainer">
+        <div class="wizard-header">
+            <div class="wizard-title"><i class="bi bi-pencil"></i> Editar Proveedor</div>
+            <button class="wizard-close"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="wizard-progress">
+            <div class="wizard-progress-step"></div>
+            <div class="wizard-progress-step"></div>
+            <div class="wizard-progress-step"></div>
+        </div>
+        <div class="wizard-step-counter"></div>
+
+        <form method="POST" id="formEditSup">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="wizard-body">
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Identificación</div>
+                    <div class="wizard-step-title">Nombre y Tipo</div>
+                    <input type="text" name="name" class="wizard-input" id="editSupName" required>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Tipo</label>
+                        <select name="supplier_type" class="wizard-select" id="editSupType">
+                            <option value="Materiales">Materiales</option>
+                            <option value="Servicios">Servicios</option>
+                            <option value="Mantenimiento">Mantenimiento</option>
+                            <option value="Limpieza">Limpieza</option>
+                            <option value="Seguridad">Seguridad</option>
+                            <option value="Otro">Otro</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Contacto</div>
+                    <div class="wizard-step-title">Información de contacto</div>
+                    <input type="text" name="contact_name" class="wizard-input" id="editSupContact">
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Email</label>
+                        <input type="email" name="email" class="wizard-input" id="editSupEmail">
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Teléfono</label>
+                        <input type="tel" name="phone" class="wizard-input" id="editSupPhone">
+                    </div>
+                </div>
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Fiscal</div>
+                    <div class="wizard-step-title">Datos fiscales y pago</div>
+                    <input type="text" name="tax_id" class="wizard-input" id="editSupTaxId" placeholder="RNC/Cédula">
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Dirección</label>
+                        <textarea name="address" class="wizard-textarea" id="editSupAddress" rows="2"></textarea>
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Plazo de pago (días)</label>
+                        <input type="number" name="payment_terms" class="wizard-input" id="editSupTerms" value="30">
+                    </div>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button type="button" class="wizard-btn wizard-btn-back"><i class="bi bi-arrow-left"></i> Atrás</button>
+                <button type="button" class="wizard-btn wizard-btn-next">Siguiente <i class="bi bi-arrow-right"></i></button>
+                <button type="submit" class="wizard-btn wizard-btn-submit"><i class="bi bi-check-lg"></i> Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const wizardEditSup = new XpackWizard('wizardEditSupContainer');
+
+function editSup(sup) {
+    const form = document.getElementById('formEditSup');
+    form.action = '/suplidores/edit/' + sup.id;
+    document.getElementById('editSupName').value = sup.name || '';
+    document.getElementById('editSupType').value = sup.supplier_type || 'Materiales';
+    document.getElementById('editSupContact').value = sup.contact_name || '';
+    document.getElementById('editSupEmail').value = sup.email || '';
+    document.getElementById('editSupPhone').value = sup.phone || '';
+    document.getElementById('editSupTaxId').value = sup.tax_id || '';
+    document.getElementById('editSupAddress').value = sup.address || '';
+    document.getElementById('editSupTerms').value = sup.payment_terms || 30;
+    wizardEditSup.open();
+}
+</script>
+{% endblock %}

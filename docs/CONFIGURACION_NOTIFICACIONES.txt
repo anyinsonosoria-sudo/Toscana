@@ -1,0 +1,65 @@
+======================================
+GUÍA DE CONFIGURACIÓN DE NOTIFICACIONES
+======================================
+
+Para que el sistema envíe notificaciones por email y SMS, sigue estos pasos:
+
+1. CONFIGURACIÓN DE EMAIL (Gmail)
+   --------------------------------
+   a) Abre el archivo ".env.example" en este directorio
+   b) Copia ese archivo y renómbralo como ".env" (sin .example)
+   c) Edita el archivo .env y completa:
+      
+      SMTP_HOST=smtp.gmail.com
+      SMTP_PORT=587
+      SMTP_USER=tu_email@gmail.com
+      SMTP_PASSWORD=tu_app_password_aquí
+      SMTP_FROM=tu_email@gmail.com
+
+   d) Para obtener un App Password de Gmail:
+      - Ve a: https://myaccount.google.com/apppasswords
+      - Inicia sesión con tu cuenta de Gmail
+      - Selecciona "App" > "Otro" y escribe "Building Maintenance"
+      - Copia la contraseña de 16 caracteres generada
+      - Pégala en SMTP_PASSWORD en tu archivo .env
+
+2. CONFIGURACIÓN DE WHATSAPP (Twilio) - OPCIONAL
+   ------------------------------------------------
+   a) Crea una cuenta en: https://www.twilio.com/try-twilio
+   b) Activa WhatsApp Sandbox: https://console.twilio.com/us1/develop/sms/try-it-out/whatsapp-learn
+   c) Desde tu WhatsApp, envía el código que te den al número de Twilio
+   d) Obtén tu Account SID y Auth Token del dashboard
+   e) Agrega al archivo .env:
+      
+      TWILIO_ACCOUNT_SID=tu_sid_aquí
+      TWILIO_AUTH_TOKEN=tu_token_aquí
+      TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
+
+   f) Los números de teléfono deben estar en formato: +1234567890
+   g) Instala la librería requests:
+      pip install requests
+
+   NOTA: El sandbox de Twilio es GRATIS pero solo envía a números que 
+   hayas conectado primero. Para uso en producción necesitarás una cuenta de pago.
+
+3. VERIFICAR CONFIGURACIÓN
+   ------------------------
+   - Reinicia la aplicación después de configurar el archivo .env
+   - Al crear una factura, el sistema intentará enviar notificaciones
+   - Si hay errores, se mostrarán en pantalla
+   - Los errores también se guardan en "notifications.log"
+
+4. PROBLEMAS COMUNES
+   ------------------
+   - Error "SMTP_HOST not configured": El archivo .env no existe o está mal configurado
+   - Error de autenticación: Verifica que uses un App Password, no tu contraseña normal
+   - Email no llega: Revisa tu carpeta de spam
+   - SMS no funciona: Verifica que tengas crédito en tu cuenta de Twilio
+
+5. ALTERNATIVA SIMPLE (Sin configuración)
+   ---------------------------------------
+   Si no quieres configurar email/SMS ahora, el sistema seguirá funcionando.
+   Las facturas se crean normalmente, solo no se envían notificaciones.
+   Los errores se registran en "notifications.log" para revisión posterior.
+
+======================================

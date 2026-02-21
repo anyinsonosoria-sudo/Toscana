@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Registrar Usuario - Xpack{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-person-plus"></i> Registrar Usuario</h1>
+    <a href="{{ url_for('auth.list_users') }}" class="btn" style="background:var(--bg-secondary);color:var(--text);border-radius:10px;padding:0.5rem 1rem;">
+        <i class="bi bi-arrow-left"></i> Volver
+    </a>
+</div>
+
+<div class="card" style="max-width: 550px;">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('auth.register') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+            <div style="margin-bottom:1.25rem;">
+                <label class="wizard-step-label">Usuario</label>
+                <input type="text" name="username" class="wizard-input" required minlength="3" autofocus placeholder="Mínimo 3 caracteres">
+            </div>
+
+            <div style="margin-bottom:1.25rem;">
+                <label class="wizard-step-label">Nombre Completo</label>
+                <input type="text" name="full_name" class="wizard-input" placeholder="Nombre completo">
+            </div>
+
+            <div style="margin-bottom:1.25rem;">
+                <label class="wizard-step-label">Email</label>
+                <input type="email" name="email" class="wizard-input" required placeholder="correo@ejemplo.com">
+            </div>
+
+            <div style="margin-bottom:1.25rem;">
+                <label class="wizard-step-label">Rol</label>
+                <select name="role" class="wizard-select" required>
+                    <option value="operator" selected>Operador</option>
+                    <option value="admin">Administrador</option>
+                    <option value="resident">Residente</option>
+                </select>
+            </div>
+
+            <div style="display:flex;gap:1rem;margin-bottom:1.25rem;">
+                <div style="flex:1;">
+                    <label class="wizard-step-label">Contraseña</label>
+                    <input type="password" name="password" id="reg_password" class="wizard-input" required minlength="6" placeholder="Mínimo 6 caracteres">
+                </div>
+                <div style="flex:1;">
+                    <label class="wizard-step-label">Confirmar</label>
+                    <input type="password" name="password_confirm" id="reg_confirm" class="wizard-input" required minlength="6" placeholder="Repetir">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width:100%;">
+                <i class="bi bi-check-lg"></i> Crear Usuario
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+document.getElementById('reg_confirm').addEventListener('input', function() {
+    const pw = document.getElementById('reg_password').value;
+    this.setCustomValidity(pw !== this.value ? 'Las contraseñas no coinciden' : '');
+});
+</script>
+{% endblock %}

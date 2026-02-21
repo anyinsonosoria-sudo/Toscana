@@ -1,0 +1,408 @@
+{% extends "base.html" %}
+
+{% block title %}Facturación{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>üí∞ Facturación</h2>
+    
+    <!-- Filtros de b∫squeda -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('billing.invoices') }}" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Buscar por Cliente</label>
+                    <input type="text" name="search_resident" class="form-control" 
+                           placeholder="Nombre del residente" value="{{ search_resident }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Fecha Desde</label>
+                    <input type="date" name="search_date_from" class="form-control" value="{{ search_date_from }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Fecha Hasta</label>
+                    <input type="date" name="search_date_to" class="form-control" value="{{ search_date_to }}">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">üîç Buscar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Formulario de creación -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">‚➕ Nueva Factura</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('billing.create_factura') }}" id="invoice-form">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Cliente *</label>
+                        <select name="resident_id" id="resident_id" class="form-select" required onchange="loadResidentInfo()">
+                            <option value="">Seleccione...</option>
+                            {% for r in residents %}
+                            <option value="{{ r.id }}" 
+                                    data-email="{{ r.email or '' }}" 
+                                    data-phone="{{ r.phone or '' }}"
+                                    data-unit="{{ r.unit_number or '' }}">
+                                {{ r.name }} {% if r.unit_number %}(Apto {{ r.unit_number }}){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Email *</label>
+                        <input type="email" name="notify_email" id="notify_email" class="form-control" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Teléfono *</label>
+                        <input type="tel" name="notify_phone" id="notify_phone" class="form-control" required>
+                    </div>
+                </div>
+
+                <!-- Líneas de servicio dinámicas -->
+                <div id="service-lines" class="mb-3">
+                    <div class="service-line card mb-2">
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col-md-4">
+                                    <label class="form-label">Servicio *</label>
+                                    <select name="service_code[]" class="form-select service-select" required onchange="loadServiceInfo(this)">
+                                        <option value="">Seleccione...</option>
+                                        {% for s in services %}
+                                        <option value="{{ s.code or s.id }}" data-price="{{ s.cost or s.price }}">
+                                            {{ s.name }} - RD$ {{ "{:,.2f}".format(s.cost or s.price) }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">Cantidad *</label>
+                                    <input type="number" name="quantity[]" class="form-control quantity-input" 
+                                           value="1" min="1" required onchange="calculateTotal()">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">Precio Unit. *</label>
+                                    <input type="number" name="amount[]" class="form-control amount-input" 
+                                           step="0.01" min="0" required onchange="calculateTotal()">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Descripción</label>
+                                    <input type="text" name="line_description[]" class="form-control" placeholder="Detalles adicionales">
+                                </div>
+                                <div class="col-md-1 d-flex align-items-end justify-content-center">
+                                    <button type="button" class="btn btn-danger btn-sm" onclick="removeLine(this)" title="Eliminar línea">❌</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-secondary mb-3" onclick="addServiceLine()">‚➕ Agregar Servicio</button>
+
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <h4>Total: RD$ <span id="total-amount">0.00</span></h4>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input type="checkbox" name="send_whatsapp" class="form-check-input" id="send_whatsapp">
+                            <label class="form-check-label" for="send_whatsapp">Enviar notificación por WhatsApp</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input type="checkbox" name="attach_pdf" class="form-check-input" id="attach_pdf" checked>
+                            <label class="form-check-label" for="attach_pdf">Adjuntar PDF al email</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-success">üíæ Crear Factura</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Lista de facturas -->
+    <div class="card">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">üìã Facturas Registradas</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>#</th>
+                            <th>Cliente</th>
+                            <th>Descripción</th>
+                            <th>Monto</th>
+                            <th>Pagado</th>
+                            <th>Pendiente</th>
+                            <th>Fecha</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for inv in invoices %}
+                        <tr>
+                            <td><strong>{{ inv.id }}</strong></td>
+                            <td>
+                                {% set resident_name = "" %}
+                                {% for r in residents %}
+                                    {% if r.unit_id == inv.unit_id %}
+                                        {{ r.name }}
+                                    {% endif %}
+                                {% endfor %}
+                            </td>
+                            <td><small>{{ inv.description }}</small></td>
+                            <td><strong>RD$ {{ "{:,.2f}".format(inv.amount) }}</strong></td>
+                            <td>
+                                {% set paid_amt = get_paid_amount(inv.id) %}
+                                RD$ {{ "{:,.2f}".format(paid_amt) }}
+                            </td>
+                            <td>
+                                {% set pending = inv.amount - get_paid_amount(inv.id) %}
+                                <strong class="text-danger">RD$ {{ "{:,.2f}".format(pending) }}</strong>
+                            </td>
+                            <td>{{ inv.issued_date }}</td>
+                            <td>
+                                {% if inv.paid %}
+                                <span class="badge bg-success">‚úì Pagada</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">‚è≥ Pendiente</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <a href="{{ url_for('billing.view_invoice_pdf', invoice_id=inv.id) }}" 
+                                       class="btn btn-info" target="_blank" title="Ver PDF">üìÑ</a>
+                                    
+                                    <button type="button" class="btn btn-secondary" 
+                                            onclick="reprintInvoice({{ inv.id }})" title="Reimprimir">üñ®Ô∏è</button>
+                                    
+                                    <button type="button" class="btn btn-primary" 
+                                            onclick="resendInvoice({{ inv.id }})" title="Reenviar">üìß</button>
+                                    
+                                    {% if not inv.paid %}
+                                    <button type="button" class="btn btn-success" 
+                                            onclick="partialPayment({{ inv.id }}, {{ pending }})" 
+                                            title="Pago Parcial">üíµ</button>
+                                    
+                                    <button type="button" class="btn btn-warning" 
+                                            onclick="editInvoice({{ inv.id }})" title="Editar">‚úèÔ∏è</button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center text-muted">No hay facturas registradas</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function loadResidentInfo() {
+    const select = document.getElementById('resident_id');
+    const option = select.options[select.selectedIndex];
+    document.getElementById('notify_email').value = option.dataset.email || '';
+    document.getElementById('notify_phone').value = option.dataset.phone || '';
+}
+
+function loadServiceInfo(selectElement) {
+    const option = selectElement.options[selectElement.selectedIndex];
+    const price = option.dataset.price || 0;
+    const row = selectElement.closest('.service-line');
+    row.querySelector('.amount-input').value = price;
+    calculateTotal();
+}
+
+function calculateTotal() {
+    let total = 0;
+    document.querySelectorAll('.service-line').forEach(line => {
+        const quantity = parseFloat(line.querySelector('.quantity-input').value) || 0;
+        const amount = parseFloat(line.querySelector('.amount-input').value) || 0;
+        total += quantity * amount;
+    });
+    // Formatear con coma para miles y punto para decimales: 1,000.00
+    const formatted = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById('total-amount').textContent = formatted;
+}
+
+function addServiceLine() {
+    const container = document.getElementById('service-lines');
+    const firstLine = container.querySelector('.service-line');
+    const newLine = firstLine.cloneNode(true);
+    
+    // Limpiar valores
+    newLine.querySelectorAll('input, select').forEach(input => {
+        if (input.type === 'number' && input.classList.contains('quantity-input')) {
+            input.value = 1;
+        } else if (input.type === 'number') {
+            input.value = 0;
+        } else if (input.tagName === 'SELECT') {
+            input.selectedIndex = 0;
+        } else {
+            input.value = '';
+        }
+    });
+    
+    container.appendChild(newLine);
+    calculateTotal();
+}
+
+function removeLine(button) {
+    const container = document.getElementById('service-lines');
+    if (container.querySelectorAll('.service-line').length > 1) {
+        button.closest('.service-line').remove();
+        calculateTotal();
+    } else {
+        alert('Debe mantener al menos una línea de servicio');
+    }
+}
+
+function reprintInvoice(id) {
+    if (confirm('¿Reimprimir factura #' + id + '?')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/facturacion/reprint/' + id;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function resendInvoice(id) {
+    const email = prompt('Ingrese el email para reenviar:');
+    if (email) {
+        const attachPdf = confirm('¿Adjuntar PDF?');
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/facturacion/resend/' + id;
+        
+        const emailInput = document.createElement('input');
+        emailInput.type = 'hidden';
+        emailInput.name = 'email';
+        emailInput.value = email;
+        form.appendChild(emailInput);
+        
+        if (attachPdf) {
+            const pdfInput = document.createElement('input');
+            pdfInput.type = 'hidden';
+            pdfInput.name = 'attach_pdf';
+            pdfInput.value = 'on';
+            form.appendChild(pdfInput);
+        }
+        
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function partialPayment(id, remaining) {
+    // Establecer valores en el modal
+    document.getElementById('paymentInvoiceId').value = id;
+    document.getElementById('paymentRemainingAmount').textContent = 'RD$' + remaining.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    document.getElementById('paymentMaxAmount').value = remaining.toFixed(2);
+    document.getElementById('paymentAmount').value = '';
+    document.getElementById('paymentAmount').max = remaining.toFixed(2);
+    
+    // Mostrar el modal
+    const modal = new bootstrap.Modal(document.getElementById('paymentModal'));
+    modal.show();
+}
+
+function submitPayment() {
+    const form = document.getElementById('paymentForm');
+    const invoiceId = document.getElementById('paymentInvoiceId').value;
+    const amount = parseFloat(document.getElementById('paymentAmount').value);
+    const maxAmount = parseFloat(document.getElementById('paymentMaxAmount').value);
+    
+    if (!amount || amount <= 0) {
+        alert('Por favor ingrese un monto válido');
+        return;
+    }
+    
+    if (amount > maxAmount) {
+        alert('El monto no puede ser mayor al pendiente');
+        return;
+    }
+    
+    // Establecer la acción del formulario
+    form.action = '/facturacion/partial-payment/' + invoiceId;
+    form.submit();
+}
+
+function editInvoice(id) {
+    window.location.href = '/facturacion/edit/' + id;
+}
+
+// Calcular total inicial
+document.addEventListener('DOMContentLoaded', function() {
+    calculateTotal();
+});
+</script>
+
+<!-- Modal de Pago Parcial -->
+<div class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="paymentModalLabel">üíµ Registrar Pago Parcial</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="paymentForm" method="POST" action="" onsubmit="event.preventDefault(); submitPayment();">
+                <div class="modal-body">
+                    <input type="hidden" id="paymentInvoiceId" name="invoice_id">
+                    <input type="hidden" id="paymentMaxAmount" name="max_amount">
+                    
+                    <div class="alert alert-info">
+                        <strong>Monto Pendiente:</strong> <span id="paymentRemainingAmount"></span>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="paymentAmount" class="form-label">Monto a Pagar (RD$) *</label>
+                        <input type="number" class="form-control" id="paymentAmount" name="amount" 
+                               step="0.01" min="0.01" required placeholder="0.00">
+                        <small class="text-muted">Ingrese el monto del pago parcial</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="paymentMethod" class="form-label">Método de Pago *</label>
+                        <select class="form-select" id="paymentMethod" name="method" required>
+                            <option value="efectivo">üíµ Efectivo</option>
+                            <option value="transferencia">üè¶ Transferencia Bancaria</option>
+                            <option value="cheque">üìù Cheque</option>
+                            <option value="tarjeta">üí≥ Tarjeta</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="paymentNotes" class="form-label">Notas (Opcional)</label>
+                        <textarea class="form-control" id="paymentNotes" name="notes" rows="2" 
+                                  placeholder="Referencia de pago, n∫mero de cheque, etc."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success">üí∞ Registrar Pago</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,77 @@
+✓ FEATURE: VER ARCHIVO DE RECIBOS
+=====================================
+
+Se ha implementado un botón "Ver" que permite visualizar los archivos de recibos 
+cargados mediante OCR.
+
+CAMBIOS REALIZADOS:
+-------------------
+
+1. TEMPLATES/GASTOS.HTML
+   • Agregado botón "Ver Recibo" en la tabla de gastos
+   • El botón solo aparece si el gasto tiene un archivo de recibo asociado
+   • Estilo: btn-outline-info con icono de imagen (bi-image)
+   • Posicionado antes del botón Editar
+   
+2. JAVASCRIPT EN GASTOS.HTML
+   • Nueva función: viewReceipt(receiptPath, description)
+   • Carga la imagen en un modal
+   • Valida que la imagen se cargue correctamente
+   • Título dinámico con la descripción del gasto
+   
+3. MODAL VIEWRECEIPTMODAL EN GASTOS.HTML
+   • ID: viewReceiptModal
+   • Muestra la imagen en tamaño máximo (600px altura)
+   • Fondo gris (f8f9fa) para contraste
+   • Sombra y bordes redondeados para mejor presentación
+   • Botón "Descargar" preparado para futuros usos
+   • Botón "Cerrar" para ocultar modal
+
+4. RUTA FLASK EN APP.PY
+   • Nueva ruta: /static/uploads/<filename>
+   • Función: serve_receipt(filename)
+   • Seguridad:
+     - Valida que el archivo sea imagen (.png, .jpg, .jpeg)
+     - Previene path traversal attacks
+     - Verifica que el archivo existe
+   • Retorna la imagen con MIME type correcto
+
+CÓMO FUNCIONA:
+--------------
+
+1. Usuario abre la pestaña "Gastos"
+2. En la tabla, ve un botón "Ver" en gastos con recibos
+3. Hace clic en "Ver"
+4. Se abre un modal mostrando la imagen del recibo
+5. Puede cerrar el modal o seguir navegando
+
+REQUISITOS PARA QUE FUNCIONE:
+-----------------------------
+
+✓ El gasto debe tener un valor en la columna receipt_path
+✓ El archivo debe existir en static/uploads/
+✓ El archivo debe ser una imagen (PNG o JPEG)
+✓ Flask debe estar ejecutándose
+
+PRUEBA:
+-------
+
+Para probar:
+1. Abre http://127.0.0.1:5000/gastos
+2. Busca un gasto con el botón "Ver" (gasto ID 5 tiene un recibo)
+3. Haz clic en "Ver"
+4. Debería mostrarse la imagen del recibo en un modal
+
+Si no ves el botón "Ver" en un gasto:
+   → El gasto no tiene un archivo de recibo (receipt_path es NULL)
+   → Carga un nuevo recibo usando "Cargar Recibo (OCR)"
+
+ARCHIVOS MODIFICADOS:
+---------------------
+
+1. c:\Users\anyinson.osoria\OneDrive - PC Precision Engineering\Desktop\Xpack\Xpack\building_maintenance\templates\gastos.html
+   - Línea ~97: Botón "Ver Recibo" agregado
+   - Línea ~512-540: Modal y función JavaScript agregados
+
+2. c:\Users\anyinson.osoria\OneDrive - PC Precision Engineering\Desktop\Xpack\Xpack\building_maintenance\app.py
+   - Línea ~750-781: Nueva ruta serve_receipt() agregada

@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Servicios - Building Maintenance{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3"><i class="bi bi-tools"></i> Gestión de Servicios</h1>
+    <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#addModal">
+        <i class="bi bi-plus-circle"></i> Nuevo Servicio
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Código</th>
+                        <th>Nombre</th>
+                        <th>Descripción</th>
+                        <th>Costo</th>
+                        <th>Recurrente</th>
+                        <th>Tipo</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for svc in services %}
+                    <tr>
+                        <td>{{ svc.id }}</td>
+                        <td><code>{{ svc.code or '-' }}</code></td>
+                        <td><strong>{{ svc.name }}</strong></td>
+                        <td>{{ svc.description or '-' }}</td>
+                        <td>RD$ {{ "{:,.2f}".format(svc.cost or 0) }}</td>
+                        <td>
+                            {% if svc.recurring %}
+                                <span class="badge bg-success">Sí</span>
+                            {% else %}
+                                <span class="badge bg-secondary">No</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ svc.service_type or '-' }}</td>
+                        <td class="text-end table-actions">
+                            <button class="btn btn-sm btn-outline-primary" 
+                                onclick="editService({{ svc.id }}, '{{ svc.code or '' }}', '{{ svc.name }}', '{{ svc.description or '' }}', {{ svc.cost or 0 }}, {{ svc.recurring or 0 }}, '{{ svc.service_type or '' }}')">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <form method="POST" action="{{ url_for('delete_servicio', id=svc.id) }}" style="display:inline;" onsubmit="return confirm('¿Eliminar este servicio?');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">
+                            No hay servicios registrados.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Modal -->
+<div class="modal fade" id="addModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Nuevo Servicio</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_servicio') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Código</label>
+                        <input type="text" class="form-control" name="code" placeholder="Ej: AGUA, LUZ">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nombre *</label>
+                        <input type="text" class="form-control" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción</label>
+                        <textarea class="form-control" name="description" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Costo *</label>
+                        <input type="number" step="0.01" class="form-control" name="cost" value="0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tipo</label>
+                        <input type="text" class="form-control" name="service_type" placeholder="Ej: Mantenimiento, Servicio básico">
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" name="recurring" id="add_recurring">
+                        <label class="form-check-label" for="add_recurring">
+                            Servicio Recurrente
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-info">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Servicio</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="editForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Código</label>
+                        <input type="text" class="form-control" name="code" id="edit_code">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nombre *</label>
+                        <input type="text" class="form-control" name="name" id="edit_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción</label>
+                        <textarea class="form-control" name="description" id="edit_description" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Costo *</label>
+                        <input type="number" step="0.01" class="form-control" name="cost" id="edit_cost" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tipo</label>
+                        <input type="text" class="form-control" name="service_type" id="edit_service_type">
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" name="recurring" id="edit_recurring">
+                        <label class="form-check-label" for="edit_recurring">
+                            Servicio Recurrente
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-info">Actualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function editService(id, code, name, description, cost, recurring, serviceType) {
+    document.getElementById('editForm').action = "{{ url_for('edit_servicio', id=0) }}".replace('/0', '/' + id);
+    document.getElementById('edit_code').value = code;
+    document.getElementById('edit_name').value = name;
+    document.getElementById('edit_description').value = description;
+    document.getElementById('edit_cost').value = cost;
+    document.getElementById('edit_recurring').checked = recurring ? true : false;
+    document.getElementById('edit_service_type').value = serviceType;
+    new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+</script>
+{% endblock %}

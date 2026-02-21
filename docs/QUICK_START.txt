@@ -1,0 +1,151 @@
+# 🎯 GUÍA RÁPIDA: Sistema OCR para Recibos
+
+## Resumen
+
+Se ha implementado un sistema completo de OCR (Optical Character Recognition) para cargar fotos de recibos de gastos y extraer automáticamente:
+- Descripción del gasto
+- Monto
+- Fecha
+- Nombre del suplidor
+
+## Paso 1: Instalar Tesseract-OCR (REQUERIDO)
+
+Este es el ÚNICO paso manual necesario. Las librerías Python ya están instaladas.
+
+### Windows:
+1. Descarga desde: https://github.com/UB-Mannheim/tesseract/wiki
+2. Busca el archivo: `tesseract-ocr-w64-v5.x.exe`
+3. Ejecuta el instalador
+4. Aceptar instalación por defecto en `C:\Program Files\Tesseract-OCR`
+5. **Reinicia la aplicación Flask**
+
+### macOS:
+```bash
+brew install tesseract
+```
+
+### Linux (Ubuntu/Debian):
+```bash
+sudo apt-get update && sudo apt-get install tesseract-ocr
+```
+
+## Paso 2: Verificar Instalación
+
+Ejecuta:
+```bash
+python test_ocr.py
+```
+
+Deberías ver "✓ PASADO" para todos los tests (excepto que Tesseract puede estar faltante).
+
+## Paso 3: Usar en la Aplicación
+
+1. Inicia Flask: `python app.py`
+2. Ve a: `http://localhost:5000/gastos`
+3. Haz clic en botón verde: **"Cargar Recibo (OCR)"**
+4. Sube una foto de un recibo
+5. El sistema extrae la información automáticamente
+6. Ajusta si es necesario
+7. Guarda el gasto
+
+## ✨ Nuevos Archivos Creados
+
+```
+ocr_processing.py      - Módulo OCR principal (procesamiento de imágenes)
+ocr_setup.py          - Script de setup e instalación
+test_ocr.py           - Tests para verificar configuración
+OCR_README.md         - Documentación completa
+QUICK_START.txt       - Este archivo
+```
+
+## 📝 Archivos Modificados
+
+```
+expenses.py           - Nuevo: save_receipt_image(), get_receipt_path()
+app.py                - Nuevas rutas: /gastos/upload-recibo, /gastos/save-with-receipt
+templates/gastos.html - Nueva modal OCR con flujo de 2 pasos
+db.py                 - Nueva columna: receipt_path en tabla expenses
+requirements.txt      - Añadidas: Pillow, pytesseract
+```
+
+## 🔧 Características Técnicas
+
+- **Reconocimiento OCR en español**: Extrae texto en idioma español
+- **Niveles de confianza**: Muestra qué tan precisa fue la extracción (55%-95%)
+- **Almacenamiento de fotos**: Guarda las imágenes en `static/uploads/`
+- **Interfaz intuitiva**: Modal de 2 pasos (carga → revisión → guardado)
+- **Validación de archivos**: Solo acepta PNG, JPG, GIF, WEBP
+- **Optimización de imágenes**: Mejora automáticamente la calidad para OCR
+
+## 📊 Campos Extraídos
+
+| Campo | Extracción |
+|-------|-----------|
+| **Descripción** | Primeras líneas del recibo |
+| **Monto** | Busca patrones como "Total:", "Monto:" |
+| **Fecha** | Detecta formatos DD/MM/YYYY, YYYY-MM-DD |
+| **Suplidor** | Primera línea con texto significativo |
+| **Confianza** | Porcentaje basado en cantidad de texto extraído |
+
+## 💡 Ejemplos de Uso
+
+### Ejemplo 1: Recibo de Ferretería
+```
+FOTO: Foto del recibo de una compra en ferretería
+↓
+OCR extrae:
+- Descripción: "FERRETERIA ABC - Compra de materiales"
+- Monto: 2.500,00
+- Fecha: 2024-01-09
+- Suplidor: "FERRETERIA ABC"
+↓
+Usuario verifica y guarda
+```
+
+### Ejemplo 2: Recibo de Servicios
+```
+FOTO: Foto de pago de servicios (agua, luz)
+↓
+OCR extrae automáticamente los datos
+↓
+Usuario ajusta si es necesario
+↓
+Se guarda con la imagen como evidencia
+```
+
+## ⚠️ Notas Importantes
+
+1. **Calidad de la foto**: Mejor foto = mejor OCR
+   - ✓ Bien iluminada
+   - ✓ Enfocada y clara
+   - ✓ Recibo completamente visible
+
+2. **Idioma**: Configurado para español
+   - Para otros idiomas, editar ocr_processing.py línea ~60
+
+3. **Confianza baja**: Si es <60%, ajusta manualmente antes de guardar
+
+## 🆘 Troubleshooting
+
+### "Tesseract OCR no está instalado"
+→ Instala desde: https://github.com/UB-Mannheim/tesseract/wiki
+
+### "No se pudo extraer texto"
+→ Intenta con una foto más clara del recibo
+
+### "pytesseract not found"
+→ Ejecuta: `pip install pytesseract Pillow`
+
+## 📞 Próximos Pasos
+
+Opciones futuras pueden incluir:
+- [ ] Soporte para múltiples idiomas
+- [ ] Extracción de detalles de línea (artículos individuales)
+- [ ] Integración con APIs en la nube (Google Vision, AWS)
+- [ ] Exportación de datos extraídos
+
+---
+
+**Estado**: ✅ Sistema completamente implementado y listo para usar
+
+**Última actualización**: 2024-01-09

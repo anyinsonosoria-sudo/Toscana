@@ -1,0 +1,1516 @@
+{% extends "base.html" %}
+
+{% block title %}Ventas y Pagos - Building Maintenance{% endblock %}
+
+{% block content %}
+<style>
+    .invoice-row {
+        transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .invoice-row:hover {
+        background-color: #e3f2fd !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .invoice-row td:first-child {
+        font-weight: bold;
+        color: #1976d2;
+    }
+    
+    /* Mejorar el menú desplegable */
+    .dropdown-menu {
+        min-width: 220px;
+        max-height: none !important;
+        overflow: visible !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 0.5rem 0;
+    }
+    
+    .dropdown-item {
+        padding: 0.6rem 1.2rem;
+        font-size: 0.95rem;
+        transition: background-color 0.2s;
+        white-space: nowrap;
+    }
+    
+    .dropdown-item:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .dropdown-item i {
+        width: 20px;
+        margin-right: 8px;
+    }
+    
+    .dropdown-toggle::after {
+        display: none;
+    }
+    
+    .btn-actions {
+        padding: 0.4rem 0.8rem;
+        border-radius: 6px;
+    }
+    
+    /* Asegurar que el dropdown no se corte */
+    .table-responsive {
+        overflow: visible !important;
+    }
+    
+    table {
+        overflow: visible !important;
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3"><i class="bi bi-cart-check"></i> Ventas y Pagos</h1>
+    <div class="btn-group" role="group">
+        <button class="btn btn-success" onclick="toggleCreateForm()">
+            <i class="bi bi-plus-circle"></i> Nueva Venta
+        </button>
+        <button class="btn btn-primary" onclick="toggleHistory()">
+            <i class="bi bi-list-ul"></i> Historial
+        </button>
+    </div>
+</div>
+
+<!-- Contenido Principal: VENTAS / FACTURAS -->
+<div>
+        
+        <!-- Estadísticas Rápidas -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card border-primary">
+                    <div class="card-body text-center">
+                        <h3 class="text-primary">{{ invoices|length }}</h3>
+                        <p class="mb-0 text-muted">Total Facturas</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-success">
+                    <div class="card-body text-center">
+                        {% set paid_count = invoices|selectattr('paid')|list|length %}
+                        <h3 class="text-success">{{ paid_count }}</h3>
+                        <p class="mb-0 text-muted">Pagadas</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-warning">
+                    <div class="card-body text-center">
+                        {% set unpaid_count = invoices|rejectattr('paid')|list|length %}
+                        <h3 class="text-warning">{{ unpaid_count }}</h3>
+                        <p class="mb-0 text-muted">Pendientes</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-info">
+                    <div class="card-body text-center">
+                        {% set total_amount = invoices|sum(attribute='amount') %}
+                        <h3 class="text-info">RD$ {{ "{:,.0f}".format(total_amount) }}</h3>
+                        <p class="mb-0 text-muted">Total Facturado</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Banner de Ayuda/Instrucciones -->
+        <div class="alert alert-info alert-dismissible fade show mb-4" role="alert" id="helpBanner">
+            <h5 class="alert-heading"><i class="bi bi-info-circle"></i> Cómo usar esta sección</h5>
+            <hr>
+            <ul class="mb-0">
+                <li><strong>Ver factura:</strong> Haz clic en cualquier fila de la tabla para abrir el PDF</li>
+                <li><strong>Enviar al cliente:</strong> Usa el botón <span class="badge bg-info"> Enviar</span> para reenviar por email/WhatsApp</li>
+                <li><strong>Registrar pago:</strong> Usa el botón <span class="badge bg-success">∞ Pagar</span> para marcar como pagada</li>
+                <li><strong>Modificar:</strong> Usa el botón <span class="badge bg-warning">✏️ Editar</span> para cambiar datos de facturas pendientes</li>
+            </ul>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        
+        <!-- Formulario de Nueva Factura -->
+        <div class="card mb-4" id="createInvoiceForm" style="display: none;">
+            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-plus-circle"></i> Crear Nueva Venta / Factura</h5>
+                <button class="btn btn-sm btn-light" onclick="toggleCreateForm()" type="button">
+                    <i class="bi bi-x-lg"></i> Cerrar
+                </button>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('billing.create_factura') }}" id="invoiceForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Cliente / Residente *</label>
+                            <div class="input-group">
+                                <select name="resident_id" id="resident_id" class="form-select" required onchange="loadResidentInfo()">
+                                    <option value="">Seleccione un residente...</option>
+                                    {% for r in residents %}
+                                    <option value="{{ r.id }}" data-email="{{ r.email }}" data-phone="{{ r.phone }}">
+                                        {{ r.name }} - Apt. {{ r.unit_number or 'N/A' }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                <a href="{{ url_for('apartments.list') }}" class="btn btn-outline-primary" target="_blank" title="Crear nuevo cliente">
+                                    <i class="bi bi-plus-circle"></i>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Email Notificación</label>
+                            <input type="email" name="notify_email" id="notify_email" class="form-control" placeholder="correo@example.com">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Teléfono Notificación</label>
+                            <input type="tel" name="notify_phone" id="notify_phone" class="form-control" placeholder="+1234567890">
+                        </div>
+                    </div>
+
+                    <div class="card bg-light mb-3">
+                        <div class="card-body">
+                            <h6 class="border-bottom pb-2 mb-3">Líneas de Venta / Servicios</h6>
+                            <div id="service-lines">
+                                <div class="row mb-2 service-line">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Servicio *</label>
+                                        <div class="input-group">
+                                            <select name="service_code[]" class="form-select service-select" required onchange="loadServiceInfo(this)">
+                                                <option value="">Seleccione...</option>
+                                                {% for s in services %}
+                                                <option value="{{ s.code or s.id }}" data-price="{{ s.cost or s.price }}">
+                                                    {% if s.code %}{{ s.code }} - {% endif %}{{ s.name }}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                            <!-- TODO: Migrar endpoint view_configuracion -->
+                                            <a href="{{ url_for('products.list') }}" class="btn btn-outline-success" title="Ir a productos/servicios">
+                                                <i class="bi bi-plus-circle"></i>
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Cantidad *</label>
+                                        <input type="number" name="quantity[]" class="form-control quantity-input" 
+                                               value="1" min="1" required onchange="calculateTotal()">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Precio Unit. *</label>
+                                        <input type="text" name="amount[]" class="form-control amount-input" 
+                                               placeholder="$0.00" required onchange="formatPrice(this); calculateTotal()">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Descripción</label>
+                                        <input type="text" name="line_description[]" class="form-control" placeholder="Detalles adicionales">
+                                    </div>
+                                    <div class="col-md-1 d-flex align-items-end justify-content-center">
+                                        <button type="button" class="btn btn-danger btn-sm" onclick="removeLine(this)" title="Eliminar línea">❌</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn btn-secondary mb-3" onclick="addServiceLine()">➕ Agregar Servicio</button>
+
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <h4>Total: RD$ <span id="total-amount">0.00</span></h4>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input type="checkbox" name="send_whatsapp" class="form-check-input" id="send_whatsapp">
+                                <label class="form-check-label" for="send_whatsapp">Enviar notificación por WhatsApp</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input type="checkbox" name="attach_pdf" class="form-check-input" id="attach_pdf" checked>
+                                <label class="form-check-label" for="attach_pdf">Adjuntar PDF al email</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-success">æ Crear Venta / Factura</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Lista de Facturas -->
+        <div class="card" id="invoiceHistory" style="display: none;">
+            <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">üìã Historial de Ventas / Facturas</h5>
+                <button class="btn btn-sm btn-light" onclick="toggleHistory()" type="button">
+                    <i class="bi bi-x-lg"></i> Cerrar
+                </button>
+            </div>
+            <div class="card-body">
+                <!-- Filtros de B∫squeda -->
+                <div class="card mb-3 border-primary">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0"><i class="bi bi-funnel"></i> Filtros de B∫squeda</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Buscar por cliente o #</label>
+                                <input type="text" id="searchInvoices" class="form-control" 
+                                       placeholder="Cliente o #factura..." 
+                                       onkeyup="filterInvoices()">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Estado</label>
+                                <select id="filterStatus" class="form-select" onchange="filterInvoices()">
+                                    <option value="">Todos</option>
+                                    <option value="paid">Pagadas</option>
+                                    <option value="unpaid">Pendientes</option>
+                                    <option value="partial">Pago Parcial</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Fecha Desde</label>
+                                <input type="date" id="filterDateFrom" class="form-control" onchange="filterInvoices()">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Fecha Hasta</label>
+                                <input type="date" id="filterDateTo" class="form-control" onchange="filterInvoices()">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">&nbsp;</label>
+                                <div class="d-grid">
+                                    <button class="btn btn-outline-secondary" onclick="clearFilters()">
+                                        <i class="bi bi-x-circle"></i> Limpiar Filtros
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover table-sm" id="invoicesTable">
+                        <thead class="table-dark">
+                            <tr>
+                                <th style="width: 60px;" class="text-center">#</th>
+                                <th style="width: 150px;" class="text-center">Cliente</th>
+                                <th style="width: 100px;" class="text-center">Apartamento</th>
+                                <th style="width: 100px;" class="text-center">Días Vencimiento</th>
+                                <th style="width: 120px;" class="text-center">Monto</th>
+                                <th style="width: 120px;" class="text-center">Pagado</th>
+                                <th style="width: 120px;" class="text-center">Pendiente</th>
+                                <th style="width: 90px;" class="text-center">Fecha</th>
+                                <th style="width: 90px;" class="text-center">Estado</th>
+                                <th style="width: 80px;" class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for inv in invoices %}
+                            {% set pending_amount = inv.amount - get_paid_amount(inv.id) %}
+                            <tr class="invoice-row" style="cursor: pointer;" 
+                                data-pending="{{ pending_amount }}" 
+                                onclick="alert('FunciÛn PDF en desarrollo')" 
+                                title="üëÅÔ∏è Clic para ver factura PDF">
+                                <td class="text-center"><strong>#{{ inv.id }}</strong></td>
+                                <td class="text-center text-truncate" style="max-width: 150px;">
+                                    {% for r in residents %}
+                                        {% if r.id == inv.unit_id %}
+                                            {{ r.name }}
+                                        {% endif %}
+                                    {% endfor %}
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-secondary">
+                                        {% for r in residents %}
+                                            {% if r.id == inv.unit_id %}
+                                                {{ r.unit_number or 'N/A' }}
+                                            {% endif %}
+                                        {% endfor %}
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    {% if pending_amount > 0 and inv.due_date %}
+                                        {% set due_parts = inv.due_date.split('-') %}
+                                        {% set due_year = due_parts[0]|int %}
+                                        {% set due_month = due_parts[1]|int %}
+                                        {% set due_day = due_parts[2]|int %}
+                                        {% set today_str = now.strftime('%Y-%m-%d') %}
+                                        {% set today_parts = today_str.split('-') %}
+                                        {% set today_year = today_parts[0]|int %}
+                                        {% set today_month = today_parts[1]|int %}
+                                        {% set today_day = today_parts[2]|int %}
+                                        {% set days_diff = ((due_year - today_year) * 365 + (due_month - today_month) * 30 + (due_day - today_day)) %}
+                                        {% if days_diff < 0 %}
+                                            <span class="badge bg-danger">Vencido {{ -days_diff }} días</span>
+                                        {% elif days_diff == 0 %}
+                                            <span class="badge bg-warning">Vence hoy</span>
+                                        {% elif days_diff <= 5 %}
+                                            <span class="badge bg-warning">{{ days_diff }} días</span>
+                                        {% else %}
+                                            <span class="badge bg-success">{{ days_diff }} días</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center"><strong>RD$ {{ "{:,.2f}".format(inv.amount) }}</strong></td>
+                                <td class="text-center text-success">RD$ {{ "{:,.2f}".format(get_paid_amount(inv.id)) }}</td>
+                                <td class="text-center">
+                                    {% set pending = inv.amount - get_paid_amount(inv.id) %}
+                                    {% if pending <= 0 %}
+                                        <strong class="text-success">RD$ {{ "{:,.2f}".format(0) }}</strong>
+                                    {% else %}
+                                        <strong class="text-danger">RD$ {{ "{:,.2f}".format(pending) }}</strong>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center"><small>{{ inv.issued_date.split('-')[2] }}/{{ inv.issued_date.split('-')[1] }}/{{ inv.issued_date.split('-')[0] }}</small></td>
+                                <td class="text-center">
+                                    {% if inv.paid %}
+                                    <span class="badge bg-success">‚úì Pagada</span>
+                                    {% else %}
+                                    <span class="badge bg-warning">‚è≥ Pendiente</span>
+                                    {% endif %}
+                                </td>
+                                <td onclick="event.stopPropagation();" class="text-center">
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-primary dropdown-toggle btn-actions" type="button" 
+                                                data-bs-toggle="dropdown" aria-expanded="false">
+                                            <i class="bi bi-three-dots"></i>
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                            <li>
+                                                <a class="dropdown-item" href="javascript:void(0)" 
+                                                   onclick="window.open('{{ url_for('billing.view_invoice_pdf', invoice_id=inv.id) }}', '_blank')">
+                                                    <i class="bi bi-file-pdf text-danger"></i> Ver PDF
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a class="dropdown-item" href="javascript:void(0)" 
+                                                   onclick="resendInvoice({{ inv.id }})">
+                                                    <i class="bi bi-envelope text-info"></i> Enviar al Cliente
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a class="dropdown-item" href="javascript:void(0)" 
+                                                   onclick="duplicateInvoice({{ inv.id }})">
+                                                    <i class="bi bi-files text-primary"></i> Duplicar
+                                                </a>
+                                            </li>
+                                            {% if not inv.paid %}
+                                            <li><hr class="dropdown-divider my-1"></li>
+                                            <li>
+                                                <a class="dropdown-item" href="javascript:void(0)" 
+                                                   onclick="partialPayment({{ inv.id }}, {{ pending_amount }})">
+                                                    <i class="bi bi-cash-coin text-success"></i> Registrar Pago
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a class="dropdown-item" href="javascript:void(0)" 
+                                                   onclick="editInvoice({{ inv.id }})">
+                                                    <i class="bi bi-pencil-square text-warning"></i> Editar Factura
+                                                </a>
+                                            </li>
+                                            {% endif %}
+                                            <li><hr class="dropdown-divider my-1"></li>
+                                            <li>
+                                                <a class="dropdown-item" href="javascript:void(0)" 
+                                                   onclick="deleteInvoice({{ inv.id }})">
+                                                    <i class="bi bi-trash-fill text-danger"></i> Eliminar
+                                                </a>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="10" class="text-center text-muted py-4">No hay facturas registradas</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Pago Parcial -->
+<div class="modal fade" id="partialPaymentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">≥ Registrar Pago</h5>
+                        {% set total_paid = 0 %}
+                        {% for inv in invoices %}
+                            {% set total_paid = total_paid + get_paid_amount(inv.id) %}
+                        {% endfor %}
+                        <h3 class="text-success">RD$ {{ "{:,.2f}".format(total_paid) }}</h3>
+                        <p class="mb-0 text-muted">Total Cobrado</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-info">
+                    <div class="card-body text-center">
+                        {% set invoices_with_payments = [] %}
+                        {% for inv in invoices %}
+                            {% if get_paid_amount(inv.id) > 0 %}
+                                {% set _ = invoices_with_payments.append(inv) %}
+                            {% endif %}
+                        {% endfor %}
+                        <h3 class="text-info">{{ invoices_with_payments|length }}</h3>
+                        <p class="mb-0 text-muted">Facturas con Pagos</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-primary">
+                    <div class="card-body text-center">
+                        {% set complete_paid = invoices|selectattr('paid')|list|length %}
+                        <h3 class="text-primary">{{ complete_paid }}</h3>
+                        <p class="mb-0 text-muted">Pagadas Completas</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Historial de Pagos - Oculto por defecto -->
+        <div class="card" id="paymentHistorySection" style="display: none;">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-credit-card"></i> Historial de Pagos</h5>
+                <button class="btn btn-sm btn-light" onclick="togglePaymentHistory()" type="button">
+                    <i class="bi bi-x-lg"></i> Cerrar
+                </button>
+            </div>
+            <div class="card-body">
+                <!-- B∫squeda Rápida -->
+                <div class="mb-3">
+                    <input type="text" id="searchTab2" class="form-control" placeholder="üîç Buscar por n∫mero de factura o cliente..." onkeyup="filterTable('tab2Table', 'searchTab2')">
+                </div>
+                
+                <!-- B∫squeda Rápida -->
+                <div class="mb-3">
+                    <input type="text" id="searchTab3" class="form-control" placeholder="üîç Buscar por n∫mero, cliente o monto..." onkeyup="filterTable('tab3Table', 'searchTab3')">
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="tab3Table">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Factura #</th>
+                                <th>Cliente</th>
+                                <th>Monto Pagado</th>
+                                <th>Método</th>
+                                <th>Estado Factura</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for inv in invoices %}
+                                {% set paid_amt = get_paid_amount(inv.id) %}
+                                {% if paid_amt > 0 %}
+                                <tr>
+                                    <td>{{ inv.issued_date }}</td>
+                                    <td><strong>#{{ inv.id }}</strong></td>
+                                    <td>
+                                        {% for r in residents %}
+                                            {% if r.id == inv.unit_id %}{{ r.name }}{% endif %}
+                                        {% endfor %}
+                                    </td>
+                                    <td><strong class="text-success">RD$ {{ "{:,.2f}".format(paid_amt) }}</strong></td>
+                                    <td><span class="badge bg-info">Varios</span></td>
+                                    <td>
+                                        {% if inv.paid %}
+                                        <span class="badge bg-success">Pagada Completa</span>
+                                        {% else %}
+                                        <span class="badge bg-warning">Pago Parcial</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary" 
+                                                onclick="window.open('{{ url_for('billing.view_invoice_pdf', invoice_id=inv.id) }}', '_blank')">
+                                            Ver Factura
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 3: CUENTAS POR COBRAR -->
+    <div class="tab-pane fade" id="pending-panel" role="tabpanel">
+        <div class="card">
+            <div class="card-header bg-warning">
+                <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Cuentas por Cobrar</h5>
+            </div>
+            <div class="card-body">
+                <!-- Estadísticas Tab 3 -->
+                {% set pending_invoices = [] %}
+                {% set pending_amounts = [] %}
+                {% for inv in invoices %}
+                    {% if not inv.paid %}
+                        {% set paid_amt = get_paid_amount(inv.id) %}
+                        {% set pending_amt = inv.amount - paid_amt %}
+                        {% set _ = pending_amounts.append(pending_amt) %}
+                        {% set _ = pending_invoices.append(inv) %}
+                    {% endif %}
+                {% endfor %}
+                {% set total_pending = pending_amounts|sum %}
+                
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card border-warning">
+                            <div class="card-body text-center">
+                                <h3 class="text-warning mb-0">{{ pending_invoices|length }}</h3>
+                                <small class="text-muted">Facturas Pendientes</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-danger">
+                            <div class="card-body text-center">
+                                <h3 class="text-danger mb-0">RD$ {{ "{:,.0f}".format(total_pending) }}</h3>
+                                <small class="text-muted">Total por Cobrar</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-dark">
+                            <div class="card-body text-center">
+                                {% set overdue_list = [] %}
+                                {% for inv in pending_invoices %}
+                                    {% if inv.due_date and inv.due_date < now.strftime('%Y-%m-%d') %}
+                                        {% set _ = overdue_list.append(inv) %}
+                                    {% endif %}
+                                {% endfor %}
+                                <h3 class="text-dark mb-0">{{ overdue_list|length }}</h3>
+                                <small class="text-muted">Facturas Vencidas</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-info">
+                            <div class="card-body text-center">
+                                {% if pending_invoices|length > 0 %}
+                                <h3 class="text-info mb-0">RD$ {{ "{:,.0f}".format(total_pending / pending_invoices|length) }}</h3>
+                                {% else %}
+                                <h3 class="text-info mb-0">RD$ 0</h3>
+                                {% endif %}
+                                <small class="text-muted">Promedio por Factura</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- B∫squeda Rápida -->
+                <div class="mb-3">
+                    <input type="text" id="searchTab1" class="form-control" placeholder="üîç Buscar por n∫mero, cliente o descripción..." onkeyup="filterTable('tab1Table', 'searchTab1')">
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="tab1Table">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Factura #</th>
+                                <th>Cliente</th>
+                                <th>Descripción</th>
+                                <th>Monto Total</th>
+                                <th>Pagado</th>
+                                <th>Pendiente</th>
+                                <th>Fecha Emisión</th>
+                                <th>Fecha Vencimiento</th>
+                                <th>Días Vencido</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for inv in invoices %}
+                                {% if not inv.paid %}
+                                {% set paid_amt = get_paid_amount(inv.id) %}
+                                {% set pending = inv.amount - paid_amt %}
+                                {% set is_overdue = inv.due_date and inv.due_date < now.strftime('%Y-%m-%d') %}
+                                <tr class="{% if is_overdue %}table-danger{% endif %}">
+                                    <td><strong>#{{ inv.id }}</strong></td>
+                                    <td>
+                                        {% for r in residents %}
+                                            {% if r.id == inv.unit_id %}{{ r.name }}{% endif %}
+                                        {% endfor %}
+                                    </td>
+                                    <td><small>{{ inv.description[:50] }}...</small></td>
+                                    <td>RD$ {{ "{:,.2f}".format(inv.amount) }}</td>
+                                    <td>RD$ {{ "{:,.2f}".format(paid_amt) }}</td>
+                                    <td>
+                                        {% if pending <= 0 %}
+                                            <strong class="text-success">RD$ {{ "{:,.2f}".format(0) }}</strong>
+                                        {% else %}
+                                            <strong class="text-danger">RD$ {{ "{:,.2f}".format(pending) }}</strong>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ inv.issued_date }}</td>
+                                    <td>{{ inv.due_date }}</td>
+                                    <td>
+                                        {% if is_overdue %}
+                                        <span class="badge bg-danger">Vencida</span>
+                                        {% else %}
+                                        <span class="badge bg-success">Al día</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-success" 
+                                                onclick="partialPayment({{ inv.id }}, {{ pending }})">
+                                            <i class="bi bi-credit-card"></i> Pagar
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-info" 
+                                                onclick="resendInvoice({{ inv.id }})">
+                                            <i class="bi bi-envelope"></i> Recordar
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 4: VENTAS RECURRENTES -->
+    <div class="tab-pane fade" id="recurring-panel" role="tabpanel">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-arrow-repeat"></i> Ventas Recurrentes</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <strong>‚ÑπÔ∏è Información:</strong> Las ventas recurrentes son servicios que se facturan automáticamente de forma periódica (mensual, trimestral, etc.).
+                </div>
+
+                <!-- Formulario para crear venta recurrente -->
+                <div class="card mb-4">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0"><i class="bi bi-plus-circle"></i> Crear Venta Recurrente</h6>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('billing.create_recurring') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <label class="form-label">Cliente / Residente *</label>
+                                    <div class="input-group">
+                                        <select name="resident_id" class="form-select" required>
+                                            <option value="">Seleccione...</option>
+                                            {% for r in residents %}
+                                            <option value="{{ r.id }}">{{ r.name }} - Apt. {{ r.unit_number or 'N/A' }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <a href="{{ url_for('apartments.list') }}" class="btn btn-outline-primary" target="_blank" title="Crear nuevo cliente">
+                                            <i class="bi bi-plus-circle"></i>
+                                        </a>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Servicio / Concepto *</label>
+                                    <div class="input-group">
+                                        <select name="service_id" class="form-select" required>
+                                            <option value="">Seleccione...</option>
+                                            {% for s in services %}
+                                            <option value="{{ s.id }}" data-price="{{ s.cost or s.price }}">
+                                                {% if s.code %}{{ s.code }} - {% endif %}{{ s.name }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                        <!-- TODO: Migrar endpoint view_configuracion -->
+                                        <a href="{{ url_for('products.list') }}" class="btn btn-outline-success" title="Ir a productos/servicios">
+                                            <i class="bi bi-plus-circle"></i>
+                                        </a>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Monto *</label>
+                                    <input type="number" name="amount" id="recurring_amount" class="form-control" step="0.01" min="0" required>
+                                <script>
+                                // ...existing code...
+
+                                // Auto-fill amount in recurring billing form
+                                document.addEventListener('DOMContentLoaded', function() {
+                                    var serviceSelect = document.querySelector('#recurring-panel select[name="service_id"]');
+                                    var amountInput = document.getElementById('recurring_amount');
+                                    if (serviceSelect && amountInput) {
+                                        serviceSelect.addEventListener('change', function() {
+                                            var selected = serviceSelect.options[serviceSelect.selectedIndex];
+                                            var price = selected.getAttribute('data-price');
+                                            if (price) {
+                                                amountInput.value = price;
+                                            } else {
+                                                amountInput.value = '';
+                                            }
+                                        });
+                                    }
+                                });
+                                </script>
+                                </div>
+                            </div>
+                            <div class="row mt-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Frecuencia *</label>
+                                    <select name="frequency" class="form-select" required>
+                                        <option value="monthly" selected>Mensual</option>
+                                        <option value="bimonthly">Bimestral</option>
+                                        <option value="quarterly">Trimestral</option>
+                                        <option value="semiannual">Semestral</option>
+                                        <option value="annual">Anual</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Día de Facturación</label>
+                                    <input type="number" name="billing_day" class="form-control" min="1" max="28" value="1" required>
+                                    <small class="text-muted">Día del mes (1-28)</small>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Fecha Inicio *</label>
+                                    <input type="date" name="start_date" class="form-control" required>
+                                </div>
+                            </div>
+                            <div class="row mt-3">
+                                <div class="col-md-8">
+                                    <label class="form-label">Descripción</label>
+                                    <input type="text" name="description" class="form-control" placeholder="Ej: Cuota de mantenimiento mensual">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Estado</label>
+                                    <select name="active" class="form-select">
+                                        <option value="1" selected>Activa</option>
+                                        <option value="0">Inactiva</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="bi bi-check-circle"></i> Crear Venta Recurrente
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Lista de ventas recurrentes -->
+                <div class="card">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0"><i class="bi bi-list-ul"></i> Ventas Recurrentes Configuradas</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Cliente</th>
+                                        <th>Concepto</th>
+                                        <th>Monto</th>
+                                        <th>Frecuencia</th>
+                                        <th>Día Facturación</th>
+                                        <th>Inicio</th>
+                                        <th>Estado</th>
+                                        <th style="width: 280px;">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% if recurring_sales %}
+                                        {% for rs in recurring_sales %}
+                                        <tr class="invoice-row" title="Venta recurrente #{{ rs.id }}">
+                                            <td><strong>{{ rs.id }}</strong></td>
+                                            <td>
+                                                {% for r in residents %}
+                                                    {% if r.id == rs.resident_id %}{{ r.name }}{% endif %}
+                                                {% endfor %}
+                                            </td>
+                                            <td>{{ rs.description or rs.service_name }}</td>
+                                            <td><strong>RD$ {{ "{:,.2f}".format(rs.amount) }}</strong></td>
+                                            <td>
+                                                {% if rs.frequency == 'monthly' %}Mensual
+                                                {% elif rs.frequency == 'bimonthly' %}Bimestral
+                                                {% elif rs.frequency == 'quarterly' %}Trimestral
+                                                {% elif rs.frequency == 'semiannual' %}Semestral
+                                                {% elif rs.frequency == 'annual' %}Anual
+                                                {% endif %}
+                                            </td>
+                                            <td>Día {{ rs.billing_day }}</td>
+                                            <td>{{ rs.start_date }}</td>
+                                            <td>
+                                                {% if rs.active %}
+                                                <span class="badge bg-success">‚úì Activa</span>
+                                                {% else %}
+                                                <span class="badge bg-secondary">‚è∏ Pausada</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm d-flex gap-1" role="group">
+                                                    <button type="button" class="btn btn-{{ 'warning' if rs.active else 'success' }} btn-sm" 
+                                                            onclick="toggleRecurring({{ rs.id }}, {{ rs.active }})" 
+                                                            title="{{ 'Pausar' if rs.active else 'Activar' }}">
+                                                        <i class="bi bi-{{ 'pause' if rs.active else 'play' }}-circle"></i> {{ 'Pausar' if rs.active else 'Activar' }}
+                                                    </button>
+                                                    <button type="button" class="btn btn-info btn-sm" 
+                                                            onclick="editRecurring({{ rs.id }})" 
+                                                            title="Editar Venta Recurrente">
+                                                        <i class="bi bi-pencil"></i> Editar
+                                                    </button>
+                                                    <button type="button" class="btn btn-danger btn-sm" 
+                                                            onclick="deleteRecurring({{ rs.id }})" 
+                                                            title="Eliminar">
+                                                        <i class="bi bi-trash"></i> Eliminar
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="9" class="text-center text-muted py-4">
+                                                <i class="bi bi-inbox"></i> No hay ventas recurrentes configuradas
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Pago Parcial -->
+<div class="modal fade" id="partialPaymentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">≥ Registrar Pago</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="partialPaymentForm" action="" onsubmit="return validatePartialPaymentModal()">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="modal-body">
+                    
+                    <div class="alert alert-info">
+                        <strong>Monto Pendiente:</strong> RD$ <span id="payment_pending">0.00</span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Método de Pago *</label>
+                        <select name="method" id="payment_method" class="form-select" required onchange="toggleReceivedAmountField()">
+                            <option value="transferencia" selected>Transferencia</option>
+                            <option value="efectivo">Efectivo</option>
+                            <option value="cheque">Cheque</option>
+                            <option value="tarjeta">Tarjeta</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3" id="received_amount_container">
+                        <label class="form-label">Cantidad Recibida *</label>
+                        <input type="number" name="received_amount" id="payment_received_amount" class="form-control" 
+                               step="0.01" min="0.01" required onkeyup="updatePendingDisplayModal()" autocomplete="off">
+                        <small class="text-muted" id="received_amount_hint">Ingrese el monto recibido del cliente (pago parcial o total)</small>
+                    </div>
+
+                    <!-- Mostrar cambio a devolver (solo efectivo) -->
+                    <div class="alert alert-success" id="change_alert_modal" style="display: none;">
+                        <strong><i class="bi bi-arrow-return-left"></i> Cambio a devolver:</strong> 
+                        <span class="fs-5">RD$ <span id="change_amount_modal">0.00</span></span>
+                    </div>
+
+                    <!-- Mostrar saldo pendiente si aplica -->
+                    <div class="alert alert-warning" id="pending_alert_modal" style="display: none;">
+                        <strong><i class="bi bi-exclamation-triangle"></i> Saldo pendiente:</strong> 
+                        <span class="fs-5">RD$ <span id="pending_amount_modal">0.00</span></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="send_notifications" name="send_notifications" value="true" checked>
+                            <label class="form-check-label" for="send_notifications">
+                                <i class="bi bi-envelope"></i> Enviar comprobante por email
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="include_statement" name="include_statement" value="true">
+                            <label class="form-check-label" for="include_statement">
+                                <i class="bi bi-file-earmark-text"></i> Adjuntar estado de cuenta del cliente
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success">Registrar Pago</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// CSRF token for AJAX requests
+const CSRF_TOKEN = "{{ csrf_token() }}";
+// Set the action of the partial payment form dynamically when opening the modal
+function partialPayment(invoiceId, pendingAmount) {
+    const modal = new bootstrap.Modal(document.getElementById('partialPaymentModal'));
+    const form = document.getElementById('partialPaymentForm');
+    // Set the correct action for the form
+    form.action = '/facturacion/partial-payment/' + invoiceId;
+    // Set the pending amount display
+    document.getElementById('payment_pending').textContent = pendingAmount.toLocaleString('es-DO', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    // Reset received amount field
+    document.getElementById('payment_received_amount').value = '';
+    // Hide alerts
+    document.getElementById('change_alert_modal').style.display = 'none';
+    document.getElementById('pending_alert_modal').style.display = 'none';
+    // Show the modal
+    modal.show();
+}
+function loadResidentInfo() {
+    const select = document.getElementById('resident_id');
+    const option = select.options[select.selectedIndex];
+    document.getElementById('notify_email').value = option.dataset.email || '';
+    document.getElementById('notify_phone').value = option.dataset.phone || '';
+}
+
+function loadServiceInfo(selectElement) {
+    const option = selectElement.options[selectElement.selectedIndex];
+    const price = parseFloat(option.dataset.price) || 0;
+    const row = selectElement.closest('.service-line');
+    const amountInput = row.querySelector('.amount-input');
+    // Formatear precio con $ y comas
+    amountInput.value = '$' + price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    calculateTotal();
+}
+
+function formatPrice(input) {
+    // Remover todo excepto números y punto decimal
+    let value = input.value.replace(/[^\d.]/g, '');
+    
+    // Asegurar solo un punto decimal
+    const parts = value.split('.');
+    if (parts.length > 2) {
+        value = parts[0] + '.' + parts.slice(1).join('');
+    }
+    
+    // Convertir a número
+    const num = parseFloat(value) || 0;
+    
+    // Formatear con símbolo $, coma para miles y 2 decimales
+    input.value = '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function calculateTotal() {
+    let total = 0;
+    document.querySelectorAll('.service-line').forEach(line => {
+        const quantity = parseFloat(line.querySelector('.quantity-input').value) || 0;
+        // Remover $ y comas para calcular
+        const amountStr = line.querySelector('.amount-input').value.replace(/[^\d.]/g, '');
+        const amount = parseFloat(amountStr) || 0;
+        total += quantity * amount;
+    });
+    // Formatear con $ y coma para miles y punto para decimales: $1,000.00
+    const formatted = '$' + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById('total-amount').textContent = formatted;
+}
+
+function addServiceLine() {
+    const container = document.getElementById('service-lines');
+    const firstLine = container.querySelector('.service-line');
+    const newLine = firstLine.cloneNode(true);
+    
+    // Limpiar valores
+    newLine.querySelectorAll('input, select').forEach(input => {
+        if (input.classList.contains('quantity-input')) {
+            input.value = 1;
+        } else if (input.classList.contains('amount-input')) {
+            input.value = '$0.00';
+        } else if (input.tagName === 'SELECT') {
+            input.selectedIndex = 0;
+        } else {
+            input.value = '';
+        }
+    });
+    
+    container.appendChild(newLine);
+    calculateTotal();
+}
+
+function removeLine(button) {
+    const container = document.getElementById('service-lines');
+    if (container.querySelectorAll('.service-line').length > 1) {
+        button.closest('.service-line').remove();
+        calculateTotal();
+    } else {
+        alert('Debe mantener al menos una línea de servicio');
+    }
+}
+
+function reprintInvoice(id) {
+    if (confirm('¿Reimprimir factura #' + id + '?')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/facturacion/reprint/' + id;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function resendInvoice(id) {
+    const message = ' ¿Desea reenviar la factura #' + id + ' por email?\n\n' +
+                    'Se enviará al correo registrado del cliente.\n' +
+                    'Si tiene WhatsApp configurado, también puede enviarse por ahí.';
+    
+    if (confirm(message)) {
+        // Mostrar indicador de carga
+        const loadingToast = document.createElement('div');
+        loadingToast.className = 'toast align-items-center text-bg-info border-0 position-fixed bottom-0 end-0 m-3';
+        loadingToast.style.zIndex = '9999';
+        loadingToast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-send"></i> Enviando factura #${id}...
+                </div>
+            </div>
+        `;
+        document.body.appendChild(loadingToast);
+        const toast = new bootstrap.Toast(loadingToast);
+        toast.show();
+        
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/facturacion/resend/' + id;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+let currentPendingAmountModal = 0;
+
+function partialPayment(invoiceId, pendingAmount) {
+    currentPendingAmountModal = pendingAmount;
+    
+    // Establecer la acción del formulario
+    const form = document.getElementById('partialPaymentForm');
+    form.action = '/facturacion/partial-payment/' + invoiceId;
+    
+    document.getElementById('payment_pending').textContent = pendingAmount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('payment_received_amount').value = '';
+    document.getElementById('payment_method').value = 'transferencia';
+    document.getElementById('pending_alert_modal').style.display = 'none';
+    document.getElementById('change_alert_modal').style.display = 'none';
+    document.getElementById('send_notifications').checked = true;
+    document.getElementById('include_statement').checked = false;
+    
+    new bootstrap.Modal(document.getElementById('partialPaymentModal')).show();
+}
+
+function toggleReceivedAmountField() {
+    const method = document.getElementById('payment_method').value;
+    const hint = document.getElementById('received_amount_hint');
+    
+    if (method === 'efectivo') {
+        hint.textContent = 'Puede ingresar un monto mayor para calcular el cambio a devolver';
+    } else {
+        hint.textContent = 'Ingrese el monto recibido del cliente (pago parcial o total)';
+        // Limpiar alertas
+        document.getElementById('change_alert_modal').style.display = 'none';
+    }
+    updatePendingDisplayModal();
+}
+
+function updatePendingDisplayModal() {
+    const received = parseFloat(document.getElementById('payment_received_amount').value) || 0;
+    const method = document.getElementById('payment_method').value;
+    const diff = received - currentPendingAmountModal;
+    
+    const pendingAlert = document.getElementById('pending_alert_modal');
+    const pendingAmount = document.getElementById('pending_amount_modal');
+    const changeAlert = document.getElementById('change_alert_modal');
+    const changeAmount = document.getElementById('change_amount_modal');
+    
+    // Ocultar ambas alertas primero
+    pendingAlert.style.display = 'none';
+    changeAlert.style.display = 'none';
+    
+    if (received > 0) {
+        if (diff > 0 && method === 'efectivo') {
+            // Cambio a devolver (solo efectivo)
+            changeAmount.textContent = diff.toFixed(2);
+            changeAlert.style.display = 'block';
+        } else if (diff < 0) {
+            // Saldo pendiente (cualquier método)
+            pendingAmount.textContent = Math.abs(diff).toFixed(2);
+            pendingAlert.style.display = 'block';
+        }
+    }
+}
+
+function editInvoice(id) {
+    window.location.href = '/facturacion/edit/' + id;
+}
+
+function validatePartialPaymentModal() {
+    const input = document.getElementById('payment_received_amount');
+    const method = document.getElementById('payment_method').value;
+    let received = input.value;
+    
+    if (!received || isNaN(received) || parseFloat(received) <= 0) {
+        alert('La cantidad recibida debe ser mayor a cero');
+        input.focus();
+        return false;
+    }
+    
+    // Solo en efectivo se permite cantidad mayor (para calcular cambio)
+    if (method !== 'efectivo' && parseFloat(received) > currentPendingAmountModal) {
+        alert(`La cantidad recibida no puede ser mayor al saldo pendiente (RD$${currentPendingAmountModal.toFixed(2)})`);
+        input.focus();
+        return false;
+    }
+    
+    // Forzar el valor en el input antes de enviar
+    input.value = received.trim();
+    return true;
+}
+
+function duplicateInvoice(id) {
+    if (confirm('¿Desea crear una copia de esta factura? Podrá revisarla antes de guardar.')) {
+        fetch('/facturacion/duplicate/' + id, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN, 'X-Requested-With': 'XMLHttpRequest'},
+            credentials: 'same-origin'
+        }).then(response => {
+            const ct = response.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                return response.text().then(t => { throw new Error('Respuesta no JSON: ' + t); });
+            }
+            return response.json();
+        }).then(data => {
+            if (data.success) {
+                // Mostrar formulario de crear factura
+                toggleCreateForm();
+                
+                // Pre-llenar con los datos de la factura duplicada
+                const invoiceData = data.invoice;
+                
+                // Seleccionar el residente
+                const residentSelect = document.getElementById('resident_id');
+                if (residentSelect && invoiceData.unit_id) {
+                    residentSelect.value = invoiceData.unit_id;
+                    residentSelect.dispatchEvent(new Event('change'));
+                }
+                
+                // Llenar descripción - agregar al primer campo de descripción de línea
+                const descFields = document.querySelectorAll('input[name="line_description[]"]');
+                if (descFields.length > 0 && invoiceData.description) {
+                    descFields[0].value = invoiceData.description;
+                }
+                
+                // Llenar monto en el primer campo de monto
+                const amountFields = document.querySelectorAll('input[name="amount[]"]');
+                if (amountFields.length > 0 && invoiceData.amount) {
+                    amountFields[0].value = invoiceData.amount;
+                }
+                
+                // Scroll al formulario
+                document.getElementById('createInvoiceForm').scrollIntoView({ behavior: 'smooth' });
+                
+                // Mensaje informativo
+                alert('Datos cargados. Revise y modifique si es necesario, luego haga clic en "Crear Factura"');
+            } else {
+                alert('Error: ' + data.error);
+            }
+        }).catch(error => {
+            alert('Error al duplicar factura: ' + (error.message || error));
+        });
+    }
+}
+
+function deleteInvoice(id) {
+    const message = '‚ö†Ô∏è ¿Está seguro de eliminar la factura #' + id + '?\n\n' +
+                    'Esta acción NO se puede deshacer.\n' +
+                    'Se eliminarán todos los registros asociados a esta factura.';
+    
+    if (confirm(message)) {
+        const confirmAgain = confirm('‚ö†Ô∏è CONFIRME NUEVAMENTE: ¿Eliminar factura #' + id + '?');
+        if (confirmAgain) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/facturacion/delete/' + id;
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+}
+
+// Función para filtrar tablas
+function filterTable(tableId, inputId) {
+    const input = document.getElementById(inputId);
+    const filter = input.value.toLowerCase();
+    const table = document.getElementById(tableId);
+    const rows = table.getElementsByTagName('tr');
+
+    for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        const text = row.textContent.toLowerCase();
+        
+        if (text.includes(filter)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    }
+}
+
+// Funciones para ventas recurrentes
+function toggleRecurring(id, currentState) {
+    if (confirm(currentState ? '¿Pausar esta venta recurrente?' : '¿Activar esta venta recurrente?')) {
+        fetch('/facturacion/recurring/toggle/' + id, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN, 'X-Requested-With': 'XMLHttpRequest'},
+            credentials: 'same-origin'
+        }).then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('Error al cambiar estado');
+            }
+        });
+    }
+}
+
+function generateInvoiceNow(id) {
+    if (confirm('¿Generar factura ahora para esta venta recurrente?')) {
+        fetch('/facturacion/recurring/generate/' + id, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN, 'X-Requested-With': 'XMLHttpRequest'},
+            credentials: 'same-origin'
+        }).then(response => {
+            if (response.ok) {
+                alert('Factura generada exitosamente');
+                location.reload();
+            } else {
+                alert('Error al generar factura');
+            }
+        });
+    }
+}
+
+function deleteRecurring(id) {
+    if (confirm('¿Está seguro de eliminar esta venta recurrente? Esta acción no se puede deshacer.')) {
+        fetch('/facturacion/recurring/delete/' + id, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN, 'X-Requested-With': 'XMLHttpRequest'},
+            credentials: 'same-origin'
+        }).then(response => {
+            if (response.ok) {
+                alert('Venta recurrente eliminada');
+                location.reload();
+            } else {
+                alert('Error al eliminar');
+            }
+        });
+    }
+}
+
+function editRecurring(id) {
+    alert('La funcionalidad de editar ventas recurrentes estará disponible próximamente.\n\n' +
+          'Por ahora, puede pausar, eliminar y crear una nueva.');
+}
+
+// Funciones para mostrar/ocultar secciones
+function toggleCreateForm() {
+    const form = document.getElementById('createInvoiceForm');
+    const history = document.getElementById('invoiceHistory');
+    const help = document.getElementById('helpBanner');
+    const paymentHistory = document.getElementById('paymentHistorySection');
+    
+    if (form.style.display === 'none') {
+        form.style.display = 'block';
+        history.style.display = 'none';
+        help.style.display = 'none';
+        if (paymentHistory) paymentHistory.style.display = 'none';
+        // Scroll suave al formulario
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+        form.style.display = 'none';
+    }
+}
+
+function toggleHistory() {
+    const history = document.getElementById('invoiceHistory');
+    const form = document.getElementById('createInvoiceForm');
+    const help = document.getElementById('helpBanner');
+    const paymentHistory = document.getElementById('paymentHistorySection');
+    
+    if (history.style.display === 'none') {
+        history.style.display = 'block';
+        form.style.display = 'none';
+        help.style.display = 'none';
+        if (paymentHistory) paymentHistory.style.display = 'none';
+        // Mostrar solo facturas pendientes por defecto
+        showOnlyPending();
+        // Scroll suave al historial
+        history.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+        history.style.display = 'none';
+    }
+}
+
+function togglePaymentHistory() {
+    const paymentHistory = document.getElementById('paymentHistorySection');
+    const form = document.getElementById('createInvoiceForm');
+    const invoiceHistory = document.getElementById('invoiceHistory');
+    const help = document.getElementById('helpBanner');
+    
+    if (paymentHistory) {
+        if (paymentHistory.style.display === 'none') {
+            paymentHistory.style.display = 'block';
+            if (form) form.style.display = 'none';
+            if (invoiceHistory) invoiceHistory.style.display = 'none';
+            if (help) help.style.display = 'none';
+            // Scroll suave
+            paymentHistory.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+            paymentHistory.style.display = 'none';
+        }
+    }
+}
+
+// Función para mostrar solo facturas pendientes al abrir el historial
+function showOnlyPending() {
+    const table = document.querySelector('#invoicesTable tbody');
+    const rows = table.getElementsByTagName('tr');
+    
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const pendingAmount = parseFloat(row.getAttribute('data-pending')) || 0;
+        
+        // Mostrar solo si tiene saldo pendiente
+        if (pendingAmount > 0) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    }
+}
+
+// Funciones de filtrado
+function filterInvoices() {
+    const searchTerm = document.getElementById('searchInvoices').value.toLowerCase();
+    const statusFilter = document.getElementById('filterStatus').value;
+    const dateFrom = document.getElementById('filterDateFrom').value;
+    const dateTo = document.getElementById('filterDateTo').value;
+    
+    const table = document.querySelector('#invoicesTable tbody');
+    const rows = table.getElementsByTagName('tr');
+    
+    // Si no hay ning∫n filtro activo, mostrar solo pendientes
+    const hasFilters = searchTerm || statusFilter || dateFrom || dateTo;
+    
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const pendingAmount = parseFloat(row.getAttribute('data-pending')) || 0;
+        let showRow = true;
+        
+        // Si no hay filtros, mostrar solo pendientes
+        if (!hasFilters) {
+            showRow = pendingAmount > 0;
+        } else {
+            // Filtro de texto (cliente o n∫mero)
+            if (searchTerm) {
+                const text = row.textContent.toLowerCase();
+                if (!text.includes(searchTerm)) {
+                    showRow = false;
+                }
+            }
+            
+            // Filtro de estado
+            if (statusFilter && showRow) {
+                const pendingCell = row.cells[6]; // Columna de pendiente
+                if (pendingCell) {
+                    const pending = parseFloat(pendingCell.textContent.replace(/[^0-9.]/g, '')) || 0;
+                    
+                    if (statusFilter === 'paid' && pending > 0) {
+                        showRow = false;
+                    } else if (statusFilter === 'unpaid' && pending <= 0) {
+                        showRow = false;
+                    } else if (statusFilter === 'partial') {
+                        const paidCell = row.cells[5]; // Columna de pagado
+                        const paid = parseFloat(paidCell.textContent.replace(/[^0-9.]/g, '')) || 0;
+                        if (paid <= 0 || pending <= 0) {
+                            showRow = false;
+                        }
+                    }
+                }
+            }
+            
+            // Filtro de fecha
+            if ((dateFrom || dateTo) && showRow) {
+                const dateCell = row.cells[7]; // Columna de fecha (ajustado por la nueva columna de apartamento)
+                if (dateCell) {
+                    const dateText = dateCell.textContent.trim();
+                    // Convertir fecha DD/MM/YYYY a formato comparable
+                    const dateParts = dateText.split('/');
+                    if (dateParts.length === 3) {
+                        const rowDate = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
+                        
+                        if (dateFrom && rowDate < dateFrom) {
+                            showRow = false;
+                        }
+                        if (dateTo && rowDate > dateTo) {
+                            showRow = false;
+                        }
+                    }
+                }
+            }
+        }
+        
+        row.style.display = showRow ? '' : 'none';
+    }
+}
+
+function clearFilters() {
+    document.getElementById('searchInvoices').value = '';
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterDateFrom').value = '';
+    document.getElementById('filterDateTo').value = '';
+    filterInvoices();
+}
+
+// Inicializar tooltips de Bootstrap
+document.addEventListener('DOMContentLoaded', function() {
+    calculateTotal();
+    
+    // Agregar listener al formulario para limpiar formato de precios antes de enviar
+    const invoiceForm = document.getElementById('invoiceForm');
+    if (invoiceForm) {
+        invoiceForm.addEventListener('submit', function(e) {
+            // Limpiar formato de todos los inputs de precio
+            document.querySelectorAll('.amount-input').forEach(input => {
+                // Remover $ y comas, dejar solo números y punto decimal
+                input.value = input.value.replace(/[^\d.]/g, '');
+            });
+        });
+    }
+});
+</script>
+{% endblock %}
+

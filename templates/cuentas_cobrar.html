@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Cuentas por Cobrar - Xpack{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-clock-history"></i> Cuentas por Cobrar</h1>
+</div>
+
+<!-- Summary -->
+{% set total_receivable = namespace(val=0) %}
+{% for inv in invoices if not inv.paid %}
+    {% set total_receivable.val = total_receivable.val + (inv.amount or 0) - (invoice_paid_amounts.get(inv.id, 0)) %}
+{% endfor %}
+
+<div class="row g-3 mb-4">
+    <div class="col-6">
+        <div class="card stat-card">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="stat-icon" style="background: rgba(239,68,68,0.1); color: var(--danger);">
+                    <i class="bi bi-exclamation-circle"></i>
+                </div>
+                <div>
+                    <div class="stat-value" style="color: var(--danger);">RD$ {{ "{:,.2f}".format(total_receivable.val) }}</div>
+                    <div class="stat-label">Total Pendiente</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6">
+        <div class="card stat-card">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="stat-icon" style="background: rgba(245,158,11,0.1); color: var(--warning);">
+                    <i class="bi bi-clock"></i>
+                </div>
+                <div>
+                    {% set pending_count = namespace(val=0) %}
+                    {% for inv in invoices if not inv.paid %}{% set pending_count.val = pending_count.val + 1 %}{% endfor %}
+                    <div class="stat-value">{{ pending_count.val }}</div>
+                    <div class="stat-label">Facturas Pendientes</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% set has_pending = namespace(val=False) %}
+        {% for inv in invoices if not inv.paid %}{% set has_pending.val = True %}{% endfor %}
+        
+        {% if has_pending.val %}
+        <div class="data-table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Cliente</th>
+                        <th>Apto</th>
+                        <th>Monto</th>
+                        <th>Pagado</th>
+                        <th>Pendiente</th>
+                        <th>Fecha</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inv in invoices if not inv.paid %}
+                    {% set paid_amt = invoice_paid_amounts.get(inv.id, 0) %}
+                    {% set remaining = (inv.amount or 0) - paid_amt %}
+                    <tr>
+                        <td data-label="#"><strong>#{{ inv.id }}</strong></td>
+                        <td data-label="Cliente">
+                            {% for apt in apartments if apt.id == inv.unit_id %}
+                                {{ apt.resident_name or 'N/A' }}
+                            {% else %}
+                                N/A
+                            {% endfor %}
+                        </td>
+                        <td data-label="Apto">
+                            {% for apt in apartments if apt.id == inv.unit_id %}
+                                {{ apt.number }}
+                            {% else %}
+                                -
+                            {% endfor %}
+                        </td>
+                        <td data-label="Monto" style="font-weight: 600;">RD$ {{ "{:,.2f}".format(inv.amount or 0) }}</td>
+                        <td data-label="Pagado" style="color: var(--success);">RD$ {{ "{:,.2f}".format(paid_amt) }}</td>
+                        <td data-label="Pendiente" style="font-weight: 700; color: var(--danger);">RD$ {{ "{:,.2f}".format(remaining) }}</td>
+                        <td data-label="Fecha"><small>{{ inv.issued_date or '-' }}</small></td>
+                        <td data-label="Acción">
+                            <a href="{{ url_for('billing.register_payment') }}" class="btn btn-sm btn-success">
+                                <i class="bi bi-cash-coin"></i> Pagar
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-check-circle" style="color: var(--success);"></i>
+            <p>No hay cuentas pendientes de cobro</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

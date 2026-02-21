@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Usuario - Xpack{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-person-gear"></i> Editar Usuario</h1>
+    <a href="{{ url_for('auth.list_users') }}" class="btn" style="background:var(--bg-secondary);color:var(--text);border-radius:10px;padding:0.5rem 1rem;">
+        <i class="bi bi-arrow-left"></i> Volver
+    </a>
+</div>
+
+<div class="card" style="max-width: 550px;">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('auth.edit_user', user_id=user.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+            <div style="margin-bottom:1.25rem;">
+                <label class="wizard-step-label">Usuario</label>
+                <input type="text" class="wizard-input" value="{{ user.username }}" disabled style="opacity:0.6;">
+                <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem;">No se puede cambiar</div>
+            </div>
+
+            <div style="margin-bottom:1.25rem;">
+                <label class="wizard-step-label">Nombre Completo</label>
+                <input type="text" name="full_name" class="wizard-input" value="{{ user.full_name or '' }}" placeholder="Nombre completo">
+            </div>
+
+            <div style="margin-bottom:1.25rem;">
+                <label class="wizard-step-label">Email</label>
+                <input type="email" name="email" class="wizard-input" value="{{ user.email }}" required>
+            </div>
+
+            <div style="margin-bottom:1.5rem;">
+                <label class="wizard-step-label">Rol</label>
+                <select name="role" class="wizard-select" required>
+                    <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Administrador</option>
+                    <option value="operator" {% if user.role == 'operator' %}selected{% endif %}>Operador</option>
+                    <option value="resident" {% if user.role == 'resident' %}selected{% endif %}>Residente</option>
+                </select>
+            </div>
+
+            <div style="display:flex;gap:0.75rem;">
+                <button type="submit" class="btn btn-primary" style="flex:1;">
+                    <i class="bi bi-check-lg"></i> Guardar
+                </button>
+                {% if user.role != 'admin' %}
+                <a href="{{ url_for('auth.manage_user_permissions', user_id=user.id) }}" class="btn" style="background:#f59e0b;color:white;border-radius:10px;flex:1;display:flex;align-items:center;justify-content:center;gap:0.5rem;text-decoration:none;">
+                    <i class="bi bi-shield-lock"></i> Permisos
+                </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

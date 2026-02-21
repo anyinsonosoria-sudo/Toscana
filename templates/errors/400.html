@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Error 400 - Solicitud Incorrecta{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+            <i class="bi bi-exclamation-triangle text-warning" style="font-size: 5rem;"></i>
+            <h1 class="display-4 mt-3">400</h1>
+            <h2>Solicitud Incorrecta</h2>
+            <p class="lead mt-3">
+                La solicitud no pudo ser procesada debido a datos inválidos o incompletos.
+            </p>
+            <p class="text-muted">
+                Por favor verifica que todos los campos requeridos estén completos y vuelve a intentarlo.
+            </p>
+            <div class="mt-4">
+                <a href="{{ url_for('settings.view') }}" class="btn btn-primary">
+                    <i class="bi bi-arrow-left"></i> Volver a Configuración
+                </a>
+                <a href="/" class="btn btn-outline-secondary">
+                    <i class="bi bi-house"></i> Ir al Inicio
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

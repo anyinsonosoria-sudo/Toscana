@@ -1,0 +1,64 @@
+================================================================================
+FIX FOR OCR FILE UPLOAD ISSUE
+================================================================================
+
+ISSUE REPORTED:
+- User installed Tesseract OCR successfully
+- "Cargar Recibo (OCR)" button appears
+- But file upload doesn't work / won't let user select file
+
+ROOT CAUSE IDENTIFIED:
+The JavaScript code was attempting to copy files between file inputs using:
+    receiptFileHidden.files = receiptFileInput.files;
+
+This is INVALID because the "files" attribute of file input elements is READ-ONLY
+for security reasons. This error would have caused JavaScript to fail silently.
+
+SOLUTION APPLIED:
+1. Removed the problematic line that tried to copy files between inputs
+2. Removed the hidden file input element (receiptFileHidden) - not needed
+3. Removed the variable declaration for receiptFileHidden
+4. The file is now sent directly via FormData in the fetch() call
+
+WHAT TO DO NOW:
+1. Reload the Flask application (Ctrl+C to stop, then run it again)
+2. Open the application in your browser
+3. Click the "Cargar Recibo (OCR)" button
+4. Try uploading a receipt image
+5. Verify the image preview appears
+6. Click "Procesar con OCR"
+7. Wait for extraction (1-2 seconds)
+8. Review the extracted data
+9. Click "Guardar Gasto" to save
+
+TESTING CHECKLIST:
+☐ File input dialog opens when clicking input area
+☐ Selected image displays in preview
+☐ "Procesar con OCR" button processes without errors
+☐ Step 2 displays with extracted data
+☐ Modal shows confidence level
+☐ Gasto appears in list after saving
+☐ Receipt image saved to static/uploads/
+
+TECHNICAL DETAILS:
+- File transmission method: FormData (native JavaScript API)
+- Route: POST /gastos/upload-recibo
+- Response format: JSON with success flag, extracted data, and confidence score
+- Backend validates file type, processes with Tesseract, returns results
+- Second route: POST /gastos/save-with-receipt saves the expense with image path
+
+FILES MODIFIED:
+- templates/gastos.html (removed 4 lines, cleaned up JavaScript variables)
+
+NO CHANGES NEEDED TO:
+- app.py (routes are correct)
+- ocr_processing.py (OCR engine is correct)
+- Any other files
+
+If you still have issues:
+1. Check browser console (F12) for JavaScript errors
+2. Check Flask console for backend errors
+3. Verify Tesseract installation: run test_ocr.py
+4. Check that static/uploads/ directory exists
+
+================================================================================

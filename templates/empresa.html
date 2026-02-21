@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block title %}Información de la Empresa - Building Maintenance{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3"><i class="bi bi-building-gear"></i> Información de la Empresa/Administrador</h1>
+    {% if company %}
+        <span class="badge bg-success">Configurada</span>
+    {% else %}
+        <span class="badge bg-warning text-dark">Sin configurar</span>
+    {% endif %}
+</div>
+
+<div class="row">
+    <div class="col-lg-10">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Datos del Administrador de Cobros y Pagos</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-4">
+                    Esta información se utiliza para identificar al administrador/empresa que gestiona los cobros y pagos del edificio.
+                    Los datos aparecerán en facturas, recibos y documentos oficiales.
+                </p>
+
+                <form method="POST" action="{{ url_for('company.update') }}" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="row">
+                        <!-- Información Básica -->
+                        <div class="col-md-12 mb-4">
+                            <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-person-badge"></i> Información Básica</h6>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nombre de la Empresa/Administrador *</label>
+                            <input type="text" class="form-control" name="name" 
+                                   value="{{ company.name if company else '' }}" required 
+                                   placeholder="Ej: Administradora XYZ Ltda.">
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">RUT/ID Legal</label>
+                            <input type="text" class="form-control" name="legal_id" 
+                                   value="{{ company.legal_id if company else '' }}" 
+                                   placeholder="Ej: 12.345.678-9">
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">ID Tributario (Tax ID)</label>
+                            <input type="text" class="form-control" name="tax_id" 
+                                   value="{{ company.tax_id if company else '' }}" 
+                                   placeholder="Ej: RFC, NIT, etc.">
+                        </div>
+
+                        <!-- Dirección -->
+                        <div class="col-md-12 mb-4 mt-3">
+                            <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-geo-alt"></i> Dirección</h6>
+                        </div>
+
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Dirección</label>
+                            <input type="text" class="form-control" name="address" 
+                                   value="{{ company.address if company else '' }}" 
+                                   placeholder="Calle, número, depto, etc.">
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Ciudad</label>
+                            <input type="text" class="form-control" name="city" 
+                                   value="{{ company.city if company else '' }}" 
+                                   placeholder="Ej: Santiago">
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">País</label>
+                            <input type="text" class="form-control" name="country" 
+                                   value="{{ company.country if company else '' }}" 
+                                   placeholder="Ej: Chile">
+                        </div>
+
+                        <!-- Contacto -->
+                        <div class="col-md-12 mb-4 mt-3">
+                            <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-telephone"></i> Contacto</h6>
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" class="form-control" name="phone" 
+                                   value="{{ company.phone if company else '' }}" 
+                                   placeholder="+56 9 1234 5678">
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" name="email" 
+                                   value="{{ company.email if company else '' }}" 
+                                   placeholder="admin@empresa.cl">
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Sitio Web</label>
+                            <input type="text" class="form-control" name="website" 
+                                   value="{{ company.website if company else '' }}" 
+                                   placeholder="www.empresa.cl">
+                        </div>
+
+                        <!-- Datos Bancarios -->
+                        <div class="col-md-12 mb-4 mt-3">
+                            <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-bank"></i> Información Bancaria</h6>
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Nombre del Banco</label>
+                            <input type="text" class="form-control" name="bank_name" 
+                                   value="{{ company.bank_name if company else '' }}" 
+                                   placeholder="Ej: Banco Estado">
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Número de Cuenta</label>
+                            <input type="text" class="form-control" name="bank_account" 
+                                   value="{{ company.bank_account if company else '' }}" 
+                                   placeholder="123456789">
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Código de Ruta/Swift</label>
+                            <input type="text" class="form-control" name="bank_routing" 
+                                   value="{{ company.bank_routing if company else '' }}" 
+                                   placeholder="SWIFT/BIC/Routing">
+                        </div>
+
+                        <!-- Adicional -->
+                        <div class="col-md-12 mb-4 mt-3">
+                            <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-file-text"></i> Adicional</h6>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Logo de la Empresa (JPG/PNG)</label>
+                            <input type="file" class="form-control" name="logo_file" accept=".jpg,.jpeg,.png">
+                            <small class="text-muted">Tamaño máximo: 5 MB. Formatos: JPG, JPEG, PNG</small>
+                            {% if company and company.logo_path %}
+                            <div class="mt-2 d-flex align-items-center gap-2">
+                                <img src="{{ url_for('static', filename='uploads/' + company.logo_path) }}" 
+                                     alt="Logo actual" class="img-thumbnail" style="max-height: 80px;">
+                                <div>
+                                    <small class="d-block text-muted">Logo actual: {{ company.logo_path }}</small>
+                                    <form method="POST" action="{{ url_for('company.delete_logo') }}" class="d-inline" 
+                                          onsubmit="return confirm('¿Estás seguro de eliminar el logo?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger mt-1">
+                                            <i class="bi bi-trash"></i> Eliminar logo
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Notas Adicionales</label>
+                            <textarea class="form-control" name="notes" rows="3" 
+                                      placeholder="Información adicional que desees guardar...">{{ company.notes if company else '' }}</textarea>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Guardar Información
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Preview Card -->
+        {% if company and company.name %}
+        <div class="card mt-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="bi bi-eye"></i> Vista Previa</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        {% if company.logo_path %}
+                        <div class="mb-3">
+                            <img src="{{ url_for('static', filename='uploads/' + company.logo_path) }}" 
+                                 alt="Logo {{ company.name }}" class="img-thumbnail" style="max-height: 100px;">
+                        </div>
+                        {% endif %}
+                        <h5>{{ company.name }}</h5>
+                        {% if company.legal_id %}
+                            <p class="mb-1"><strong>RUT/ID:</strong> {{ company.legal_id }}</p>
+                        {% endif %}
+                        {% if company.tax_id %}
+                            <p class="mb-1"><strong>Tax ID:</strong> {{ company.tax_id }}</p>
+                        {% endif %}
+                        {% if company.address %}
+                            <p class="mb-1"><i class="bi bi-geo-alt"></i> {{ company.address }}</p>
+                        {% endif %}
+                        {% if company.city or company.country %}
+                            <p class="mb-1">{{ company.city or '' }}{% if company.city and company.country %}, {% endif %}{{ company.country or '' }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        {% if company.phone %}
+                            <p class="mb-1"><i class="bi bi-telephone"></i> {{ company.phone }}</p>
+                        {% endif %}
+                        {% if company.email %}
+                            <p class="mb-1"><i class="bi bi-envelope"></i> {{ company.email }}</p>
+                        {% endif %}
+                        {% if company.website %}
+                            <p class="mb-1"><i class="bi bi-globe"></i> {{ company.website }}</p>
+                        {% endif %}
+                        {% if company.bank_name or company.bank_account %}
+                            <hr>
+                            <p class="mb-1"><strong>Cuenta Bancaria:</strong></p>
+                            {% if company.bank_name %}
+                                <p class="mb-1">{{ company.bank_name }}</p>
+                            {% endif %}
+                            {% if company.bank_account %}
+                                <p class="mb-1">Cuenta: {{ company.bank_account }}</p>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Help Sidebar -->
+    <div class="col-lg-2">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title"><i class="bi bi-lightbulb"></i> Ayuda</h6>
+                <p class="small text-muted mb-2">
+                    Esta información se usará en:
+                </p>
+                <ul class="small text-muted ps-3">
+                    <li>Facturas emitidas</li>
+                    <li>Recibos de pago</li>
+                    <li>Documentos oficiales</li>
+                    <li>Notificaciones</li>
+                </ul>
+                <hr>
+                <p class="small text-muted mb-0">
+                    <strong>Tip:</strong> Mantén actualizada esta información para que tus documentos sean profesionales.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

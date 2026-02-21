@@ -1,0 +1,86 @@
+================================================================================
+SOLUCIÓN: ERROR DE TESSERACT NO DETECTADO
+================================================================================
+
+PROBLEMA:
+Error: "Tesseract OCR no disponible: Tesseract-OCR no está instalado"
+A pesar de que Tesseract ya estaba instalado en el sistema.
+
+ROOT CAUSE:
+Tesseract estaba instalado en una ruta no estándar:
+  C:\Users\anyinson.osoria\AppData\Local\Programs\Tesseract-OCR\
+
+Pero ocr_processing.py solo buscaba en las rutas estándar:
+  - C:\Program Files\Tesseract-OCR\
+  - C:\Program Files (x86)\Tesseract-OCR\
+
+SOLUCIÓN IMPLEMENTADA:
+
+1. ✅ Actualizado: ocr_processing.py (líneas 12-45)
+   - Ahora busca en 3 ubicaciones, incluyendo AppData
+   - Agrega automáticamente el PATH de Tesseract
+   - Maneja diferentes rutas de instalación
+
+2. ✅ Mejorado: Función check_tesseract_available() (líneas 299-348)
+   - Utiliza múltiples métodos de verificación:
+     a) Intenta pytesseract.get_tesseract_version()
+     b) Llamada directa a tesseract.exe con subprocess
+     c) Busca en PATH del sistema
+   - Más robusto y funciona con rutas personalizadas
+
+3. ✅ Creado: diagnose_tesseract.py
+   - Script de diagnóstico para encontrar y verificar Tesseract
+   - Identifica la ubicación exacta de Tesseract
+   - Verifica estado de dependencias Python (Pillow, pytesseract)
+   - Proporciona soluciones automáticas
+
+VERIFICACIÓN:
+✓ Tesseract encontrado en:
+  C:\Users\anyinson.osoria\AppData\Local\Programs\Tesseract-OCR\tesseract.exe
+
+✓ Versión: tesseract v5.5.0.20241111
+✓ Pillow (PIL): Instalado
+✓ pytesseract: Instalado
+✓ Configuración: Automática
+
+PRÓXIMOS PASOS:
+1. ✅ Flask reiniciado
+2. Actualizar la página en el navegador (Ctrl+Shift+R)
+3. Intentar cargar un recibo nuevamente
+4. El error debe desaparecer
+
+NOTA TÉCNICA:
+El código ahora es multiplataforma y maneja diferentes escenarios:
+- Rutas estándar de Program Files
+- Rutas personalizadas en AppData
+- Tesseract en PATH del sistema
+- Configuración manual de pytesseract_cmd
+
+ARCHIVOS MODIFICADOS:
+- ocr_processing.py: Ruta configuración + detección mejorada
+- diagnose_tesseract.py: Nuevo script de diagnóstico
+
+ARCHIVOS NO MODIFICADOS:
+- app.py: No necesita cambios
+- templates/gastos.html: Ya fue corregido anteriormente
+- Otros módulos: Sin cambios
+
+================================================================================
+PRÓXIMAS ACCIONES DEL USUARIO:
+================================================================================
+
+1. Refresca la página:
+   Presiona Ctrl+Shift+R en el navegador
+
+2. Prueba el OCR:
+   - Click en "Cargar Recibo (OCR)"
+   - Selecciona una foto de recibo
+   - Click en "Procesar con OCR"
+   - Verifica que aparezca la información extraída
+
+3. Si hay problemas:
+   - Ejecuta: python diagnose_tesseract.py
+   - Consulta QUICK_START.txt
+   - Revisa la consola de Flask para errores
+
+================================================================================

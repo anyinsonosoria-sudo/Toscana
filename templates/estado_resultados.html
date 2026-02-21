@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}Estado de Resultados - Xpack{% endblock %}
+
+{% block extra_css %}
+<style>
+    .statement-page { max-width: 900px; margin: 0 auto; }
+
+    .statement-paper {
+        background: var(--card-bg, #fff);
+        border: 1px solid var(--gray-200, #e5e7eb);
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    }
+
+    .statement-header {
+        background: linear-gradient(135deg, var(--primary, #4f46e5) 0%, #6366f1 100%);
+        color: #fff;
+        padding: 2rem 2.5rem;
+        text-align: center;
+    }
+    .statement-header .company-name { font-size: 1.5rem; font-weight: 800; letter-spacing: 0.02em; }
+    .statement-header .company-rnc { font-size: 0.85rem; opacity: 0.85; margin-top: 0.15rem; }
+    .statement-header .statement-title {
+        font-size: 1.1rem; font-weight: 600; text-transform: uppercase;
+        letter-spacing: 0.12em; margin-top: 1rem;
+        padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.25);
+    }
+    .statement-header .statement-period {
+        font-size: 0.88rem; opacity: 0.9; margin-top: 0.3rem;
+    }
+
+    .statement-body { padding: 2rem 2.5rem; }
+
+    .stmt-section { margin-bottom: 1.5rem; }
+    .stmt-section-title {
+        font-size: 0.82rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.1em; color: var(--primary, #4f46e5);
+        padding-bottom: 0.4rem; border-bottom: 2px solid var(--primary, #4f46e5);
+        margin-bottom: 0.6rem;
+    }
+
+    .stmt-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.45rem 0; font-size: 0.92rem;
+    }
+    .stmt-row.indent { padding-left: 1.5rem; }
+    .stmt-row.indent-2 { padding-left: 3rem; }
+    .stmt-row .label { color: var(--text-body, #374151); }
+    .stmt-row .amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    .stmt-subtotal {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.55rem 0; margin-top: 0.3rem;
+        border-top: 1px solid var(--gray-200, #e5e7eb);
+        font-weight: 700; font-size: 0.95rem;
+    }
+    .stmt-subtotal.indent { padding-left: 1.5rem; }
+
+    .stmt-total {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.75rem 1rem; margin-top: 0.5rem;
+        border-radius: 10px; font-weight: 800; font-size: 1.1rem;
+    }
+    .stmt-total.positive { background: rgba(16,185,129,0.08); color: var(--success, #10b981); }
+    .stmt-total.negative { background: rgba(239,68,68,0.08); color: var(--danger, #ef4444); }
+
+    .stmt-divider { border: none; border-top: 1px dashed var(--gray-200, #e5e7eb); margin: 1rem 0; }
+
+    .date-filter-bar {
+        display: flex; align-items: center; gap: 0.75rem;
+        flex-wrap: wrap; margin-bottom: 1.5rem;
+    }
+    .date-filter-bar input[type="date"] {
+        border: 1px solid var(--gray-200); border-radius: 8px;
+        padding: 0.4rem 0.75rem; font-size: 0.88rem;
+        background: var(--card-bg, #fff); color: var(--text-body);
+    }
+    .date-filter-bar .btn-filter {
+        background: var(--primary); color: #fff; border: none;
+        border-radius: 8px; padding: 0.4rem 1rem; font-size: 0.88rem;
+        font-weight: 600; cursor: pointer;
+    }
+    .date-filter-bar .btn-filter:hover { opacity: 0.9; }
+
+    .stmt-empty {
+        text-align: center; padding: 1rem 0;
+        color: var(--text-muted, #9ca3af); font-size: 0.9rem; font-style: italic;
+    }
+
+    @media print {
+        .sidebar, .mobile-header, .sidebar-backdrop, .page-header, .date-filter-bar, .btn-print { display: none !important; }
+        .main-content { margin: 0 !important; padding: 0 !important; }
+        .statement-paper { box-shadow: none; border: none; }
+    }
+    @media (max-width: 768px) {
+        .statement-body { padding: 1.2rem 1rem; }
+        .statement-header { padding: 1.5rem 1rem; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-file-earmark-bar-graph"></i> Estado de Resultados</h1>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('accounting.list') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> Contabilidad
+        </a>
+        <button class="btn btn-sm btn-primary btn-print" onclick="window.print()">
+            <i class="bi bi-printer"></i> Imprimir
+        </button>
+    </div>
+</div>
+
+<!-- Date Filter -->
+<form method="GET" class="date-filter-bar">
+    <label style="font-size:0.88rem;font-weight:600;color:var(--text-body);">Período:</label>
+    <input type="date" name="date_from" value="{{ data.date_from }}">
+    <span style="color:var(--text-muted);">—</span>
+    <input type="date" name="date_to" value="{{ data.date_to }}">
+    <button type="submit" class="btn-filter"><i class="bi bi-funnel"></i> Filtrar</button>
+</form>
+
+<div class="statement-page">
+    <div class="statement-paper">
+        <!-- Professional Header -->
+        <div class="statement-header">
+            {% if company and company.logo_path %}
+            <div style="margin-bottom:0.75rem;">
+                <img src="{{ url_for('static', filename='uploads/' + company.logo_path) }}"
+                     alt="Logo" style="max-height:50px;border-radius:8px;background:#fff;padding:4px;">
+            </div>
+            {% endif %}
+            <div class="company-name">{{ company.name if company and company.name else 'Nombre de la Empresa' }}</div>
+            {% if company and company.rnc %}
+                <div class="company-rnc">RNC: {{ company.rnc }}</div>
+            {% endif %}
+            {% if company and company.address %}
+                <div class="company-rnc">{{ company.address }}</div>
+            {% endif %}
+            <div class="statement-title">Estado de Resultados</div>
+            <div class="statement-period">
+                Del {{ data.date_from }} al {{ data.date_to }}
+            </div>
+        </div>
+
+        <!-- Statement Body -->
+        <div class="statement-body">
+
+            <!-- ═══ INGRESOS ═══ -->
+            <div class="stmt-section">
+                <div class="stmt-section-title"><i class="bi bi-arrow-down-circle"></i> Ingresos</div>
+
+                <!-- Ingresos Operacionales -->
+                <div class="stmt-row">
+                    <span class="label" style="font-weight:600;">Ingresos Operacionales</span>
+                    <span></span>
+                </div>
+                {% if data.operating_income_detail %}
+                    {% for item in data.operating_income_detail %}
+                    <div class="stmt-row indent">
+                        <span class="label">{{ item.category }}</span>
+                        <span class="amount" style="color:var(--success);">RD$ {{ "{:,.2f}".format(item.total or 0) }}</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="stmt-row indent"><span class="stmt-empty">Sin ingresos operacionales en el período</span></div>
+                {% endif %}
+                <div class="stmt-subtotal indent">
+                    <span>Subtotal Ingresos Operacionales</span>
+                    <span style="color:var(--success);">RD$ {{ "{:,.2f}".format(data.operating_income or 0) }}</span>
+                </div>
+
+                <!-- Otros Ingresos -->
+                <div class="stmt-row" style="margin-top:0.5rem;">
+                    <span class="label" style="font-weight:600;">Otros Ingresos</span>
+                    <span></span>
+                </div>
+                {% if data.other_income_detail %}
+                    {% for item in data.other_income_detail %}
+                    <div class="stmt-row indent">
+                        <span class="label">{{ item.category }}</span>
+                        <span class="amount" style="color:var(--success);">RD$ {{ "{:,.2f}".format(item.total or 0) }}</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="stmt-row indent"><span class="stmt-empty">Sin otros ingresos en el período</span></div>
+                {% endif %}
+                <div class="stmt-subtotal indent">
+                    <span>Subtotal Otros Ingresos</span>
+                    <span style="color:var(--success);">RD$ {{ "{:,.2f}".format(data.other_income or 0) }}</span>
+                </div>
+
+                <div class="stmt-subtotal" style="font-size:1rem; border-top: 2px solid var(--gray-300);">
+                    <span>Total Ingresos</span>
+                    <span style="color:var(--success);">RD$ {{ "{:,.2f}".format(data.total_income or 0) }}</span>
+                </div>
+            </div>
+
+            <hr class="stmt-divider">
+
+            <!-- ═══ GASTOS ═══ -->
+            <div class="stmt-section">
+                <div class="stmt-section-title"><i class="bi bi-arrow-up-circle"></i> Gastos</div>
+
+                <!-- Gastos Operacionales -->
+                <div class="stmt-row">
+                    <span class="label" style="font-weight:600;">Gastos Operacionales</span>
+                    <span></span>
+                </div>
+                {% if data.operating_expenses_detail %}
+                    {% for item in data.operating_expenses_detail %}
+                    <div class="stmt-row indent">
+                        <span class="label">{{ item.category }}</span>
+                        <span class="amount" style="color:var(--danger);">RD$ {{ "{:,.2f}".format(item.total or 0) }}</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="stmt-row indent"><span class="stmt-empty">Sin gastos operacionales en el período</span></div>
+                {% endif %}
+                <div class="stmt-subtotal indent">
+                    <span>Subtotal Gastos Operacionales</span>
+                    <span style="color:var(--danger);">RD$ {{ "{:,.2f}".format(data.operating_expenses or 0) }}</span>
+                </div>
+
+                <!-- Otros Gastos -->
+                <div class="stmt-row" style="margin-top:0.5rem;">
+                    <span class="label" style="font-weight:600;">Otros Gastos</span>
+                    <span></span>
+                </div>
+                {% if data.other_expenses_detail %}
+                    {% for item in data.other_expenses_detail %}
+                    <div class="stmt-row indent">
+                        <span class="label">{{ item.category }}</span>
+                        <span class="amount" style="color:var(--danger);">RD$ {{ "{:,.2f}".format(item.total or 0) }}</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="stmt-row indent"><span class="stmt-empty">Sin otros gastos en el período</span></div>
+                {% endif %}
+                <div class="stmt-subtotal indent">
+                    <span>Subtotal Otros Gastos</span>
+                    <span style="color:var(--danger);">RD$ {{ "{:,.2f}".format(data.other_expenses or 0) }}</span>
+                </div>
+
+                <div class="stmt-subtotal" style="font-size:1rem; border-top: 2px solid var(--gray-300);">
+                    <span>Total Gastos</span>
+                    <span style="color:var(--danger);">RD$ {{ "{:,.2f}".format(data.total_expenses or 0) }}</span>
+                </div>
+            </div>
+
+            <hr class="stmt-divider">
+
+            <!-- ═══ UTILIDAD BRUTA ═══ -->
+            <div class="stmt-section">
+                <div class="stmt-section-title"><i class="bi bi-graph-up-arrow"></i> Resultado Operacional</div>
+                <div class="stmt-total {{ 'positive' if data.gross_profit >= 0 else 'negative' }}">
+                    <span>Utilidad Bruta</span>
+                    <span>RD$ {{ "{:,.2f}".format(data.gross_profit or 0) }}</span>
+                </div>
+            </div>
+
+            <!-- ═══ UTILIDAD NETA ═══ -->
+            <div class="stmt-section">
+                <div class="stmt-section-title"><i class="bi bi-trophy"></i> Resultado Neto del Período</div>
+                <div class="stmt-total {{ 'positive' if data.net_income >= 0 else 'negative' }}" style="font-size:1.25rem;">
+                    <span>{{ 'Utilidad Neta' if data.net_income >= 0 else 'Pérdida Neta' }}</span>
+                    <span>RD$ {{ "{:,.2f}".format(data.net_income or 0) }}</span>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div style="text-align:center;margin-top:2rem;padding-top:1rem;border-top:1px solid var(--gray-200);color:var(--text-muted);font-size:0.78rem;">
+                Generado por Xpack &bull; {{ data.date_to }}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

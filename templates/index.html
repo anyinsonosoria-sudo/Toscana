@@ -1,0 +1,930 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Xpack{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-grid-1x2-fill"></i> Dashboard</h1>
+    <small style="color: var(--gray-400);">Resumen general</small>
+</div>
+
+<!-- Quick Actions -->
+<div class="quick-actions">
+    <button type="button" class="quick-action-btn" onclick="wizardNewInvoice.open()">
+        <div class="action-icon" style="background: rgba(79,70,229,0.1); color: var(--primary);">
+            <i class="bi bi-receipt"></i>
+        </div>
+        Nueva Factura
+    </button>
+    <button type="button" class="quick-action-btn" onclick="wizardPayment.open()">
+        <div class="action-icon" style="background: rgba(16,185,129,0.1); color: var(--success);">
+            <i class="bi bi-cash-coin"></i>
+        </div>
+        Registrar Pago
+    </button>
+    <button type="button" class="quick-action-btn" onclick="wizardRecurring.open()">
+        <div class="action-icon" style="background: rgba(245,158,11,0.1); color: var(--warning);">
+            <i class="bi bi-arrow-repeat"></i>
+        </div>
+        Factura Recurrente
+    </button>
+    <button type="button" class="quick-action-btn" onclick="wizardSupplier.open()">
+        <div class="action-icon" style="background: rgba(59,130,246,0.1); color: var(--info);">
+            <i class="bi bi-truck"></i>
+        </div>
+        Nuevo Proveedor
+    </button>
+    <a href="{{ url_for('expenses.list') }}" class="quick-action-btn">
+        <div class="action-icon" style="background: rgba(139,92,246,0.1); color: #8B5CF6;">
+            <i class="bi bi-cash-stack"></i>
+        </div>
+        Nuevo Gasto
+    </a>
+    <a href="{{ url_for('reports.list') }}" class="quick-action-btn">
+        <div class="action-icon" style="background: rgba(236,72,153,0.1); color: #EC4899;">
+            <i class="bi bi-graph-up"></i>
+        </div>
+        Reportes
+    </a>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card stat-card">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="stat-icon" style="background: rgba(59,130,246,0.1); color: var(--info);">
+                    <i class="bi bi-building"></i>
+                </div>
+                <div>
+                    <div class="stat-value">{{ units_count }}</div>
+                    <div class="stat-label">Apartamentos</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="stat-icon" style="background: rgba(16,185,129,0.1); color: var(--success);">
+                    <i class="bi bi-wallet2"></i>
+                </div>
+                <div>
+                    <div class="stat-value">{{ "RD$ {:,.0f}".format(cash_available) }}</div>
+                    <div class="stat-label">Efectivo</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="stat-icon" style="background: rgba(245,158,11,0.1); color: var(--warning);">
+                    <i class="bi bi-exclamation-triangle"></i>
+                </div>
+                <div>
+                    <div class="stat-value">{{ unpaid_count }}</div>
+                    <div class="stat-label">Pendientes</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="stat-icon" style="background: rgba(239,68,68,0.1); color: var(--danger);">
+                    <i class="bi bi-currency-dollar"></i>
+                </div>
+                <div>
+                    <div class="stat-value">{{ "RD$ {:,.0f}".format(total_pending) }}</div>
+                    <div class="stat-label">Por Cobrar</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts + Recent Activity -->
+<div class="row g-3 mb-4">
+    <!-- Invoice Status -->
+    <div class="col-md-4">
+        <div class="card" style="height: 100%;">
+            <div class="card-header">
+                <i class="bi bi-pie-chart" style="color: var(--primary);"></i> Estado de Facturas
+            </div>
+            <div class="card-body d-flex flex-column align-items-center justify-content-center">
+                <canvas id="invoiceStatusChart" style="max-height: 200px;"></canvas>
+                <div class="mt-3 text-center">
+                    <span class="badge-status badge-paid"><i class="bi bi-check-circle"></i> {{ invoice_status.paid }} Pagadas</span>
+                    <span class="badge-status badge-pending"><i class="bi bi-clock"></i> {{ invoice_status.unpaid }} Pendientes</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Collection Progress -->
+    <div class="col-md-8">
+        <div class="card" style="height: 100%;">
+            <div class="card-header">
+                <i class="bi bi-percent" style="color: var(--primary);"></i> Progreso de Cobro
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-4 text-center">
+                        <div style="font-size: 0.78rem; color: var(--gray-500);">Facturado</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary);">RD$ {{ "{:,.2f}".format(total_invoiced) }}</div>
+                    </div>
+                    <div class="col-4 text-center">
+                        <div style="font-size: 0.78rem; color: var(--gray-500);">Cobrado</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: var(--success);">RD$ {{ "{:,.2f}".format(total_paid) }}</div>
+                    </div>
+                    <div class="col-4 text-center">
+                        <div style="font-size: 0.78rem; color: var(--gray-500);">Pendiente</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: var(--danger);">RD$ {{ "{:,.2f}".format(total_pending) }}</div>
+                    </div>
+                </div>
+                {% set percentage = (total_paid / total_invoiced * 100) if total_invoiced > 0 else 0 %}
+                <div class="progress" style="height: 24px; border-radius: 12px; background: var(--gray-100);">
+                    <div class="progress-bar" role="progressbar" 
+                         style="width: {{ percentage }}%; background: var(--success); border-radius: 12px;" 
+                         aria-valuenow="{{ percentage }}">
+                        {{ "%.1f"|format(percentage) }}%
+                    </div>
+                </div>
+
+                <!-- Recent Payments -->
+                <h6 class="mt-4 mb-3" style="font-size: 0.85rem; color: var(--gray-500); font-weight: 600;">
+                    <i class="bi bi-clock-history"></i> Pagos Recientes
+                </h6>
+                {% if recent_payments %}
+                <div class="data-table-wrapper">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Cliente</th>
+                                <th>Monto</th>
+                                <th>Método</th>
+                                <th>Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in recent_payments %}
+                            <tr>
+                                <td data-label="Cliente">{{ p.resident_name or 'N/A' }}</td>
+                                <td data-label="Monto" style="font-weight: 600; color: var(--success);">RD$ {{ "{:,.2f}".format(p.amount) }}</td>
+                                <td data-label="Método"><span class="badge-status badge-active">{{ p.method }}</span></td>
+                                <td data-label="Fecha">{{ p.paid_date }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state" style="padding: 1.5rem;">
+                    <i class="bi bi-inbox"></i>
+                    <p>No hay pagos recientes</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- ===== WIZARD: Nueva Factura ===== -->
+<div class="wizard-overlay" id="wizNewInvOverlay">
+    <div class="wizard-container" id="wizNewInvContainer">
+        <div class="wizard-header">
+            <div class="wizard-title"><i class="bi bi-receipt"></i> Nueva Factura</div>
+            <button class="wizard-close"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="wizard-progress"><div class="wizard-progress-step"></div><div class="wizard-progress-step"></div><div class="wizard-progress-step"></div><div class="wizard-progress-step"></div></div>
+        <div class="wizard-step-counter"></div>
+        <form method="POST" action="{{ url_for('billing.create_factura') }}" id="formNewInv">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="wizard-body">
+                <!-- Step 1: Intro -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Factura</div>
+                    <div class="wizard-step-title">Crear nueva factura</div>
+                    <div style="text-align:center;padding:1rem 0;">
+                        <div style="width:64px;height:64px;border-radius:50%;background:rgba(79,70,229,0.1);display:inline-flex;align-items:center;justify-content:center;margin-bottom:1rem;">
+                            <i class="bi bi-receipt" style="font-size:1.8rem;color:var(--primary);"></i>
+                        </div>
+                        <p style="color:var(--text-muted);font-size:0.9rem;">Selecciona el cliente, agrega servicios y genera la factura automáticamente.</p>
+                    </div>
+                </div>
+                <!-- Step 2: Cliente -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Cliente</div>
+                    <div class="wizard-step-title">¿Para quién es la factura?</div>
+                    <select name="resident_id" class="wizard-select" id="invClientSelect" required>
+                        <option value="">Seleccionar cliente...</option>
+                        {% for c in clients %}
+                        <option value="{{ c.id }}" data-email="{{ c.email }}" data-phone="{{ c.phone }}">{{ c.name }} — Apto {{ c.apartment }}</option>
+                        {% endfor %}
+                    </select>
+                    <div id="invClientInfo" class="mt-3" style="display:none;background:var(--bg-secondary);border-radius:12px;padding:1rem;">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span style="color:var(--text-muted);font-size:0.85rem;">Nombre</span>
+                            <strong id="invClientName">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span style="color:var(--text-muted);font-size:0.85rem;">Apartamento</span>
+                            <span id="invClientApt">-</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Step 3: Servicios -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Servicios</div>
+                    <div class="wizard-step-title">Agrega los servicios a facturar</div>
+                    <div id="invServiceLines">
+                        <div class="inv-line mb-2" style="background:var(--bg-secondary);border-radius:12px;padding:0.75rem;">
+                            <select name="service_code[]" class="wizard-select inv-svc-select" required>
+                                <option value="">Seleccionar servicio...</option>
+                                {% for s in services %}
+                                <option value="{{ s.code }}" data-price="{{ s.price }}">{{ s.name }} — RD$ {{ "{:,.2f}".format(s.price) }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="d-flex gap-2 mt-2">
+                                <div style="flex:1;">
+                                    <label style="font-size:0.75rem;color:var(--text-muted);">Cantidad</label>
+                                    <input type="number" name="quantity[]" class="wizard-input inv-qty" value="1" min="1" step="1" required>
+                                </div>
+                                <div style="flex:1;">
+                                    <label style="font-size:0.75rem;color:var(--text-muted);">Monto</label>
+                                    <input type="text" name="amount[]" class="wizard-input inv-amt" inputmode="decimal" placeholder="0.00" required>
+                                </div>
+                            </div>
+                            <input type="hidden" name="line_description[]" value="">
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addInvLine()">
+                        <i class="bi bi-plus-lg"></i> Agregar otro servicio
+                    </button>
+                    <div class="mt-3" style="text-align:right;font-size:1.1rem;">
+                        Total: <strong id="invTotal" style="color:var(--primary);">RD$ 0.00</strong>
+                    </div>
+                </div>
+                <!-- Step 4: Resumen -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Confirmar</div>
+                    <div class="wizard-step-title">Revisa y confirma</div>
+                    <div id="invSummary" style="background:var(--bg-secondary);border-radius:12px;padding:1rem;"></div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Email de notificación (opcional)</label>
+                        <input type="email" name="notify_email" class="wizard-input" id="invNotifyEmail" placeholder="email@ejemplo.com">
+                    </div>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button type="button" class="wizard-btn wizard-btn-back"><i class="bi bi-arrow-left"></i> Atrás</button>
+                <button type="button" class="wizard-btn wizard-btn-next">Siguiente <i class="bi bi-arrow-right"></i></button>
+                <button type="submit" class="wizard-btn wizard-btn-submit"><i class="bi bi-check-lg"></i> Crear Factura</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ===== WIZARD: Registrar Pago ===== -->
+<div class="wizard-overlay" id="wizPayOverlay">
+    <div class="wizard-container" id="wizPayContainer">
+        <div class="wizard-header">
+            <div class="wizard-title"><i class="bi bi-cash-coin"></i> Registrar Pago</div>
+            <button class="wizard-close"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="wizard-progress"><div class="wizard-progress-step"></div><div class="wizard-progress-step"></div><div class="wizard-progress-step"></div><div class="wizard-progress-step"></div></div>
+        <div class="wizard-step-counter"></div>
+        <form method="POST" id="formPayWiz">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="wizard-body">
+                <!-- Step 1: Intro -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Pago</div>
+                    <div class="wizard-step-title">Registrar nuevo pago</div>
+                    <div style="text-align:center;padding:1rem 0;">
+                        <div style="width:64px;height:64px;border-radius:50%;background:rgba(16,185,129,0.1);display:inline-flex;align-items:center;justify-content:center;margin-bottom:1rem;">
+                            <i class="bi bi-cash-coin" style="font-size:1.8rem;color:var(--success);"></i>
+                        </div>
+                        <p style="color:var(--text-muted);font-size:0.9rem;">Selecciona el cliente, elige la factura pendiente y aplica el pago.</p>
+                    </div>
+                </div>
+                <!-- Step 2: Elegir Cliente -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Cliente</div>
+                    <div class="wizard-step-title">¿Quién realiza el pago?</div>
+                    <select class="wizard-select" id="payClientSelect" required>
+                        <option value="">Seleccionar cliente...</option>
+                        {% for c in clients %}
+                        <option value="{{ c.id }}">{{ c.name }} — Apto {{ c.apartment }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <!-- Step 3: Elegir Factura -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Factura</div>
+                    <div class="wizard-step-title">Selecciona la factura a pagar</div>
+                    <div id="payInvoiceList" style="max-height:300px;overflow-y:auto;">
+                        <p style="color:var(--text-muted);text-align:center;padding:2rem 0;">Selecciona un cliente primero</p>
+                    </div>
+                </div>
+                <!-- Step 4: Aplicar Pago -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Pagar</div>
+                    <div class="wizard-step-title">Detalle del pago</div>
+                    <div style="background:var(--bg-secondary);border-radius:12px;padding:1rem;margin-bottom:1rem;">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span style="color:var(--text-muted);font-size:0.85rem;">Cliente</span>
+                            <strong id="payInfoClient">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span style="color:var(--text-muted);font-size:0.85rem;">Factura</span>
+                            <span id="payInfoInv">-</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span style="color:var(--text-muted);font-size:0.85rem;">Total Factura</span>
+                            <span id="payInfoTotal">RD$ 0.00</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span style="color:var(--text-muted);font-size:0.85rem;">Ya Pagado</span>
+                            <span style="color:var(--success);" id="payInfoPaid">RD$ 0.00</span>
+                        </div>
+                        <div class="d-flex justify-content-between" style="border-top:2px solid var(--primary);padding-top:0.5rem;margin-top:0.25rem;">
+                            <strong style="color:var(--primary);">Balance Pendiente</strong>
+                            <strong style="color:var(--danger);font-size:1.1rem;" id="payInfoBalance">RD$ 0.00</strong>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="wizard-step-label">Monto a pagar</label>
+                        <input type="number" name="received_amount" id="payAmountField" class="wizard-input" step="0.01" min="0.01" placeholder="0.00" required
+                               style="text-align:center;font-size:1.4rem;font-weight:700;">
+                        <div id="payAmountFeedback" style="display:none;margin-top:0.5rem;padding:0.6rem 0.75rem;border-radius:10px;font-size:0.85rem;font-weight:600;"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="wizard-step-label">Método de pago</label>
+                        <select name="method" class="wizard-select" id="payMethodSelect">
+                            <option value="efectivo">Efectivo</option>
+                            <option value="transferencia">Transferencia</option>
+                            <option value="cheque">Cheque</option>
+                            <option value="tarjeta">Tarjeta</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="wizard-step-label">Notas (opcional)</label>
+                        <textarea name="notes" class="wizard-textarea" rows="2" placeholder="Referencia, número de cheque, etc."></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button type="button" class="wizard-btn wizard-btn-back"><i class="bi bi-arrow-left"></i> Atrás</button>
+                <button type="button" class="wizard-btn wizard-btn-next">Siguiente <i class="bi bi-arrow-right"></i></button>
+                <button type="submit" class="wizard-btn wizard-btn-submit"><i class="bi bi-check-lg"></i> Registrar Pago</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ===== WIZARD: Factura Recurrente ===== -->
+<div class="wizard-overlay" id="wizRecOverlay">
+    <div class="wizard-container" id="wizRecContainer">
+        <div class="wizard-header">
+            <div class="wizard-title"><i class="bi bi-arrow-repeat"></i> Factura Recurrente</div>
+            <button class="wizard-close"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="wizard-progress"><div class="wizard-progress-step"></div><div class="wizard-progress-step"></div><div class="wizard-progress-step"></div><div class="wizard-progress-step"></div></div>
+        <div class="wizard-step-counter"></div>
+        <form method="POST" action="{{ url_for('billing.create_recurring') }}" id="formRecurring">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="wizard-body">
+                <!-- Step 1: Intro -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Recurrente</div>
+                    <div class="wizard-step-title">Facturación automática</div>
+                    <div style="text-align:center;padding:1rem 0;">
+                        <div style="width:64px;height:64px;border-radius:50%;background:rgba(245,158,11,0.1);display:inline-flex;align-items:center;justify-content:center;margin-bottom:1rem;">
+                            <i class="bi bi-arrow-repeat" style="font-size:1.8rem;color:var(--warning);"></i>
+                        </div>
+                        <p style="color:var(--text-muted);font-size:0.9rem;">Configura una factura que se genere automáticamente cada mes.</p>
+                    </div>
+                </div>
+                <!-- Step 2: Cliente -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Cliente</div>
+                    <div class="wizard-step-title">¿Para quién es la factura recurrente?</div>
+                    <select name="resident_id" class="wizard-select" required>
+                        <option value="">Seleccionar cliente...</option>
+                        {% for c in clients %}
+                        <option value="{{ c.id }}">{{ c.name }} — Apto {{ c.apartment }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <!-- Step 3: Servicio -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Servicio</div>
+                    <div class="wizard-step-title">¿Qué servicio se facturará?</div>
+                    <select name="service_id" class="wizard-select recSvcSel" required>
+                        <option value="">Seleccionar servicio...</option>
+                        {% for s in services %}
+                        <option value="{{ s.id }}" data-price="{{ s.price }}">{{ s.name }} — RD$ {{ "{:,.2f}".format(s.price) }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Monto</label>
+                        <input type="text" name="amount" class="wizard-input" id="recAmount" inputmode="decimal" placeholder="0.00" required>
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Descripción</label>
+                        <input type="text" name="description" class="wizard-input" placeholder="Ej: Cuota de mantenimiento mensual">
+                    </div>
+                </div>
+                <!-- Step 4: Frecuencia -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Frecuencia</div>
+                    <div class="wizard-step-title">¿Cada cuánto se genera?</div>
+                    <select name="frequency" class="wizard-select">
+                        <option value="monthly" selected>Mensual</option>
+                        <option value="quarterly">Trimestral</option>
+                        <option value="annual">Anual</option>
+                    </select>
+                    <div class="d-flex gap-2 mt-3">
+                        <div style="flex:1;">
+                            <label class="wizard-step-label">Día de facturación</label>
+                            <input type="number" name="billing_day" class="wizard-input" value="1" min="1" max="28">
+                        </div>
+                        <div style="flex:1;">
+                            <label class="wizard-step-label">Hora de generación</label>
+                            <input type="time" name="billing_time" class="wizard-input" value="08:00">
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Fecha de inicio</label>
+                        <input type="date" name="start_date" class="wizard-input" value="{{ now }}">
+                    </div>
+                    <input type="hidden" name="active" value="1">
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button type="button" class="wizard-btn wizard-btn-back"><i class="bi bi-arrow-left"></i> Atrás</button>
+                <button type="button" class="wizard-btn wizard-btn-next">Siguiente <i class="bi bi-arrow-right"></i></button>
+                <button type="submit" class="wizard-btn wizard-btn-submit"><i class="bi bi-check-lg"></i> Crear Recurrente</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ===== WIZARD: Nuevo Proveedor ===== -->
+<div class="wizard-overlay" id="wizSupOverlay">
+    <div class="wizard-container" id="wizSupContainer">
+        <div class="wizard-header">
+            <div class="wizard-title"><i class="bi bi-truck"></i> Nuevo Proveedor</div>
+            <button class="wizard-close"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="wizard-progress"><div class="wizard-progress-step"></div><div class="wizard-progress-step"></div><div class="wizard-progress-step"></div></div>
+        <div class="wizard-step-counter"></div>
+        <form method="POST" action="{{ url_for('suppliers.add') }}" id="formNewSup">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="wizard-body">
+                <!-- Step 1: Nombre -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Proveedor</div>
+                    <div class="wizard-step-title">Datos del proveedor</div>
+                    <input type="text" name="name" class="wizard-input" placeholder="Nombre del proveedor" required>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Tipo</label>
+                        <select name="supplier_type" class="wizard-select" required>
+                            <option value="">Seleccionar tipo...</option>
+                            <option value="Materiales">Materiales</option>
+                            <option value="Servicios">Servicios</option>
+                            <option value="Mantenimiento">Mantenimiento</option>
+                            <option value="Limpieza">Limpieza</option>
+                            <option value="Seguridad">Seguridad</option>
+                            <option value="Tecnología">Tecnología</option>
+                            <option value="General">General</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- Step 2: Contacto -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Contacto</div>
+                    <div class="wizard-step-title">Información de contacto</div>
+                    <input type="text" name="contact_name" class="wizard-input" placeholder="Persona de contacto">
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Teléfono</label>
+                        <input type="tel" name="phone" class="wizard-input" placeholder="809-000-0000">
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Email</label>
+                        <input type="email" name="email" class="wizard-input" placeholder="email@ejemplo.com">
+                    </div>
+                </div>
+                <!-- Step 3: Dirección y RNC -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Fiscal</div>
+                    <div class="wizard-step-title">Datos fiscales y dirección</div>
+                    <input type="text" name="tax_id" class="wizard-input" placeholder="RNC / Cédula">
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Dirección</label>
+                        <input type="text" name="address" class="wizard-input" placeholder="Dirección del proveedor">
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Términos de pago (días)</label>
+                        <input type="number" name="payment_terms" class="wizard-input" value="30" min="0" max="365">
+                    </div>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button type="button" class="wizard-btn wizard-btn-back"><i class="bi bi-arrow-left"></i> Atrás</button>
+                <button type="button" class="wizard-btn wizard-btn-next">Siguiente <i class="bi bi-arrow-right"></i></button>
+                <button type="submit" class="wizard-btn wizard-btn-submit"><i class="bi bi-check-lg"></i> Guardar Proveedor</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// ── Helpers ──
+function fmtRD(n) {
+    return 'RD$ ' + Number(n || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+function fmtAmt(n) {
+    return Number(n || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+function parseAmt(s) {
+    return parseFloat(String(s).replace(/,/g, '')) || 0;
+}
+
+// ── Data from server (JSON-safe) ──
+const _pendingInvoices = {{ pending_invoices | tojson }};
+
+// ── Loading helper (prevents double-submit) ──
+function wizardLoading(btn, submitting) {
+    if (submitting) {
+        btn._origHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Procesando...';
+        btn.style.opacity = '0.7';
+    } else {
+        btn.disabled = false;
+        btn.innerHTML = btn._origHTML || btn.innerHTML;
+        btn.style.opacity = '1';
+    }
+}
+
+// =========================================================
+//  WIZARD 1: Nueva Factura
+// =========================================================
+const wizardNewInvoice = new XpackWizard('wizNewInvContainer', {
+    onStepChange: function(step) {
+        if (step === 2) {
+            updateInvTotal();
+        }
+        if (step === 3) {
+            // Build summary
+            const sel = document.getElementById('invClientSelect');
+            const opt = sel.options[sel.selectedIndex];
+            let html = '<div class="d-flex justify-content-between mb-2"><span style="color:var(--text-muted);font-size:0.85rem;">Cliente</span><strong>' + (opt ? opt.textContent : '-') + '</strong></div>';
+            let total = 0;
+            document.querySelectorAll('.inv-line').forEach((line, i) => {
+                const svcSel = line.querySelector('.inv-svc-select');
+                const amt = parseAmt(line.querySelector('.inv-amt').value);
+                const qty = parseInt(line.querySelector('.inv-qty').value) || 1;
+                const svcName = svcSel.options[svcSel.selectedIndex]?.textContent || '-';
+                const lineTotal = amt * qty;
+                total += lineTotal;
+                html += `<div class="d-flex justify-content-between mb-1"><span style="font-size:0.85rem;">${qty}x ${svcName.split('—')[0].trim()}</span><span style="font-weight:600;">${fmtRD(lineTotal)}</span></div>`;
+            });
+            html += `<div class="d-flex justify-content-between mt-2" style="border-top:2px solid var(--primary);padding-top:0.5rem;"><strong>Total</strong><strong style="color:var(--primary);font-size:1.1rem;">${fmtRD(total)}</strong></div>`;
+            document.getElementById('invSummary').innerHTML = html;
+        }
+    },
+    onSubmit: function(e) {
+        e.preventDefault();
+        const form = document.getElementById('formNewInv');
+        const btn = form.closest('.wizard-container').querySelector('.wizard-btn-submit');
+        if (btn.disabled) return;
+        wizardLoading(btn, true);
+        // Clean formatted amounts before submit
+        form.querySelectorAll('.inv-amt').forEach(inp => {
+            inp.value = parseAmt(inp.value).toFixed(2);
+        });
+        const formData = new FormData(form);
+        fetch(form.action, {
+            method: 'POST',
+            body: formData,
+            redirect: 'manual',
+            credentials: 'same-origin'
+        }).then(r => {
+            window.location.href = '/ventas/facturas?tab=invoices';
+        }).catch(err => {
+            console.error(err);
+            wizardLoading(btn, false);
+            window.location.href = '/ventas/facturas?tab=invoices';
+        });
+    }
+});
+
+// Service line helpers
+function addInvLine() {
+    const container = document.getElementById('invServiceLines');
+    const first = container.querySelector('.inv-line');
+    const clone = first.cloneNode(true);
+    clone.querySelector('.inv-svc-select').value = '';
+    clone.querySelector('.inv-qty').value = '1';
+    clone.querySelector('.inv-amt').value = '';
+    // Add remove button
+    const rmBtn = document.createElement('button');
+    rmBtn.type = 'button';
+    rmBtn.className = 'btn btn-sm btn-outline-danger mt-2';
+    rmBtn.innerHTML = '<i class="bi bi-trash"></i> Quitar';
+    rmBtn.onclick = function() { clone.remove(); updateInvTotal(); };
+    clone.appendChild(rmBtn);
+    container.appendChild(clone);
+    bindInvLineEvents(clone);
+}
+
+function bindInvLineEvents(line) {
+    const svcSel = line.querySelector('.inv-svc-select');
+    const amtInput = line.querySelector('.inv-amt');
+    const qtyInput = line.querySelector('.inv-qty');
+    svcSel.addEventListener('change', function() {
+        const price = parseFloat(this.options[this.selectedIndex]?.dataset?.price) || 0;
+        amtInput.value = fmtAmt(price);
+        updateInvTotal();
+    });
+    amtInput.addEventListener('input', updateInvTotal);
+    amtInput.addEventListener('blur', function() {
+        const v = parseAmt(this.value);
+        if (v > 0) this.value = fmtAmt(v);
+    });
+    qtyInput.addEventListener('input', updateInvTotal);
+}
+
+function updateInvTotal() {
+    let total = 0;
+    document.querySelectorAll('.inv-line').forEach(line => {
+        const amt = parseAmt(line.querySelector('.inv-amt').value);
+        const qty = parseInt(line.querySelector('.inv-qty').value) || 1;
+        total += amt * qty;
+    });
+    document.getElementById('invTotal').textContent = fmtRD(total);
+}
+
+// Bind events on first service line
+document.querySelectorAll('.inv-line').forEach(bindInvLineEvents);
+document.getElementById('invClientSelect').addEventListener('change', function() {
+    const opt = this.options[this.selectedIndex];
+    const has = !!this.value;
+    document.getElementById('invClientInfo').style.display = has ? 'block' : 'none';
+    if (has && opt) {
+        const parts = opt.textContent.split('—');
+        document.getElementById('invClientName').textContent = parts[0].trim();
+        document.getElementById('invClientApt').textContent = parts[1] ? parts[1].trim() : '-';
+        document.getElementById('invNotifyEmail').value = opt.dataset.email || '';
+    } else {
+        document.getElementById('invClientName').textContent = '-';
+        document.getElementById('invClientApt').textContent = '-';
+        document.getElementById('invNotifyEmail').value = '';
+    }
+});
+
+
+// =========================================================
+//  WIZARD 2: Registrar Pago
+// =========================================================
+let _selectedPayInvoice = null;
+
+const wizardPayment = new XpackWizard('wizPayContainer', {
+    onBeforeNext: function(step) {
+        if (step === 1) {
+            // Client selected → load their invoices
+            const clientId = parseInt(document.getElementById('payClientSelect').value);
+            if (!clientId) return false;
+            loadClientInvoices(clientId);
+        }
+        if (step === 2) {
+            // Must have selected an invoice
+            if (!_selectedPayInvoice) {
+                const list = document.getElementById('payInvoiceList');
+                list.style.animation = 'none';
+                setTimeout(() => list.style.animation = 'shake 0.4s ease', 10);
+                return false;
+            }
+            // Populate step 4
+            const inv = _selectedPayInvoice;
+            const clientSel = document.getElementById('payClientSelect');
+            document.getElementById('payInfoClient').textContent = clientSel.options[clientSel.selectedIndex]?.textContent || '-';
+            document.getElementById('payInfoInv').textContent = '#' + inv.id + ' — ' + (inv.description || '');
+            document.getElementById('payInfoTotal').textContent = fmtRD(inv.amount);
+            document.getElementById('payInfoPaid').textContent = fmtRD(inv.total_paid);
+            document.getElementById('payInfoBalance').textContent = fmtRD(inv.remaining);
+            const amtField = document.getElementById('payAmountField');
+            amtField.max = inv.remaining;
+            amtField.value = '';
+            // Set form action
+            document.getElementById('formPayWiz').action = '/ventas/facturas/partial-payment/' + inv.id;
+        }
+    },
+    onSubmit: function(e) {
+        e.preventDefault();
+        const form = document.getElementById('formPayWiz');
+        const btn = form.closest('.wizard-container').querySelector('.wizard-btn-submit');
+        if (btn.disabled) return;
+        const amt = parseFloat(document.getElementById('payAmountField').value) || 0;
+        const method = document.getElementById('payMethodSelect').value;
+        const remaining = _selectedPayInvoice ? _selectedPayInvoice.remaining : 0;
+        if (amt <= 0) { alert('Ingresa un monto v\u00e1lido'); return; }
+        if (remaining <= 0) { alert('Esta factura ya est\u00e1 completamente pagada'); return; }
+        if (method !== 'efectivo' && amt > remaining) {
+            alert('El monto excede el balance pendiente (RD$ ' + remaining.toFixed(2) + '). Solo efectivo permite cambio.');
+            return;
+        }
+        wizardLoading(btn, true);
+        const formData = new FormData(form);
+        fetch(form.action, {
+            method: 'POST',
+            body: formData,
+            redirect: 'manual',
+            credentials: 'same-origin'
+        }).then(r => {
+            window.location.href = '/ventas/facturas?tab=pending';
+        }).catch(err => {
+            console.error(err);
+            wizardLoading(btn, false);
+            window.location.href = '/ventas/facturas?tab=pending';
+        });
+    }
+});
+
+function loadClientInvoices(clientId) {
+    const container = document.getElementById('payInvoiceList');
+    // Filter from pre-loaded data
+    const clientInvs = _pendingInvoices.filter(i => i.unit_id === clientId);
+    if (clientInvs.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);"><i class="bi bi-check-circle" style="font-size:2rem;color:var(--success);display:block;margin-bottom:0.5rem;"></i>Este cliente no tiene facturas pendientes</div>';
+        return;
+    }
+    let html = '';
+    clientInvs.forEach(inv => {
+        html += `<div class="pay-inv-card" data-inv-id="${inv.id}" onclick="selectPayInvoice(this, ${inv.id})"
+                      style="background:var(--bg-secondary);border-radius:12px;padding:0.75rem;margin-bottom:0.5rem;cursor:pointer;border:2px solid transparent;transition:all 0.2s;">
+            <div class="d-flex justify-content-between">
+                <strong>#${inv.id}</strong>
+                <span style="color:var(--danger);font-weight:700;">${fmtRD(inv.remaining)}</span>
+            </div>
+            <div style="font-size:0.85rem;color:var(--text-muted);">${inv.description || 'Sin descripción'}</div>
+            <div class="d-flex justify-content-between mt-1" style="font-size:0.8rem;">
+                <span>Total: ${fmtRD(inv.amount)}</span>
+                <span style="color:var(--success);">Pagado: ${fmtRD(inv.total_paid)}</span>
+            </div>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+function selectPayInvoice(el, invoiceId) {
+    // Highlight selected
+    document.querySelectorAll('.pay-inv-card').forEach(c => {
+        c.style.borderColor = 'transparent';
+        c.style.background = 'var(--bg-secondary)';
+    });
+    el.style.borderColor = 'var(--primary)';
+    el.style.background = 'rgba(79,70,229,0.05)';
+    _selectedPayInvoice = _pendingInvoices.find(i => i.id === invoiceId);
+}
+
+// Real-time payment amount validation
+function updatePayFeedback() {
+    const fb = document.getElementById('payAmountFeedback');
+    const amt = parseFloat(document.getElementById('payAmountField').value) || 0;
+    const method = document.getElementById('payMethodSelect').value;
+    const remaining = _selectedPayInvoice ? _selectedPayInvoice.remaining : 0;
+
+    if (amt <= 0 || remaining <= 0) { fb.style.display = 'none'; return; }
+
+    if (amt > remaining) {
+        const change = amt - remaining;
+        if (method === 'efectivo') {
+            fb.style.display = 'block';
+            fb.style.background = 'rgba(245,158,11,0.1)';
+            fb.style.color = 'var(--warning)';
+            fb.innerHTML = '<i class="bi bi-cash-stack"></i> Cambio a devolver: <strong>' + fmtRD(change) + '</strong>';
+        } else {
+            fb.style.display = 'block';
+            fb.style.background = 'rgba(239,68,68,0.1)';
+            fb.style.color = 'var(--danger)';
+            fb.innerHTML = '<i class="bi bi-exclamation-triangle"></i> El monto excede el balance pendiente (' + fmtRD(remaining) + ')';
+        }
+    } else if (amt === remaining) {
+        fb.style.display = 'block';
+        fb.style.background = 'rgba(16,185,129,0.1)';
+        fb.style.color = 'var(--success)';
+        fb.innerHTML = '<i class="bi bi-check-circle"></i> Pago completo — la factura quedará saldada';
+    } else {
+        fb.style.display = 'block';
+        fb.style.background = 'rgba(79,70,229,0.06)';
+        fb.style.color = 'var(--primary)';
+        fb.innerHTML = '<i class="bi bi-info-circle"></i> Pago parcial — quedarán ' + fmtRD(remaining - amt) + ' pendientes';
+    }
+}
+document.getElementById('payAmountField').addEventListener('input', updatePayFeedback);
+document.getElementById('payMethodSelect').addEventListener('change', updatePayFeedback);
+
+
+// =========================================================
+//  WIZARD 3: Factura Recurrente
+// =========================================================
+const wizardRecurring = new XpackWizard('wizRecContainer', {
+    onSubmit: function(e) {
+        e.preventDefault();
+        const form = document.getElementById('formRecurring');
+        const btn = form.closest('.wizard-container').querySelector('.wizard-btn-submit');
+        if (btn.disabled) return;
+        wizardLoading(btn, true);
+        const amtField = document.getElementById('recAmount');
+        amtField.value = parseAmt(amtField.value).toFixed(2);
+        const formData = new FormData(form);
+        fetch(form.action, {
+            method: 'POST',
+            body: formData,
+            redirect: 'manual',
+            credentials: 'same-origin'
+        }).then(r => {
+            window.location.href = '/ventas/facturas?tab=recurring';
+        }).catch(err => {
+            console.error(err);
+            wizardLoading(btn, false);
+            window.location.href = '/ventas/facturas?tab=recurring';
+        });
+    }
+});
+
+// Auto-fill amount when service selected
+document.querySelectorAll('.recSvcSel').forEach(sel => {
+    sel.addEventListener('change', function() {
+        const price = parseFloat(this.options[this.selectedIndex]?.dataset?.price) || 0;
+        document.getElementById('recAmount').value = fmtAmt(price);
+    });
+});
+document.getElementById('recAmount')?.addEventListener('blur', function() {
+    const v = parseAmt(this.value);
+    if (v > 0) this.value = fmtAmt(v);
+});
+
+
+// =========================================================
+//  WIZARD 4: Nuevo Proveedor
+// =========================================================
+const wizardSupplier = new XpackWizard('wizSupContainer', {
+    onSubmit: function(e) {
+        e.preventDefault();
+        const form = document.getElementById('formNewSup');
+        const btn = form.closest('.wizard-container').querySelector('.wizard-btn-submit');
+        if (btn.disabled) return;
+        wizardLoading(btn, true);
+        const formData = new FormData(form);
+        fetch(form.action, {
+            method: 'POST',
+            body: formData,
+            redirect: 'manual',
+            credentials: 'same-origin'
+        }).then(r => {
+            window.location.href = '/suplidores/';
+        }).catch(err => {
+            console.error(err);
+            wizardLoading(btn, false);
+            window.location.href = '/suplidores/';
+        });
+    }
+});
+
+
+// =========================================================
+//  Invoice Status Chart
+// =========================================================
+const ctx = document.getElementById('invoiceStatusChart');
+if (ctx) {
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Pagadas', 'Pendientes'],
+            datasets: [{
+                data: [{{ invoice_status.paid }}, {{ invoice_status.unpaid }}],
+                backgroundColor: ['rgba(16,185,129,0.8)', 'rgba(245,158,11,0.8)'],
+                borderColor: ['rgba(16,185,129,1)', 'rgba(245,158,11,1)'],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: '65%',
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+}
+</script>
+{% endblock %}
