@@ -135,17 +135,31 @@ def main():
         CREATE TABLE company_info (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
+            legal_id TEXT,
             address TEXT,
+            city TEXT,
+            country TEXT,
             phone TEXT,
             email TEXT,
             tax_id TEXT,
             logo_path TEXT,
             currency TEXT DEFAULT 'DOP',
             website TEXT,
+            bank_name TEXT,
+            bank_account TEXT,
+            bank_routing TEXT,
+            notes TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    add_column_if_missing(cur, "company_info", "legal_id", "TEXT")
+    add_column_if_missing(cur, "company_info", "city", "TEXT")
+    add_column_if_missing(cur, "company_info", "country", "TEXT")
+    add_column_if_missing(cur, "company_info", "bank_name", "TEXT")
+    add_column_if_missing(cur, "company_info", "bank_account", "TEXT")
+    add_column_if_missing(cur, "company_info", "bank_routing", "TEXT")
+    add_column_if_missing(cur, "company_info", "notes", "TEXT")
 
     # ── customization_settings ─────────────────────────────────────────────────
     print("\n[customization_settings]")

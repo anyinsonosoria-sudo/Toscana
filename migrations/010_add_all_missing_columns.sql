@@ -18,3 +18,11 @@ ALTER TABLE suppliers ADD COLUMN supplier_type_other TEXT;
 ALTER TABLE suppliers ADD COLUMN contact_name TEXT;
 ALTER TABLE suppliers ADD COLUMN tax_id TEXT;
 ALTER TABLE suppliers ADD COLUMN payment_terms INTEGER DEFAULT 30;
+
+ALTER TABLE company_info ADD COLUMN legal_id TEXT;
+ALTER TABLE company_info ADD COLUMN city TEXT;
+ALTER TABLE company_info ADD COLUMN country TEXT;
+ALTER TABLE company_info ADD COLUMN bank_name TEXT;
+ALTER TABLE company_info ADD COLUMN bank_account TEXT;
+ALTER TABLE company_info ADD COLUMN bank_routing TEXT;
+ALTER TABLE company_info ADD COLUMN notes TEXT;

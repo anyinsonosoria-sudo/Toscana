@@ -358,7 +358,7 @@ def _generate_account_statement_pdf(apt: Dict, invoice: Dict) -> Optional[str]:
         from receipt_pdf import generate_account_statement_pdf
         import company
         
-        company_info = company.get_company_info()
+        company_info = company.get_company_info() or {}
         generate_account_statement_pdf(apt, invoices, payments, company_info, statement_path)
         
         _log(f"Account statement generated: {statement_path}")
@@ -387,7 +387,7 @@ def _generate_receipt_pdf(payment_id: int, invoice_id: int, amount: float,
         import os
         
         # Obtener datos necesarios
-        company_info = company.get_company_info()
+        company_info = company.get_company_info() or {}
         invoice = get_invoice(invoice_id)
         
         if not invoice:
@@ -478,7 +478,7 @@ def _send_payment_notifications(payment_id: int, invoice: Dict, amount: float,
         import company
         import re
         
-        company_info = company.get_company_info()
+        company_info = company.get_company_info() or {}
         contact_info = _get_client_contact_info(invoice)
         
         client_email = contact_info['email']
