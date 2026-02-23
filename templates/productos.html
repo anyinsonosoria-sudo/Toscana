@@ -50,7 +50,7 @@
                             {% endif %}
                         </td>
                         <td data-label="Acciones">
-                            <button class="btn-action edit" onclick="editProd({{ item | tojson }})" title="Editar">
+                            <button class="btn-action edit" onclick='editProd({{ item | tojson }})' title="Editar">
                                 <i class="bi bi-pencil"></i>
                             </button>
                             <form method="POST" action="{{ url_for('products.delete', id=item.id) }}" style="display:inline;"

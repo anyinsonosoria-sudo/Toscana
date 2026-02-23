@@ -38,7 +38,7 @@
                         <td data-label="RNC/Cédula"><code>{{ sup.tax_id or '-' }}</code></td>
                         <td data-label="Plazo">{{ sup.payment_terms or 30 }} días</td>
                         <td data-label="Acciones">
-                            <button class="btn-action edit" onclick="editSup({{ sup | tojson }})" title="Editar">
+                            <button class="btn-action edit" onclick='editSup({{ sup | tojson }})' title="Editar">
                                 <i class="bi bi-pencil"></i>
                             </button>
                             <form method="POST" action="{{ url_for('suppliers.delete', id=sup.id) }}" style="display:inline;"

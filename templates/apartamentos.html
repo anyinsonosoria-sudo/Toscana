@@ -52,7 +52,7 @@
                             </small>
                         </td>
                         <td data-label="Acciones">
-                            <button class="btn-action edit" onclick="editApt({{ apt | tojson }})" title="Editar">
+                            <button class="btn-action edit" onclick='editApt({{ apt | tojson }})' title="Editar">
                                 <i class="bi bi-pencil"></i>
                             </button>
                             <form method="POST" action="{{ url_for('apartments.delete', id=apt.id) }}" style="display:inline;" 
