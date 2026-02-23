@@ -785,6 +785,50 @@ def duplicate_recurring_sale(sale_id: int) -> int:
     return new_id
 
 
+def update_recurring_sale(sale_id: int, **fields) -> None:
+    """Actualizar una venta recurrente existente"""
+    if not fields:
+        return
+    
+    ALLOWED = {'unit_id', 'service_id', 'amount', 'frequency', 'billing_day',
+               'billing_time', 'start_date', 'end_date', 'description', 'active'}
+    
+    keys = []
+    vals = []
+    for k, v in fields.items():
+        if k not in ALLOWED:
+            continue
+        keys.append(f"{k}=?")
+        vals.append(v)
+    
+    if not keys:
+        return
+    
+    vals.append(sale_id)
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"UPDATE recurring_sales SET {', '.join(keys)} WHERE id=?", vals)
+    conn.commit()
+    conn.close()
+    _log(f"Venta recurrente {sale_id} actualizada: {list(fields.keys())}")
+
+
+def get_recurring_sale(sale_id: int) -> Optional[Dict]:
+    """Obtener una venta recurrente por ID"""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT rs.*, a.number AS apt_number, a.resident_name, ps.name AS service_name
+        FROM recurring_sales rs
+        LEFT JOIN apartments a ON rs.unit_id = a.id
+        LEFT JOIN products_services ps ON rs.service_id = ps.id
+        WHERE rs.id = ?
+    """, (sale_id,))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def get_last_invoice_from_recurring(sale_id: int) -> int:
     """Obtener el ID de la última factura generada de una venta recurrente
     

@@ -52,6 +52,9 @@
                             {% endif %}
                         </td>
                         <td data-label="Acciones">
+                            <button class="btn-action edit" onclick='editRecurring({{ rs | tojson }})' title="Editar">
+                                <i class="bi bi-pencil"></i>
+                            </button>
                             <form method="POST" action="{{ url_for('billing.toggle_recurring', sale_id=rs.id) }}" style="display:inline;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn-action {% if rs.active %}edit{% else %}delete{% endif %}" title="{% if rs.active %}Desactivar{% else %}Activar{% endif %}">
@@ -88,4 +91,122 @@
         {% endif %}
     </div>
 </div>
+
+<!-- ===== WIZARD: Editar Venta Recurrente ===== -->
+<div class="wizard-overlay" id="wizardEditRecOverlay">
+    <div class="wizard-container" id="wizardEditRecContainer">
+        <div class="wizard-header">
+            <div class="wizard-title"><i class="bi bi-pencil"></i> Editar Venta Recurrente</div>
+            <button class="wizard-close"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="wizard-progress">
+            <div class="wizard-progress-step"></div>
+            <div class="wizard-progress-step"></div>
+            <div class="wizard-progress-step"></div>
+        </div>
+        <div class="wizard-step-counter"></div>
+
+        <form method="POST" id="formEditRec">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="wizard-body">
+                <!-- Step 1: Cliente y Servicio -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Cliente y Servicio</div>
+                    <div class="wizard-step-title">¿A quién se factura?</div>
+                    <select name="unit_id" class="wizard-select" id="editRecUnitId" required>
+                        <option value="">Seleccionar apartamento...</option>
+                        {% for apt in apartments %}
+                        {% if apt.resident_name %}
+                        <option value="{{ apt.id }}">{{ apt.number }} - {{ apt.resident_name }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Servicio</label>
+                        <select name="service_id" class="wizard-select" id="editRecServiceId">
+                            <option value="">Seleccionar servicio...</option>
+                            {% for svc in services %}
+                            <option value="{{ svc.id }}">{{ svc.name }} - RD$ {{ "{:,.2f}".format(svc.price or 0) }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Descripción</label>
+                        <input type="text" name="description" class="wizard-input" id="editRecDescription" placeholder="Descripción del cargo">
+                    </div>
+                </div>
+
+                <!-- Step 2: Monto y Frecuencia -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Monto y Frecuencia</div>
+                    <div class="wizard-step-title">¿Cuánto y cada cuánto?</div>
+                    <input type="number" name="amount" class="wizard-input" id="editRecAmount" step="0.01" min="0.01" placeholder="Monto" required>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Frecuencia</label>
+                        <select name="frequency" class="wizard-select" id="editRecFrequency">
+                            <option value="monthly">Mensual</option>
+                            <option value="weekly">Semanal</option>
+                            <option value="yearly">Anual</option>
+                        </select>
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Día de facturación</label>
+                        <input type="number" name="billing_day" class="wizard-input" id="editRecBillingDay" min="1" max="28" value="1">
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Hora</label>
+                        <input type="time" name="billing_time" class="wizard-input" id="editRecBillingTime" value="08:00">
+                    </div>
+                </div>
+
+                <!-- Step 3: Fechas y Estado -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Fechas y Estado</div>
+                    <div class="wizard-step-title">Período de vigencia</div>
+                    <label class="wizard-step-label">Fecha de inicio</label>
+                    <input type="date" name="start_date" class="wizard-input" id="editRecStartDate" required>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Fecha de fin (opcional)</label>
+                        <input type="date" name="end_date" class="wizard-input" id="editRecEndDate">
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Estado</label>
+                        <select name="active" class="wizard-select" id="editRecActive">
+                            <option value="1">Activa</option>
+                            <option value="0">Inactiva</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="wizard-footer">
+                <button type="button" class="wizard-btn wizard-btn-back"><i class="bi bi-arrow-left"></i> Atrás</button>
+                <button type="button" class="wizard-btn wizard-btn-next">Siguiente <i class="bi bi-arrow-right"></i></button>
+                <button type="submit" class="wizard-btn wizard-btn-submit"><i class="bi bi-check-lg"></i> Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const wizardEditRec = new XpackWizard('wizardEditRecContainer');
+
+function editRecurring(rs) {
+    const form = document.getElementById('formEditRec');
+    form.action = '/facturacion/facturas/recurring/edit/' + rs.id;
+    document.getElementById('editRecUnitId').value = rs.unit_id || '';
+    document.getElementById('editRecServiceId').value = rs.service_id || '';
+    document.getElementById('editRecDescription').value = rs.description || '';
+    document.getElementById('editRecAmount').value = rs.amount || '';
+    document.getElementById('editRecFrequency').value = rs.frequency || 'monthly';
+    document.getElementById('editRecBillingDay').value = rs.billing_day || 1;
+    document.getElementById('editRecBillingTime').value = rs.billing_time || '08:00';
+    document.getElementById('editRecStartDate').value = rs.start_date || '';
+    document.getElementById('editRecEndDate').value = rs.end_date || '';
+    document.getElementById('editRecActive').value = rs.active ? '1' : '0';
+    wizardEditRec.open();
+}
+</script>
 {% endblock %}

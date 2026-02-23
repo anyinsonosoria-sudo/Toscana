@@ -751,6 +751,65 @@ def toggle_recurring(sale_id):
     return redirect(url_for('billing.invoices', tab='recurring'))
 
 
+@billing_bp.route('/facturas/recurring/edit/<int:sale_id>', methods=['POST'])
+@login_required
+@permission_required('facturacion.edit')
+@audit_log('facturacion.editar_recurrente', 'Editar venta recurrente')
+def edit_recurring(sale_id):
+    """Editar una venta recurrente existente"""
+    try:
+        fields = {}
+        
+        unit_id = request.form.get("unit_id")
+        if unit_id:
+            fields["unit_id"] = int(unit_id)
+        
+        service_id = request.form.get("service_id")
+        if service_id:
+            fields["service_id"] = int(service_id)
+        
+        amount = request.form.get("amount")
+        if amount:
+            fields["amount"] = float(amount)
+        
+        frequency = request.form.get("frequency")
+        if frequency:
+            fields["frequency"] = frequency
+        
+        billing_day = request.form.get("billing_day")
+        if billing_day:
+            fields["billing_day"] = int(billing_day)
+        
+        billing_time = request.form.get("billing_time")
+        if billing_time:
+            fields["billing_time"] = billing_time
+        
+        description = request.form.get("description")
+        if description is not None:
+            fields["description"] = description.strip()
+        
+        start_date = request.form.get("start_date")
+        if start_date:
+            fields["start_date"] = start_date
+        
+        end_date = request.form.get("end_date")
+        if end_date is not None:
+            fields["end_date"] = end_date if end_date else None
+        
+        active = request.form.get("active")
+        if active is not None:
+            fields["active"] = 1 if active == "1" else 0
+        
+        models.update_recurring_sale(sale_id, **fields)
+        cache.clear()
+        flash(f"Venta recurrente #{sale_id} actualizada exitosamente", "success")
+    except Exception as e:
+        logger.error(f"Error editing recurring sale: {e}")
+        flash(f"Error al editar venta recurrente: {e}", "error")
+    
+    return redirect(url_for('billing.recurring_sales'))
+
+
 @billing_bp.route('/facturas/recurring/generate/<int:sale_id>', methods=['POST'])
 @login_required
 @permission_required('facturacion.create')
