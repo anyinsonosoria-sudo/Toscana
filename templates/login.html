@@ -7,8 +7,8 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <style>
         :root {
-            --primary: #4f46e5;
-            --primary-dark: #4338ca;
+            --primary: {{ accent_color if accent_color is defined else '#795548' }};
+            --primary-dark: {{ accent_color if accent_color is defined else '#795548' }};
             --bg: #f0f2f5;
             --card-bg: #ffffff;
             --text: #1e293b;
@@ -23,7 +23,7 @@
 
         body {
             font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary) 0%, color-mix(in srgb, var(--primary) 70%, black) 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -194,7 +194,7 @@
         .btn-login:hover {
             background: var(--primary-dark);
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         }
 
         .btn-login:active {
@@ -218,19 +218,20 @@
 <body>
     <div class="login-card">
         <div class="login-header">
-            {% if customization is defined and customization.logo_url and customization.display_logo == '1' %}
-                <img src="{{ customization.logo_url }}" alt="Logo" class="login-logo">
+            {% if company_info is defined and company_info.logo_path %}
+                <img src="{{ url_for('static', filename='uploads/' + company_info.logo_path) }}" alt="Logo" class="login-logo">
             {% else %}
                 <div class="login-logo-placeholder"><i class="bi bi-building"></i></div>
             {% endif %}
-            <div class="brand">{{ customization.company_name if customization is defined and customization.company_name else 'Residencial Toscana' }}</div>
+            <div class="brand">{{ company_info.name if company_info is defined and company_info and company_info.name else (customization.company_name if customization is defined and customization.company_name else 'Residencial Toscana') }}</div>
             <div class="brand-sub">Sistema de Administración</div>
-            {% if customization is defined %}
+            {% set co = company_info if company_info is defined and company_info else {} %}
+            {% if co.address or co.phone or co.email %}
             <div class="brand-info">
-                {% if customization.company_address %}{{ customization.company_address }}<br>{% endif %}
-                {% if customization.company_phone %}<i class="bi bi-telephone"></i> {{ customization.company_phone }}{% endif %}
-                {% if customization.company_phone and customization.company_email %} &bull; {% endif %}
-                {% if customization.company_email %}<i class="bi bi-envelope"></i> {{ customization.company_email }}{% endif %}
+                {% if co.address %}{{ co.address }}{% if co.city %}, {{ co.city }}{% endif %}<br>{% endif %}
+                {% if co.phone %}<i class="bi bi-telephone"></i> {{ co.phone }}{% endif %}
+                {% if co.phone and co.email %} &bull; {% endif %}
+                {% if co.email %}<i class="bi bi-envelope"></i> {{ co.email }}{% endif %}
             </div>
             {% endif %}
         </div>
@@ -278,7 +279,7 @@
         </div>
 
         <div class="login-footer">
-            &copy; 2026 {{ customization.company_name if customization is defined and customization.company_name else 'Residencial Toscana' }} — Powered by Xpack
+            &copy; 2026 {{ company_info.name if company_info is defined and company_info and company_info.name else 'Residencial Toscana' }} — Powered by Xpack
         </div>
     </div>
 </body>

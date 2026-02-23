@@ -9,8 +9,20 @@ from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
 import user_model
 import customization
+import company
 from utils import permissions as perm_module
 from extensions import limiter, csrf
+
+
+def _login_context():
+    """Build context dict for login template."""
+    custom = customization.get_settings_with_defaults()
+    accent = customization.get_setting('accent_color', '#795548')
+    try:
+        co = company.get_company_info() or {}
+    except Exception:
+        co = {}
+    return dict(customization=custom, accent_color=accent, company_info=co)
 
 logger = logging.getLogger(__name__)
 
@@ -35,28 +47,24 @@ def login():
         # Validaciones básicas
         if not username or not password:
             flash('Usuario y contraseña son requeridos', 'error')
-            custom = customization.get_settings_with_defaults()
-            return render_template('login.html', customization=custom)
+            return render_template('login.html', **_login_context())
         
         # Buscar usuario
         user = user_model.get_user_by_username(username)
         
         if user is None:
             flash('Usuario o contraseña incorrectos', 'error')
-            custom = customization.get_settings_with_defaults()
-            return render_template('login.html', customization=custom)
+            return render_template('login.html', **_login_context())
         
         # Verificar si está activo
         if not user.is_active:
             flash('Usuario desactivado. Contacte al administrador', 'error')
-            custom = customization.get_settings_with_defaults()
-            return render_template('login.html', customization=custom)
+            return render_template('login.html', **_login_context())
         
         # Verificar contraseña
         if not user.check_password(password):
             flash('Usuario o contraseña incorrectos', 'error')
-            custom = customization.get_settings_with_defaults()
-            return render_template('login.html', customization=custom)
+            return render_template('login.html', **_login_context())
         
         # Login exitoso
         login_user(user, remember=remember)
@@ -72,8 +80,7 @@ def login():
         return redirect(url_for('index'))
     
     # GET request - mostrar formulario
-    custom = customization.get_settings_with_defaults()
-    return render_template('login.html', customization=custom)
+    return render_template('login.html', **_login_context())
 
 
 @auth_bp.route('/logout')
