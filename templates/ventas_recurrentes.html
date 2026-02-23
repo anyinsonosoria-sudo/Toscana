@@ -195,7 +195,7 @@ const wizardEditRec = new XpackWizard('wizardEditRecContainer');
 
 function editRecurring(rs) {
     const form = document.getElementById('formEditRec');
-    form.action = '/facturacion/facturas/recurring/edit/' + rs.id;
+    form.action = '{{ url_for("billing.edit_recurring", sale_id=0) }}'.replace('/0', '/' + rs.id);
     document.getElementById('editRecUnitId').value = rs.unit_id || '';
     document.getElementById('editRecServiceId').value = rs.service_id || '';
     document.getElementById('editRecDescription').value = rs.description || '';
