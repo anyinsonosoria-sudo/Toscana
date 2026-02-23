@@ -8,6 +8,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
 import user_model
+import customization
 from utils import permissions as perm_module
 from extensions import limiter, csrf
 
@@ -34,24 +35,28 @@ def login():
         # Validaciones básicas
         if not username or not password:
             flash('Usuario y contraseña son requeridos', 'error')
-            return render_template('login.html')
+            custom = customization.get_settings_with_defaults()
+            return render_template('login.html', customization=custom)
         
         # Buscar usuario
         user = user_model.get_user_by_username(username)
         
         if user is None:
             flash('Usuario o contraseña incorrectos', 'error')
-            return render_template('login.html')
+            custom = customization.get_settings_with_defaults()
+            return render_template('login.html', customization=custom)
         
         # Verificar si está activo
         if not user.is_active:
             flash('Usuario desactivado. Contacte al administrador', 'error')
-            return render_template('login.html')
+            custom = customization.get_settings_with_defaults()
+            return render_template('login.html', customization=custom)
         
         # Verificar contraseña
         if not user.check_password(password):
             flash('Usuario o contraseña incorrectos', 'error')
-            return render_template('login.html')
+            custom = customization.get_settings_with_defaults()
+            return render_template('login.html', customization=custom)
         
         # Login exitoso
         login_user(user, remember=remember)
@@ -67,7 +72,8 @@ def login():
         return redirect(url_for('index'))
     
     # GET request - mostrar formulario
-    return render_template('login.html')
+    custom = customization.get_settings_with_defaults()
+    return render_template('login.html', customization=custom)
 
 
 @auth_bp.route('/logout')

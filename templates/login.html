@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Iniciar Sesión - Xpack</title>
+    <title>Iniciar Sesión - {{ customization.company_name or 'Residencial Toscana' }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <style>
         :root {
@@ -47,16 +47,48 @@
             text-align: center;
         }
 
+        .login-logo {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid rgba(255,255,255,0.3);
+            margin-bottom: 0.75rem;
+        }
+
+        .login-logo-placeholder {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.15);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .login-logo-placeholder i {
+            font-size: 2.2rem;
+            color: rgba(255,255,255,0.8);
+        }
+
         .login-header .brand {
-            font-size: 2rem;
+            font-size: 1.6rem;
             font-weight: 800;
             letter-spacing: -0.5px;
         }
 
         .login-header .brand-sub {
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             opacity: 0.8;
             margin-top: 0.25rem;
+        }
+
+        .login-header .brand-info {
+            font-size: 0.75rem;
+            opacity: 0.7;
+            margin-top: 0.5rem;
+            line-height: 1.5;
         }
 
         .login-body {
@@ -186,8 +218,21 @@
 <body>
     <div class="login-card">
         <div class="login-header">
-            <div class="brand">Xpack</div>
-            <div class="brand-sub">Building Maintenance System</div>
+            {% if customization is defined and customization.logo_url and customization.display_logo == '1' %}
+                <img src="{{ customization.logo_url }}" alt="Logo" class="login-logo">
+            {% else %}
+                <div class="login-logo-placeholder"><i class="bi bi-building"></i></div>
+            {% endif %}
+            <div class="brand">{{ customization.company_name if customization is defined and customization.company_name else 'Residencial Toscana' }}</div>
+            <div class="brand-sub">Sistema de Administración</div>
+            {% if customization is defined %}
+            <div class="brand-info">
+                {% if customization.company_address %}{{ customization.company_address }}<br>{% endif %}
+                {% if customization.company_phone %}<i class="bi bi-telephone"></i> {{ customization.company_phone }}{% endif %}
+                {% if customization.company_phone and customization.company_email %} &bull; {% endif %}
+                {% if customization.company_email %}<i class="bi bi-envelope"></i> {{ customization.company_email }}{% endif %}
+            </div>
+            {% endif %}
         </div>
 
         <div class="login-body">
@@ -233,7 +278,7 @@
         </div>
 
         <div class="login-footer">
-            &copy; {{ now.year if now is defined else '2025' }} Xpack — Building Maintenance
+            &copy; 2026 {{ customization.company_name if customization is defined and customization.company_name else 'Residencial Toscana' }} — Powered by Xpack
         </div>
     </div>
 </body>
