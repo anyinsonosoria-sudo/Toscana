@@ -37,8 +37,8 @@
                         <td data-label="Monto" style="font-weight: 700;">RD$ {{ "{:,.2f}".format(rs.amount or 0) }}</td>
                         <td data-label="Frecuencia">
                             {% if rs.frequency == 'monthly' %}Mensual
-                            {% elif rs.frequency == 'weekly' %}Semanal
-                            {% elif rs.frequency == 'yearly' %}Anual
+                            {% elif rs.frequency == 'quarterly' %}Trimestral
+                            {% elif rs.frequency == 'annual' %}Anual
                             {% else %}{{ rs.frequency }}{% endif %}
                         </td>
                         <td data-label="Día">{{ rs.billing_day or '-' }}</td>
@@ -99,75 +99,68 @@
             <div class="wizard-title"><i class="bi bi-pencil"></i> Editar Venta Recurrente</div>
             <button class="wizard-close"><i class="bi bi-x-lg"></i></button>
         </div>
-        <div class="wizard-progress">
-            <div class="wizard-progress-step"></div>
-            <div class="wizard-progress-step"></div>
-            <div class="wizard-progress-step"></div>
-        </div>
+        <div class="wizard-progress"><div class="wizard-progress-step"></div><div class="wizard-progress-step"></div><div class="wizard-progress-step"></div></div>
         <div class="wizard-step-counter"></div>
 
         <form method="POST" id="formEditRec">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="wizard-body">
-                <!-- Step 1: Cliente y Servicio -->
+                <!-- Step 1: Cliente (igual que crear) -->
                 <div class="wizard-step">
-                    <div class="wizard-step-label">Cliente y Servicio</div>
-                    <div class="wizard-step-title">¿A quién se factura?</div>
+                    <div class="wizard-step-label">Cliente</div>
+                    <div class="wizard-step-title">¿Para quién es la factura recurrente?</div>
                     <select name="unit_id" class="wizard-select" id="editRecUnitId" required>
-                        <option value="">Seleccionar apartamento...</option>
+                        <option value="">Seleccionar cliente...</option>
                         {% for apt in apartments %}
                         {% if apt.resident_name %}
-                        <option value="{{ apt.id }}">{{ apt.number }} - {{ apt.resident_name }}</option>
+                        <option value="{{ apt.id }}">{{ apt.resident_name }} — Apto {{ apt.number }}</option>
                         {% endif %}
                         {% endfor %}
                     </select>
+                </div>
+
+                <!-- Step 2: Servicio + Monto + Descripción (igual que crear) -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Servicio</div>
+                    <div class="wizard-step-title">¿Qué servicio se facturará?</div>
+                    <select name="service_id" class="wizard-select editRecSvcSel" id="editRecServiceId" required>
+                        <option value="">Seleccionar servicio...</option>
+                        {% for s in services %}
+                        <option value="{{ s.id }}" data-price="{{ s.price }}">{{ s.name }} — RD$ {{ "{:,.2f}".format(s.price or 0) }}</option>
+                        {% endfor %}
+                    </select>
                     <div class="mt-3">
-                        <label class="wizard-step-label">Servicio</label>
-                        <select name="service_id" class="wizard-select" id="editRecServiceId">
-                            <option value="">Seleccionar servicio...</option>
-                            {% for svc in services %}
-                            <option value="{{ svc.id }}">{{ svc.name }} - RD$ {{ "{:,.2f}".format(svc.price or 0) }}</option>
-                            {% endfor %}
-                        </select>
+                        <label class="wizard-step-label">Monto</label>
+                        <input type="text" name="amount" class="wizard-input" id="editRecAmount" inputmode="decimal" placeholder="0.00" required>
                     </div>
                     <div class="mt-3">
                         <label class="wizard-step-label">Descripción</label>
-                        <input type="text" name="description" class="wizard-input" id="editRecDescription" placeholder="Descripción del cargo">
+                        <input type="text" name="description" class="wizard-input" id="editRecDescription" placeholder="Ej: Cuota de mantenimiento mensual">
                     </div>
                 </div>
 
-                <!-- Step 2: Monto y Frecuencia -->
+                <!-- Step 3: Frecuencia + Fechas + Estado (igual que crear + extras de edición) -->
                 <div class="wizard-step">
-                    <div class="wizard-step-label">Monto y Frecuencia</div>
-                    <div class="wizard-step-title">¿Cuánto y cada cuánto?</div>
-                    <input type="number" name="amount" class="wizard-input" id="editRecAmount" step="0.01" min="0.01" placeholder="Monto" required>
-                    <div class="mt-3">
-                        <label class="wizard-step-label">Frecuencia</label>
-                        <select name="frequency" class="wizard-select" id="editRecFrequency">
-                            <option value="monthly">Mensual</option>
-                            <option value="weekly">Semanal</option>
-                            <option value="yearly">Anual</option>
-                        </select>
+                    <div class="wizard-step-label">Frecuencia</div>
+                    <div class="wizard-step-title">¿Cada cuánto se genera?</div>
+                    <select name="frequency" class="wizard-select" id="editRecFrequency">
+                        <option value="monthly" selected>Mensual</option>
+                        <option value="quarterly">Trimestral</option>
+                        <option value="annual">Anual</option>
+                    </select>
+                    <div class="d-flex gap-2 mt-3">
+                        <div style="flex:1;">
+                            <label class="wizard-step-label">Día de facturación</label>
+                            <input type="number" name="billing_day" class="wizard-input" id="editRecBillingDay" value="1" min="1" max="28">
+                        </div>
+                        <div style="flex:1;">
+                            <label class="wizard-step-label">Hora de generación</label>
+                            <input type="time" name="billing_time" class="wizard-input" id="editRecBillingTime" value="08:00">
+                        </div>
                     </div>
                     <div class="mt-3">
-                        <label class="wizard-step-label">Día de facturación</label>
-                        <input type="number" name="billing_day" class="wizard-input" id="editRecBillingDay" min="1" max="28" value="1">
-                    </div>
-                    <div class="mt-3">
-                        <label class="wizard-step-label">Hora</label>
-                        <input type="time" name="billing_time" class="wizard-input" id="editRecBillingTime" value="08:00">
-                    </div>
-                </div>
-
-                <!-- Step 3: Fechas y Estado -->
-                <div class="wizard-step">
-                    <div class="wizard-step-label">Fechas y Estado</div>
-                    <div class="wizard-step-title">Período de vigencia</div>
-                    <label class="wizard-step-label">Fecha de inicio</label>
-                    <input type="date" name="start_date" class="wizard-input" id="editRecStartDate" required>
-                    <div class="mt-3">
-                        <label class="wizard-step-label">Fecha de fin (opcional)</label>
-                        <input type="date" name="end_date" class="wizard-input" id="editRecEndDate">
+                        <label class="wizard-step-label">Fecha de inicio</label>
+                        <input type="date" name="start_date" class="wizard-input" id="editRecStartDate" required>
                     </div>
                     <div class="mt-3">
                         <label class="wizard-step-label">Estado</label>
@@ -193,19 +186,43 @@
 <script>
 const wizardEditRec = new XpackWizard('wizardEditRecContainer');
 
+// Auto-fill amount when service changes (same behavior as create wizard)
+document.querySelector('.editRecSvcSel').addEventListener('change', function() {
+    const opt = this.options[this.selectedIndex];
+    if (opt && opt.dataset.price) {
+        document.getElementById('editRecAmount').value = parseFloat(opt.dataset.price).toFixed(2);
+    }
+});
+
 function editRecurring(rs) {
     const form = document.getElementById('formEditRec');
     form.action = '{{ url_for("billing.edit_recurring", sale_id=0) }}'.replace('/0', '/' + rs.id);
-    document.getElementById('editRecUnitId').value = rs.unit_id || '';
-    document.getElementById('editRecServiceId').value = rs.service_id || '';
-    document.getElementById('editRecDescription').value = rs.description || '';
+
+    // Step 1: Cliente
+    document.getElementById('editRecUnitId').value = String(rs.unit_id || '');
+
+    // Step 2: Servicio + Monto + Descripción
+    const svcSelect = document.getElementById('editRecServiceId');
+    svcSelect.value = String(rs.service_id || '');
+    // If service_id didn't match, try finding by name
+    if (!svcSelect.value && rs.service_name) {
+        for (let i = 0; i < svcSelect.options.length; i++) {
+            if (svcSelect.options[i].text.indexOf(rs.service_name) !== -1) {
+                svcSelect.selectedIndex = i;
+                break;
+            }
+        }
+    }
     document.getElementById('editRecAmount').value = rs.amount || '';
+    document.getElementById('editRecDescription').value = rs.description || '';
+
+    // Step 3: Frecuencia + Fechas + Estado
     document.getElementById('editRecFrequency').value = rs.frequency || 'monthly';
     document.getElementById('editRecBillingDay').value = rs.billing_day || 1;
     document.getElementById('editRecBillingTime').value = rs.billing_time || '08:00';
     document.getElementById('editRecStartDate').value = rs.start_date || '';
-    document.getElementById('editRecEndDate').value = rs.end_date || '';
     document.getElementById('editRecActive').value = rs.active ? '1' : '0';
+
     wizardEditRec.open();
 }
 </script>
