@@ -355,9 +355,13 @@ def _register_routes(app: Flask) -> None:
             stats['total_paid'] = total_paid
             stats['total_pending'] = total_invoiced - total_paid
             
-            # Efectivo disponible (ingresos - gastos)
+            # Efectivo disponible (pagos + ingresos contables - gastos)
             cur.execute("SELECT COALESCE(SUM(amount), 0) FROM payments")
             total_income = cur.fetchone()[0]
+            # Sumar ingresos de accounting_transactions que NO son duplicados de pagos (INV-*)
+            cur.execute("""SELECT COALESCE(SUM(amount), 0) FROM accounting_transactions 
+                           WHERE type = 'income' AND (reference IS NULL OR reference NOT LIKE 'INV-%')""")
+            total_income += cur.fetchone()[0]
             cur.execute("SELECT COALESCE(SUM(amount), 0) FROM expenses")
             total_expenses = cur.fetchone()[0]
             stats['cash_available'] = total_income - total_expenses
