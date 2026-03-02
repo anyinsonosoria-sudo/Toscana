@@ -4,9 +4,14 @@
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center">
     <h1 class="page-title"><i class="bi bi-cash-stack"></i> Gastos</h1>
-    <button type="button" class="btn btn-primary" onclick="wizardAddExp.open()">
-        <i class="bi bi-plus-lg"></i> Nuevo Gasto
-    </button>
+    <div style="display:flex;gap:.5rem;">
+        <button type="button" class="btn btn-primary" onclick="wizardOCR.open()">
+            <i class="bi bi-camera"></i> Escanear Recibo
+        </button>
+        <button type="button" class="btn btn-primary" onclick="wizardAddExp.open()">
+            <i class="bi bi-plus-lg"></i> Nuevo Gasto
+        </button>
+    </div>
 </div>
 
 <!-- Stats -->
@@ -263,6 +268,95 @@
         </form>
     </div>
 </div>
+
+<!-- ===== WIZARD: Escanear Recibo OCR ===== -->
+<div class="wizard-overlay" id="wizardOCROverlay">
+    <div class="wizard-container" id="wizardOCRContainer">
+        <div class="wizard-header">
+            <div class="wizard-title"><i class="bi bi-camera"></i> Escanear Recibo</div>
+            <button class="wizard-close"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="wizard-progress">
+            <div class="wizard-progress-step"></div>
+            <div class="wizard-progress-step"></div>
+        </div>
+        <div class="wizard-step-counter"></div>
+
+        <form method="POST" action="{{ url_for('expenses.save_with_receipt') }}" id="formOCR" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="receipt_image_b64" id="ocrB64">
+            <div class="wizard-body">
+                <!-- Paso 1: Subir imagen -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Imagen</div>
+                    <div class="wizard-step-title">Sube la foto del recibo</div>
+                    <input type="file" id="ocrFileInput" name="file" class="wizard-input" accept="image/*" capture="environment">
+                    <div id="ocrPreviewWrap" style="display:none;margin-top:.75rem;text-align:center;">
+                        <img id="ocrPreview" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--gray-200);">
+                    </div>
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-primary" id="btnScanOCR" style="width:100%">
+                            <i class="bi bi-search"></i> Escanear
+                        </button>
+                    </div>
+                    <div id="ocrStatus" class="mt-2" style="font-size:.85rem;min-height:1.5rem;"></div>
+                </div>
+                <!-- Paso 2: Confirmar datos extraídos -->
+                <div class="wizard-step">
+                    <div class="wizard-step-label">Confirmar</div>
+                    <div class="wizard-step-title">Revisa y corrige los datos</div>
+                    <label class="wizard-step-label">Descripción</label>
+                    <input type="text" name="description" id="ocrDesc" class="wizard-input" placeholder="Descripción del gasto" required>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Monto (RD$)</label>
+                        <input type="number" name="amount" id="ocrAmount" class="wizard-input" step="0.01" min="0.01" required>
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Fecha</label>
+                        <input type="date" name="date" id="ocrDate" class="wizard-input">
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Categoría</label>
+                        <select name="category" class="wizard-select">
+                            <option value="">Seleccionar...</option>
+                            <option value="Mantenimiento">Mantenimiento</option>
+                            <option value="Limpieza">Limpieza</option>
+                            <option value="Seguridad">Seguridad</option>
+                            <option value="Servicios Públicos">Servicios Públicos</option>
+                            <option value="Materiales">Materiales</option>
+                            <option value="Nómina">Nómina</option>
+                            <option value="Otro">Otro</option>
+                        </select>
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Proveedor</label>
+                        <select name="supplier_id" class="wizard-select">
+                            <option value="">Sin proveedor</option>
+                            {% for sup in suppliers %}
+                            <option value="{{ sup.id }}">{{ sup.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mt-3">
+                        <label class="wizard-step-label">Método de pago</label>
+                        <select name="payment_method" class="wizard-select">
+                            <option value="transferencia">Transferencia</option>
+                            <option value="efectivo">Efectivo</option>
+                            <option value="cheque">Cheque</option>
+                            <option value="tarjeta">Tarjeta</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button type="button" class="wizard-btn wizard-btn-back"><i class="bi bi-arrow-left"></i> Atrás</button>
+                <button type="button" class="wizard-btn wizard-btn-next">Siguiente <i class="bi bi-arrow-right"></i></button>
+                <button type="submit" class="wizard-btn wizard-btn-submit"><i class="bi bi-check-lg"></i> Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -292,5 +386,61 @@ function editExp(exp) {
     document.getElementById('editExpNotes').value = exp.notes || '';
     wizardEditExp.open();
 }
+
+// ===== OCR Wizard =====
+const wizardOCR = new XpackWizard('wizardOCRContainer');
+
+document.getElementById('ocrFileInput').addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    // Preview
+    const reader = new FileReader();
+    reader.onload = e => {
+        document.getElementById('ocrPreview').src = e.target.result;
+        document.getElementById('ocrPreviewWrap').style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+});
+
+document.getElementById('btnScanOCR').addEventListener('click', async function() {
+    const fileInput = document.getElementById('ocrFileInput');
+    if (!fileInput.files.length) {
+        alert('Selecciona una imagen primero.');
+        return;
+    }
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Procesando...';
+    document.getElementById('ocrStatus').innerHTML = '';
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    try {
+        const resp = await fetch('/gastos/upload-recibo', { method: 'POST', body: formData });
+        const data = await resp.json();
+
+        if (data.success) {
+            document.getElementById('ocrDesc').value    = data.description || '';
+            document.getElementById('ocrAmount').value  = data.amount || '';
+            document.getElementById('ocrDate').value    = data.date || '';
+            document.getElementById('ocrB64').value     = data.receipt_image_b64 || '';
+            document.getElementById('ocrStatus').innerHTML =
+                `<span style="color:var(--success)"><i class="bi bi-check-circle"></i> ${data.message}</span>`;
+            // Avanzar al paso de confirmación
+            document.querySelector('#wizardOCRContainer .wizard-btn-next').click();
+        } else {
+            document.getElementById('ocrStatus').innerHTML =
+                `<span style="color:var(--danger)"><i class="bi bi-x-circle"></i> ${data.error}</span>`;
+        }
+    } catch(e) {
+        document.getElementById('ocrStatus').innerHTML =
+            `<span style="color:var(--danger)"><i class="bi bi-x-circle"></i> Error de conexión</span>`;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-search"></i> Escanear';
+    }
+});
 </script>
 {% endblock %}
