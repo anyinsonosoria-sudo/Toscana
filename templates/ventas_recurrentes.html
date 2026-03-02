@@ -4,6 +4,13 @@
 {% block content %}
 <div class="page-header">
     <h1 class="page-title"><i class="bi bi-arrow-repeat"></i> Ventas Recurrentes</h1>
+    <form method="POST" action="{{ url_for('billing.process_due_recurring') }}"
+          onsubmit="return confirm('¿Procesar todas las facturas recurrentes pendientes para hoy?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-play-circle"></i> Procesar Pendientes
+        </button>
+    </form>
 </div>
 
 <div class="card">

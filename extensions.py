@@ -9,6 +9,7 @@ from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
+from flask_apscheduler import APScheduler
 from flask import request, jsonify, redirect, url_for
 
 # ==========================================
@@ -43,6 +44,11 @@ cache = Cache(
         'CACHE_DEFAULT_TIMEOUT': 300
     }
 )
+
+# ==========================================
+# SCHEDULER (facturas recurrentes automáticas)
+# ==========================================
+scheduler = APScheduler()
 
 
 def init_extensions(app):
@@ -104,5 +110,14 @@ def init_extensions(app):
         print("[OK] Cache configurado: SimpleCache, timeout 5 minutos")
     except Exception as e:
         print(f"[WARNING] No se pudo configurar cache: {e}")
-    
+
+    # Inicializar Scheduler
+    try:
+        app.config.setdefault('SCHEDULER_API_ENABLED', False)
+        scheduler.init_app(app)
+        scheduler.start()
+        print("[OK] Scheduler configurado para facturas recurrentes automáticas")
+    except Exception as e:
+        print(f"[WARNING] No se pudo configurar el scheduler: {e}")
+
     print("[OK] Extensiones de Flask inicializadas correctamente")

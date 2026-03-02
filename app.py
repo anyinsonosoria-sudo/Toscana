@@ -17,7 +17,7 @@ from flask_login import current_user, login_required
 import db
 import company
 import customization
-from extensions import init_extensions
+from extensions import init_extensions, scheduler
 from auth import auth_bp
 from blueprints.settings import settings_bp
 from blueprints.company import company_bp
@@ -71,7 +71,10 @@ def create_app(config_object: str = None) -> Flask:
     
     # Inicializar extensiones (CSRF, login, cache, limiter...)
     init_extensions(app)
-    
+
+    # Registrar tarea programada: generar facturas recurrentes cada día a las 00:05
+    _register_scheduler_jobs(app)
+
     # Registrar blueprints
     _register_blueprints(app)
     
@@ -102,8 +105,7 @@ def _configure_logging(app: Flask) -> None:
     """Configura el sistema de logging."""
     # Crear directorio de logs si no existe
     log_dir = Path(__file__).parent / 'logs'
-    log_dir.mkdir(exist_ok=True)
-    
+    log_dir.mkdir(exist_ok=True)    
     # Configurar handler de archivo
     file_handler = RotatingFileHandler(
         log_dir / 'app.log',
@@ -122,6 +124,41 @@ def _configure_logging(app: Flask) -> None:
         app.logger.setLevel(logging.INFO)
     
     app.logger.addHandler(file_handler)
+
+
+def _register_scheduler_jobs(app: Flask) -> None:
+    """Registra los trabajos periódicos del scheduler."""
+    try:
+        @scheduler.task(
+            'interval',
+            id='process_recurring_invoices',
+            minutes=1,
+            misfire_grace_time=60,
+        )
+        def _job_process_recurring():
+            """Comprueba cada minuto si alguna factura recurrente debe generarse ahora."""
+            with app.app_context():
+                try:
+                    import models
+                    result = models.process_due_recurring_invoices()
+                    if result['generated']:
+                        app.logger.info(
+                            f"[Scheduler] Facturas recurrentes: "
+                            f"{len(result['generated'])} generadas, "
+                            f"{len(result['skipped'])} omitidas, "
+                            f"{len(result['errors'])} errores"
+                        )
+                    if result['errors']:
+                        for err in result['errors']:
+                            app.logger.error(f"[Scheduler] Error: {err}")
+                except Exception as exc:
+                    app.logger.error(f"[Scheduler] Fallo al procesar facturas recurrentes: {exc}")
+
+        app.logger.info(
+            "[OK] Tarea programada registrada: verificar facturas recurrentes cada minuto"
+        )
+    except Exception as e:
+        app.logger.warning(f"[WARNING] No se pudo registrar la tarea del scheduler: {e}")
 
 
 def _register_blueprints(app: Flask) -> None:

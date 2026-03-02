@@ -943,6 +943,134 @@ def delete_recurring_sale(sale_id: int, confirmed: bool = False) -> Dict:
     result['deleted'] = True
     return result
 
+
+def process_due_recurring_invoices() -> dict:
+    """Procesar todas las facturas recurrentes que deben generarse hoy.
+
+    Revisa cada venta recurrente activa y genera una factura cuando:
+    - Se ha alcanzado (o superado) el `billing_day` del ciclo actual.
+    - Se ha alcanzado (o superado) el `billing_time` configurado (HH:MM).
+    - No existe ya una factura para ese ciclo.
+    - La venta está dentro de su rango start_date / end_date.
+
+    Returns:
+        Dict con listas 'generated' (sale_id, invoice_id), 'skipped' y 'errors'.
+    """
+    from datetime import datetime, timedelta
+
+    result: dict = {'generated': [], 'skipped': [], 'errors': []}
+    now = datetime.now()
+    today_str = now.strftime('%Y-%m-%d')
+    current_time_str = now.strftime('%H:%M')  # e.g. '13:47'
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT * FROM recurring_sales
+        WHERE active = 1
+          AND (start_date IS NULL OR start_date <= ?)
+          AND (end_date   IS NULL OR end_date   >= ?)
+    """, (today_str, today_str))
+    sales = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    for sale in sales:
+        sale_id   = sale['id']
+        frequency = sale.get('frequency', 'monthly')
+        billing_day = int(sale.get('billing_day') or 1)
+        billing_time = (sale.get('billing_time') or '00:00').strip()[:5]  # 'HH:MM'
+        last_generated = sale.get('last_generated')  # YYYY-MM-DD or None
+
+        # ── Verificar que ya se alcanzó la hora programada hoy ──
+        if current_time_str < billing_time:
+            result['skipped'].append(sale_id)
+            continue
+
+        try:
+            should_generate = False
+
+            if frequency == 'monthly':
+                # Generar si hoy >= billing_day y sin factura este mes
+                if now.day >= billing_day:
+                    cycle_start = now.strftime('%Y-%m-01')
+                    conn2 = get_conn()
+                    c2 = conn2.cursor()
+                    c2.execute("""
+                        SELECT id FROM invoices
+                        WHERE recurring_sale_id = ? AND issued_date >= ?
+                        LIMIT 1
+                    """, (sale_id, cycle_start))
+                    should_generate = c2.fetchone() is None
+                    conn2.close()
+
+            elif frequency == 'weekly':
+                if last_generated:
+                    last_dt = datetime.strptime(last_generated, '%Y-%m-%d')
+                    should_generate = (now - last_dt).days >= 7
+                else:
+                    should_generate = True
+
+            elif frequency in ('biweekly', 'quincenal', 'bimonthly'):
+                if last_generated:
+                    last_dt = datetime.strptime(last_generated, '%Y-%m-%d')
+                    should_generate = (now - last_dt).days >= 14
+                else:
+                    should_generate = True
+
+            elif frequency == 'yearly':
+                # Generar si hoy >= billing_day, mismo mes que start_date, sin factura este año
+                if now.day >= billing_day:
+                    start_date_str = sale.get('start_date', '')
+                    try:
+                        start_dt = datetime.strptime(start_date_str, '%Y-%m-%d')
+                        if now.month == start_dt.month:
+                            year_start = now.strftime('%Y-01-01')
+                            conn2 = get_conn()
+                            c2 = conn2.cursor()
+                            c2.execute("""
+                                SELECT id FROM invoices
+                                WHERE recurring_sale_id = ? AND issued_date >= ?
+                                LIMIT 1
+                            """, (sale_id, year_start))
+                            should_generate = c2.fetchone() is None
+                            conn2.close()
+                    except Exception:
+                        pass
+            else:
+                # Frecuencia desconocida: tratar como mensual
+                if now.day >= billing_day:
+                    cycle_start = now.strftime('%Y-%m-01')
+                    conn2 = get_conn()
+                    c2 = conn2.cursor()
+                    c2.execute("""
+                        SELECT id FROM invoices
+                        WHERE recurring_sale_id = ? AND issued_date >= ?
+                        LIMIT 1
+                    """, (sale_id, cycle_start))
+                    should_generate = c2.fetchone() is None
+                    conn2.close()
+
+            if should_generate:
+                invoice_id = generate_invoice_from_recurring(sale_id)
+                result['generated'].append({'sale_id': sale_id, 'invoice_id': invoice_id})
+                _log(f"[Scheduler] Factura automática generada: venta #{sale_id} -> factura #{invoice_id}")
+            else:
+                result['skipped'].append(sale_id)
+
+        except Exception as e:
+            msg = f"Venta #{sale_id}: {e}"
+            result['errors'].append(msg)
+            _log(f"[Scheduler] Error procesando venta recurrente #{sale_id}: {e}")
+
+    summary = (f"[Scheduler] Facturas recurrentes procesadas: "
+               f"{len(result['generated'])} generadas, "
+               f"{len(result['skipped'])} omitidas, "
+               f"{len(result['errors'])} errores")
+    _log(summary)
+    print(summary)
+    return result
+
+
 def generate_invoice_from_recurring(sale_id: int) -> int:
     """Generar una factura desde una venta recurrente"""
     conn = get_conn()
@@ -977,19 +1105,31 @@ def generate_invoice_from_recurring(sale_id: int) -> int:
     
     unit_id = apartment['id']
     
-    # Verificar duplicado: no generar si ya existe una factura de esta recurrente este mes
+    # Verificar duplicado según la frecuencia configurada
     from datetime import datetime, timedelta
     now = datetime.now()
-    first_of_month = now.strftime('%Y-%m-01')
+    frequency = sale.get('frequency', 'monthly')
+    if frequency == 'weekly':
+        cycle_start = (now - timedelta(days=6)).strftime('%Y-%m-%d')
+        cycle_label = 'esta semana'
+    elif frequency in ('biweekly', 'quincenal', 'bimonthly'):
+        cycle_start = (now - timedelta(days=13)).strftime('%Y-%m-%d')
+        cycle_label = 'en los últimos 14 días'
+    elif frequency == 'yearly':
+        cycle_start = now.strftime('%Y-01-01')
+        cycle_label = 'este año'
+    else:  # monthly (default)
+        cycle_start = now.strftime('%Y-%m-01')
+        cycle_label = 'este mes'
     cur.execute("""
-        SELECT id FROM invoices 
+        SELECT id FROM invoices
         WHERE recurring_sale_id = ? AND issued_date >= ?
         LIMIT 1
-    """, (sale_id, first_of_month))
+    """, (sale_id, cycle_start))
     existing = cur.fetchone()
     if existing:
         conn.close()
-        raise Exception(f"Ya existe una factura #{existing['id']} generada este mes para esta venta recurrente")
+        raise Exception(f"Ya existe una factura #{existing['id']} generada {cycle_label} para esta venta recurrente")
     
     # Calcular fecha de vencimiento (30 días)
     issued_date = now.strftime('%Y-%m-%d')

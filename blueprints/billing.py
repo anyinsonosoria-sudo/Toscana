@@ -872,6 +872,30 @@ def delete_recurring(sale_id):
     return redirect(url_for('billing.invoices', tab='recurring'))
 
 
+@billing_bp.route('/facturas/recurring/process-due', methods=['POST'])
+@login_required
+@permission_required('facturacion.create')
+@audit_log('facturacion.procesar_recurrentes', 'Procesar facturas recurrentes pendientes')
+def process_due_recurring():
+    """Procesar manualmente todas las facturas recurrentes que deben generarse hoy."""
+    try:
+        result = models.process_due_recurring_invoices()
+        generated = len(result.get('generated', []))
+        skipped = len(result.get('skipped', []))
+        errors = result.get('errors', [])
+        msg = f"Procesamiento completado: {generated} factura(s) generada(s), {skipped} omitida(s)"
+        if errors:
+            msg += f", {len(errors)} error(es): {'; '.join(errors[:3])}"
+            flash(msg, "warning")
+        else:
+            flash(msg, "success")
+        cache.clear()
+    except Exception as e:
+        logger.error(f"Error processing due recurring invoices: {e}")
+        flash(f"Error al procesar facturas recurrentes: {e}", "error")
+    return redirect(url_for('billing.recurring_sales'))
+
+
 @billing_bp.route('/facturas/api/invoice/<int:invoice_id>', methods=['GET'])
 @login_required
 @permission_required('facturacion.view')
