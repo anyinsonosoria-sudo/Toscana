@@ -388,25 +388,50 @@ function editExp(exp) {
 }
 
 // ===== OCR Wizard =====
-const wizardOCR = new XpackWizard('wizardOCRContainer');
+let ocrScanned = false;  // bandera: solo avanza si el OCR fue exitoso
+
+const wizardOCR = new XpackWizard('wizardOCRContainer', {
+    onBeforeNext: function(step) {
+        if (step === 0) {
+            // En el paso de la imagen, solo avanzar si ya se escaneó
+            if (!ocrScanned) {
+                document.getElementById('ocrStatus').innerHTML =
+                    '<span style="color:var(--danger)"><i class="bi bi-exclamation-circle"></i> Primero haz clic en <strong>Escanear</strong> para procesar el recibo.</span>';
+                return false;  // bloquear avance
+            }
+        }
+        return true;
+    }
+});
+
+// Resetear estado cada vez que se abre el wizard
+const _origOpenOCR = wizardOCR.open.bind(wizardOCR);
+wizardOCR.open = function() {
+    ocrScanned = false;
+    document.getElementById('ocrFileInput').value = '';
+    document.getElementById('ocrPreviewWrap').style.display = 'none';
+    document.getElementById('ocrStatus').innerHTML = '';
+    _origOpenOCR();
+};
 
 document.getElementById('ocrFileInput').addEventListener('change', function() {
+    ocrScanned = false;  // reset al cambiar archivo
     const file = this.files[0];
     if (!file) return;
-
-    // Preview
     const reader = new FileReader();
     reader.onload = e => {
         document.getElementById('ocrPreview').src = e.target.result;
         document.getElementById('ocrPreviewWrap').style.display = 'block';
     };
     reader.readAsDataURL(file);
+    document.getElementById('ocrStatus').innerHTML = '';
 });
 
 document.getElementById('btnScanOCR').addEventListener('click', async function() {
     const fileInput = document.getElementById('ocrFileInput');
     if (!fileInput.files.length) {
-        alert('Selecciona una imagen primero.');
+        document.getElementById('ocrStatus').innerHTML =
+            '<span style="color:var(--danger)"><i class="bi bi-exclamation-circle"></i> Selecciona una imagen primero.</span>';
         return;
     }
     const btn = this;
@@ -428,15 +453,18 @@ document.getElementById('btnScanOCR').addEventListener('click', async function()
             document.getElementById('ocrB64').value     = data.receipt_image_b64 || '';
             document.getElementById('ocrStatus').innerHTML =
                 `<span style="color:var(--success)"><i class="bi bi-check-circle"></i> ${data.message}</span>`;
+            ocrScanned = true;
             // Avanzar al paso de confirmación
             document.querySelector('#wizardOCRContainer .wizard-btn-next').click();
         } else {
             document.getElementById('ocrStatus').innerHTML =
                 `<span style="color:var(--danger)"><i class="bi bi-x-circle"></i> ${data.error}</span>`;
+            ocrScanned = false;
         }
     } catch(e) {
         document.getElementById('ocrStatus').innerHTML =
-            `<span style="color:var(--danger)"><i class="bi bi-x-circle"></i> Error de conexión</span>`;
+            `<span style="color:var(--danger)"><i class="bi bi-x-circle"></i> Error de conexión: ${e.message}</span>`;
+        ocrScanned = false;
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-search"></i> Escanear';
