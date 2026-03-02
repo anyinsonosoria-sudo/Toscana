@@ -8,9 +8,11 @@ import os
 import subprocess
 import re
 import io
+import base64
 from typing import Dict, Optional, Tuple
 from datetime import datetime
 from PIL import Image, ImageEnhance, ImageFilter
+import requests
 
 # Configurar variables de entorno ANTES de importar pytesseract
 def _setup_tesseract_env():
@@ -133,10 +135,50 @@ class ReceiptOCR:
             return {'error': f'Error procesando imagen: {str(e)}', 'raw_text': '', 'confidence': 0.0}
 
     @staticmethod
+    def _preprocess_soft(image: Image.Image) -> Image.Image:
+        """
+        Preprocesamiento suave: redimensiona + contraste mejorado.
+        NO binariza — conserva tonos de gris para imágenes de color.
+        """
+        if image.mode not in ('RGB', 'L'):
+            image = image.convert('RGB')
+
+        # Escalar imágenes pequeñas
+        min_dim = 1200
+        if image.width < min_dim or image.height < min_dim:
+            scale = max(min_dim / image.width, min_dim / image.height)
+            new_size = (int(image.width * scale), int(image.height * scale))
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
+
+        gray = image.convert('L')
+
+        # Contraste moderado
+        gray = ImageEnhance.Contrast(gray).enhance(1.8)
+        # Nitidez moderada
+        gray = ImageEnhance.Sharpness(gray).enhance(1.8)
+
+        return gray
+
+    @staticmethod
     def _process(image: Image.Image) -> Dict:
-        """Pipeline unificado de procesamiento."""
-        image = ReceiptOCR._optimize_image(image)
-        raw_text = ReceiptOCR._run_ocr(image)
+        """Pipeline unificado de procesamiento: prueba varias estrategias."""
+        # Guardar copia original antes de modificar
+        orig = image.copy()
+
+        # Estrategia 1: preprocesamiento suave (sin binarización)
+        img_soft = ReceiptOCR._preprocess_soft(orig)
+        text_soft = ReceiptOCR._run_ocr(img_soft)
+
+        # Estrategia 2: preprocesamiento agresivo (binarización)
+        img_hard = ReceiptOCR._preprocess_hard(orig)
+        text_hard = ReceiptOCR._run_ocr(img_hard)
+
+        # Usar el que devuelva más texto
+        raw_text = text_soft if len(text_soft.strip()) >= len(text_hard.strip()) else text_hard
+
+        # Estrategia 3: fallback a OCR.space (API en la nube)
+        if not raw_text.strip():
+            raw_text = ReceiptOCR._run_ocrspace(orig)
 
         if not raw_text.strip():
             return {
@@ -155,11 +197,11 @@ class ReceiptOCR:
         }
 
     # ─────────────────────────────────────────────
-    # IMAGE PREPROCESSING  (upgraded)
+    # IMAGE PREPROCESSING
     # ─────────────────────────────────────────────
     @staticmethod
-    def _optimize_image(image: Image.Image) -> Image.Image:
-        """Preprocesamiento avanzado para mejor precisión de OCR."""
+    def _preprocess_hard(image: Image.Image) -> Image.Image:
+        """Preprocesamiento agresivo con binarización (Otsu simulado)."""
         # 1. Convertir a RGB
         if image.mode not in ('RGB', 'L'):
             image = image.convert('RGB')
@@ -199,6 +241,50 @@ class ReceiptOCR:
         gray = gray.convert('L')
 
         return gray
+
+    # ─────────────────────────────────────────────
+    # OCR.SPACE CLOUD FALLBACK
+    # ─────────────────────────────────────────────
+    @staticmethod
+    def _run_ocrspace(image: Image.Image) -> str:
+        """
+        Fallback: envía la imagen a la API gratuita de OCR.space.
+        Usa la variable de entorno OCR_SPACE_API_KEY si está definida;
+        si no, usa la clave pública de prueba 'helloworld'.
+        """
+        try:
+            api_key = os.environ.get('OCR_SPACE_API_KEY', 'helloworld')
+
+            # Convertir imagen a PNG en memoria → base64
+            buf = io.BytesIO()
+            image.convert('RGB').save(buf, format='PNG')
+            b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+            payload = f'data:image/png;base64,{b64}'
+
+            resp = requests.post(
+                'https://api.ocr.space/parse/base64',
+                data={
+                    'base64Image': payload,
+                    'language': 'spa',
+                    'isOverlayRequired': 'false',
+                    'detectOrientation': 'true',
+                    'scale': 'true',
+                    'OCREngine': '2',      # Engine 2 es más robusto para recibos
+                },
+                headers={'apikey': api_key},
+                timeout=20
+            )
+
+            if resp.status_code == 200:
+                data = resp.json()
+                if not data.get('IsErroredOnProcessing'):
+                    parsed = data.get('ParsedResults', [])
+                    if parsed:
+                        return parsed[0].get('ParsedText', '')
+        except Exception as e:
+            print(f'[OCR.space] Error: {e}')
+
+        return ''
 
     # ─────────────────────────────────────────────
     # AMOUNT EXTRACTION  (fixed — NO division by 100)
