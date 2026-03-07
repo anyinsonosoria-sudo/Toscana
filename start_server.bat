@@ -14,6 +14,9 @@ if exist ".venv\Scripts\python.exe" (
 ) else if exist "..\.venv\Scripts\python.exe" (
     echo [INFO] Usando entorno virtual del directorio padre
     ..\.venv\Scripts\python.exe app.py
+) else if exist "..\..\.venv\Scripts\python.exe" (
+    echo [INFO] Usando entorno virtual del workspace root
+    ..\..\.venv\Scripts\python.exe app.py
 ) else (
     echo [INFO] Usando Python del sistema
     python app.py

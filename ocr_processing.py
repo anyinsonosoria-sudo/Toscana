@@ -11,7 +11,7 @@ import io
 import base64
 from typing import Dict, Optional, Tuple
 from datetime import datetime
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 import requests
 
 # Configurar variables de entorno ANTES de importar pytesseract
@@ -162,6 +162,12 @@ class ReceiptOCR:
     @staticmethod
     def _process(image: Image.Image) -> Dict:
         """Pipeline unificado de procesamiento: prueba varias estrategias."""
+        # Corregir orientación EXIF (fotos de móviles vienen rotadas)
+        try:
+            image = ImageOps.exif_transpose(image)
+        except Exception:
+            pass
+
         # Guardar copia original antes de modificar
         orig = image.copy()
 

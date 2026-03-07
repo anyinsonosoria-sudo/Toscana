@@ -539,7 +539,8 @@ def _register_security_headers(app: Flask) -> None:
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         
         # Permissions policy (limitar APIs del navegador)
-        response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+        # camera=(self) permite acceso a la cámara para OCR en móviles
+        response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=(self)'
         
         # Content Security Policy basica (ajustar segun necesidades)
         # Permite inline styles/scripts por Bootstrap, ajustar en produccion

@@ -290,7 +290,7 @@
                 <div class="wizard-step">
                     <div class="wizard-step-label">Imagen</div>
                     <div class="wizard-step-title">Sube la foto del recibo</div>
-                    <input type="file" id="ocrFileInput" name="file" class="wizard-input" accept="image/*" capture="environment">
+                    <input type="file" id="ocrFileInput" name="file" class="wizard-input" accept="image/*">
                     <div id="ocrPreviewWrap" style="display:none;margin-top:.75rem;text-align:center;">
                         <img id="ocrPreview" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--gray-200);">
                     </div>
@@ -427,6 +427,32 @@ document.getElementById('ocrFileInput').addEventListener('change', function() {
     document.getElementById('ocrStatus').innerHTML = '';
 });
 
+// Comprime imagen antes de subir (necesario para fotos grandes de móviles)
+function compressImage(file, maxWidth, quality) {
+    return new Promise((resolve) => {
+        // Si el archivo es menor a 2MB, no comprimir
+        if (file.size < 2 * 1024 * 1024) { resolve(file); return; }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                let w = img.width, h = img.height;
+                if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                canvas.toBlob(function(blob) {
+                    resolve(blob ? new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {type: 'image/jpeg'}) : file);
+                }, 'image/jpeg', quality);
+            };
+            img.onerror = () => resolve(file);
+            img.src = e.target.result;
+        };
+        reader.onerror = () => resolve(file);
+        reader.readAsDataURL(file);
+    });
+}
+
 document.getElementById('btnScanOCR').addEventListener('click', async function() {
     const fileInput = document.getElementById('ocrFileInput');
     if (!fileInput.files.length) {
@@ -439,8 +465,16 @@ document.getElementById('btnScanOCR').addEventListener('click', async function()
     btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Procesando...';
     document.getElementById('ocrStatus').innerHTML = '';
 
+    // Comprimir imagen si es muy grande (común en fotos de móviles)
+    let fileToUpload;
+    try {
+        fileToUpload = await compressImage(fileInput.files[0], 2400, 0.85);
+    } catch(e) {
+        fileToUpload = fileInput.files[0];
+    }
+
     const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
+    formData.append('file', fileToUpload);
 
     try {
         const resp = await fetch('/gastos/upload-recibo', { method: 'POST', body: formData });

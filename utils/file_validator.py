@@ -26,13 +26,15 @@ ALLOWED_MIME_TYPES = {
     'image/jpg',
     'image/gif',
     'image/webp',
+    'image/heic',
+    'image/heif',
     # Documentos
     'application/pdf',
 }
 
 # Extensiones permitidas (como fallback)
 ALLOWED_EXTENSIONS = {
-    'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'heic', 'heif'
 }
 
 # Magic bytes para validacion sin python-magic
