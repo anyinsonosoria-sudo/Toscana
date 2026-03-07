@@ -88,7 +88,52 @@
         color: var(--text-muted, #9ca3af); font-size: 0.9rem; font-style: italic;
     }
 
+    /* Drill-down expandible */
+    .drill-down {
+        margin: 0.15rem 0 0.4rem 1.5rem;
+        border-left: 3px solid var(--gray-200, #e5e7eb);
+        padding-left: 0.75rem;
+    }
+    .drill-down summary {
+        font-size: 0.8rem; color: var(--primary, #4f46e5); cursor: pointer;
+        font-weight: 600; padding: 0.2rem 0; user-select: none;
+    }
+    .drill-down summary:hover { text-decoration: underline; }
+    .drill-down[open] summary { margin-bottom: 0.3rem; }
+    .drill-item {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.25rem 0; font-size: 0.82rem; gap: 0.5rem;
+    }
+    .drill-item .drill-label { color: var(--text-body, #374151); flex: 1; min-width: 0; }
+    .drill-item .drill-meta {
+        color: var(--text-muted, #9ca3af); font-size: 0.75rem;
+        white-space: nowrap;
+    }
+    .drill-item .drill-amount {
+        font-weight: 600; font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .drill-badge {
+        display: inline-block; font-size: 0.68rem; font-weight: 700;
+        padding: 0.1rem 0.45rem; border-radius: 6px;
+    }
+    .drill-badge.paid { background: rgba(16,185,129,0.12); color: var(--success); }
+    .drill-badge.pending { background: rgba(245,158,11,0.12); color: #d97706; }
+    .drill-badge.overdue { background: rgba(239,68,68,0.12); color: var(--danger); }
+
+    /* Sección de cuentas pendientes */
+    .pending-section {
+        background: rgba(245,158,11,0.04);
+        border: 1px solid rgba(245,158,11,0.2);
+        border-radius: 10px; padding: 0.75rem 1rem; margin-top: 0.5rem;
+    }
+    .pending-section .pending-title {
+        font-size: 0.82rem; font-weight: 700; color: #d97706; margin-bottom: 0.4rem;
+    }
+
     @media print {
+        .drill-down { display: none !important; }
+        .pending-section { display: none !important; }
         .sidebar, .mobile-header, .sidebar-backdrop, .page-header, .date-filter-bar, .btn-print { display: none !important; }
         .main-content { margin: 0 !important; padding: 0 !important; }
         .statement-paper { box-shadow: none; border: none; }
@@ -154,7 +199,7 @@
 
                 <!-- Ingresos Operacionales -->
                 <div class="stmt-row">
-                    <span class="label" style="font-weight:600;">Ingresos Operacionales</span>
+                    <span class="label" style="font-weight:600;">Ingresos Operacionales (Cobros)</span>
                     <span></span>
                 </div>
                 {% if data.operating_income_detail %}
@@ -163,6 +208,22 @@
                         <span class="label">{{ item.category }}</span>
                         <span class="amount" style="color:var(--success);">RD$ {{ "{:,.2f}".format(item.total or 0) }}</span>
                     </div>
+                    {% if data.income_payments_by_cat and item.category in data.income_payments_by_cat %}
+                    <details class="drill-down">
+                        <summary><i class="bi bi-people"></i> Ver {{ data.income_payments_by_cat[item.category]|length }} pagos</summary>
+                        {% for pay in data.income_payments_by_cat[item.category] %}
+                        <div class="drill-item">
+                            <span class="drill-badge paid">&#10003;</span>
+                            <span class="drill-label">
+                                <strong>{{ pay.apt_number or '?' }}</strong>
+                                {{ pay.resident_name or 'Sin residente' }}
+                            </span>
+                            <span class="drill-meta">{{ pay.paid_date[:10] if pay.paid_date else '' }}{% if pay.method %} &middot; {{ pay.method }}{% endif %}</span>
+                            <span class="drill-amount" style="color:var(--success);">RD$ {{ "{:,.2f}".format(pay.amount or 0) }}</span>
+                        </div>
+                        {% endfor %}
+                    </details>
+                    {% endif %}
                     {% endfor %}
                 {% else %}
                     <div class="stmt-row indent"><span class="stmt-empty">Sin ingresos operacionales en el período</span></div>
@@ -171,6 +232,30 @@
                     <span>Subtotal Ingresos Operacionales</span>
                     <span style="color:var(--success);">RD$ {{ "{:,.2f}".format(data.operating_income or 0) }}</span>
                 </div>
+
+                <!-- Cuentas Pendientes -->
+                {% if data.pending_invoices %}
+                <div class="pending-section">
+                    <div class="pending-title"><i class="bi bi-exclamation-triangle"></i> Cuentas por Cobrar Pendientes — RD$ {{ "{:,.2f}".format(data.total_pending or 0) }}</div>
+                    <details class="drill-down" style="margin-left:0;border-left-color:#d97706;">
+                        <summary style="color:#d97706;"><i class="bi bi-list-ul"></i> Ver {{ data.pending_invoices|length }} facturas pendientes</summary>
+                        {% for inv in data.pending_invoices %}
+                        <div class="drill-item">
+                            <span class="drill-badge {{ 'overdue' if inv.days_overdue and inv.days_overdue > 0 else 'pending' }}">
+                                {% if inv.days_overdue and inv.days_overdue > 0 %}{{ inv.days_overdue }}d{% else %}&#8987;{% endif %}
+                            </span>
+                            <span class="drill-label">
+                                <strong>{{ inv.apt_number or '?' }}</strong>
+                                {{ inv.resident_name or 'Sin residente' }}
+                                <span style="font-size:0.75rem;color:var(--text-muted);">— {{ inv.description[:40] if inv.description else '' }}</span>
+                            </span>
+                            <span class="drill-meta">Vence: {{ inv.due_date[:10] if inv.due_date else 'N/A' }}</span>
+                            <span class="drill-amount" style="color:#d97706;">RD$ {{ "{:,.2f}".format(inv.pending or 0) }}</span>
+                        </div>
+                        {% endfor %}
+                    </details>
+                </div>
+                {% endif %}
 
                 <!-- Otros Ingresos -->
                 <div class="stmt-row" style="margin-top:0.5rem;">
@@ -215,6 +300,21 @@
                         <span class="label">{{ item.category }}</span>
                         <span class="amount" style="color:var(--danger);">RD$ {{ "{:,.2f}".format(item.total or 0) }}</span>
                     </div>
+                    {% if data.expenses_by_cat and item.category in data.expenses_by_cat %}
+                    <details class="drill-down">
+                        <summary><i class="bi bi-receipt"></i> Ver {{ data.expenses_by_cat[item.category]|length }} gastos</summary>
+                        {% for exp in data.expenses_by_cat[item.category] %}
+                        <div class="drill-item">
+                            <span class="drill-label">
+                                {{ exp.description or 'Sin descripción' }}
+                                {% if exp.supplier_name %}<span style="font-size:0.75rem;color:var(--text-muted);">— {{ exp.supplier_name }}</span>{% endif %}
+                            </span>
+                            <span class="drill-meta">{{ exp.date[:10] if exp.date else '' }}{% if exp.payment_method %} &middot; {{ exp.payment_method }}{% endif %}</span>
+                            <span class="drill-amount" style="color:var(--danger);">RD$ {{ "{:,.2f}".format(exp.amount or 0) }}</span>
+                        </div>
+                        {% endfor %}
+                    </details>
+                    {% endif %}
                     {% endfor %}
                 {% else %}
                     <div class="stmt-row indent"><span class="stmt-empty">Sin gastos operacionales en el período</span></div>

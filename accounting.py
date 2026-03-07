@@ -191,6 +191,43 @@ def get_income_statement(date_from: Optional[str] = None, date_to: Optional[str]
     """, (date_from, date_to))
     operating_income_detail = [dict(r) for r in cur.fetchall()]
 
+    # ── DRILL-DOWN: pagos individuales por apartamento ──
+    cur.execute("""
+        SELECT p.id, p.amount, p.paid_date, p.method,
+               a.number as apt_number, a.resident_name,
+               COALESCE(UPPER(TRIM(i.description)), 'SIN CATEGORÍA') as category,
+               i.id as invoice_id
+        FROM payments p
+        JOIN invoices i ON p.invoice_id = i.id
+        LEFT JOIN apartments a ON i.unit_id = a.id
+        WHERE DATE(p.paid_date) BETWEEN ? AND ?
+        ORDER BY category, a.number, p.paid_date
+    """, (date_from, date_to))
+    income_payments = [dict(r) for r in cur.fetchall()]
+
+    # Agrupar pagos por categoría
+    income_payments_by_cat = {}
+    for pay in income_payments:
+        cat = pay['category']
+        if cat not in income_payments_by_cat:
+            income_payments_by_cat[cat] = []
+        income_payments_by_cat[cat].append(pay)
+
+    # ── DRILL-DOWN: facturas pendientes (no pagadas o parcialmente pagadas) ──
+    cur.execute("""
+        SELECT i.id, i.description, i.amount as invoiced,
+               COALESCE(i.amount - COALESCE((SELECT SUM(p2.amount) FROM payments p2 WHERE p2.invoice_id = i.id), 0), i.amount) as pending,
+               i.issued_date, i.due_date,
+               a.number as apt_number, a.resident_name,
+               CAST(julianday('now') - julianday(i.due_date) AS INTEGER) as days_overdue
+        FROM invoices i
+        LEFT JOIN apartments a ON i.unit_id = a.id
+        WHERE i.paid = 0
+          AND DATE(i.issued_date) <= ?
+        ORDER BY i.due_date ASC
+    """, (date_to,))
+    pending_invoices = [dict(r) for r in cur.fetchall()]
+
     # ── OTROS INGRESOS (transacciones contables tipo income, excluyendo pagos de facturas) ──
     cur.execute("""
         SELECT COALESCE(SUM(amount), 0)
@@ -227,6 +264,27 @@ def get_income_statement(date_from: Optional[str] = None, date_to: Optional[str]
     """, (date_from, date_to))
     operating_expenses_detail = [dict(r) for r in cur.fetchall()]
 
+    # ── DRILL-DOWN: gastos individuales ──
+    cur.execute("""
+        SELECT e.id, e.description, e.amount, e.date,
+               COALESCE(e.category, 'Sin Categoría') as category,
+               e.payment_method,
+               s.name as supplier_name
+        FROM expenses e
+        LEFT JOIN suppliers s ON e.supplier_id = s.id
+        WHERE DATE(COALESCE(e.date, e.created_at)) BETWEEN ? AND ?
+        ORDER BY e.category, e.date
+    """, (date_from, date_to))
+    expense_items = [dict(r) for r in cur.fetchall()]
+
+    # Agrupar gastos por categoría
+    expenses_by_cat = {}
+    for exp in expense_items:
+        cat = exp['category']
+        if cat not in expenses_by_cat:
+            expenses_by_cat[cat] = []
+        expenses_by_cat[cat].append(exp)
+
     # ── OTROS GASTOS (transacciones contables tipo expense, excluyendo gastos operacionales) ──
     cur.execute("""
         SELECT COALESCE(SUM(amount), 0)
@@ -253,16 +311,23 @@ def get_income_statement(date_from: Optional[str] = None, date_to: Optional[str]
     gross_profit = operating_income - operating_expenses
     net_income = total_income - total_expenses
 
+    # Totales de pendientes
+    total_pending = sum(inv['pending'] for inv in pending_invoices)
+
     return {
         'date_from': date_from,
         'date_to': date_to,
         'operating_income': operating_income,
         'operating_income_detail': operating_income_detail,
+        'income_payments_by_cat': income_payments_by_cat,
+        'pending_invoices': pending_invoices,
+        'total_pending': total_pending,
         'other_income': other_income,
         'other_income_detail': other_income_detail,
         'total_income': total_income,
         'operating_expenses': operating_expenses,
         'operating_expenses_detail': operating_expenses_detail,
+        'expenses_by_cat': expenses_by_cat,
         'other_expenses': other_expenses,
         'other_expenses_detail': other_expenses_detail,
         'total_expenses': total_expenses,
