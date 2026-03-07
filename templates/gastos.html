@@ -330,12 +330,19 @@
                     </div>
                     <div class="mt-3">
                         <label class="wizard-step-label">Proveedor</label>
-                        <select name="supplier_id" class="wizard-select">
+                        <select name="supplier_id" id="ocrSupplierSelect" class="wizard-select">
                             <option value="">Sin proveedor</option>
                             {% for sup in suppliers %}
                             <option value="{{ sup.id }}">{{ sup.name }}</option>
                             {% endfor %}
                         </select>
+                        <div id="ocrVendorHint" style="font-size:0.8rem;color:var(--primary);margin-top:4px;font-weight:500;"></div>
+                    </div>
+                    <div class="mt-3" id="ocrRawTextContainer" style="display:none;">
+                        <details>
+                            <summary style="font-size:0.8rem;color:var(--gray-500);cursor:pointer;">Ver texto extraído por OCR</summary>
+                            <pre id="ocrRawText" style="font-size:0.7rem;max-height:120px;overflow-y:auto;background:var(--gray-100);padding:8px;border-radius:4px;white-space:pre-wrap;margin-top:4px;"></pre>
+                        </details>
                     </div>
                     <div class="mt-3">
                         <label class="wizard-step-label">Método de pago</label>
@@ -485,6 +492,27 @@ document.getElementById('btnScanOCR').addEventListener('click', async function()
             document.getElementById('ocrAmount').value  = data.amount || '';
             document.getElementById('ocrDate').value    = data.date || '';
             document.getElementById('ocrB64').value     = data.receipt_image_b64 || '';
+
+            // Mostrar vendedor detectado y auto-seleccionar en dropdown
+            if (data.supplier_name) {
+                document.getElementById('ocrVendorHint').textContent = 'OCR detectó: ' + data.supplier_name;
+                const sel = document.getElementById('ocrSupplierSelect');
+                const vendorLow = data.supplier_name.toLowerCase();
+                for (const opt of sel.options) {
+                    if (opt.text && opt.text.toLowerCase().includes(vendorLow) ||
+                        vendorLow.includes(opt.text.toLowerCase())) {
+                        opt.selected = true;
+                        break;
+                    }
+                }
+            }
+
+            // Mostrar texto raw para referencia del usuario
+            if (data.raw_text) {
+                document.getElementById('ocrRawText').textContent = data.raw_text;
+                document.getElementById('ocrRawTextContainer').style.display = 'block';
+            }
+
             document.getElementById('ocrStatus').innerHTML =
                 `<span style="color:var(--success)"><i class="bi bi-check-circle"></i> ${data.message}</span>`;
             ocrScanned = true;
