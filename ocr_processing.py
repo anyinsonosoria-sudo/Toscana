@@ -498,8 +498,14 @@ class ReceiptOCR:
             'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
         }
 
+        def _fix_year(y):
+            if y < 100:
+                y += 2000
+            return y
+
         def _valid_date(day, month, year):
             """Valida y retorna fecha o None."""
+            year = _fix_year(year)
             try:
                 if 1 <= day <= 31 and 1 <= month <= 12 and 2000 <= year <= 2099:
                     dt = datetime(year, month, day)
@@ -508,18 +514,16 @@ class ReceiptOCR:
                 pass
             return None
 
-        # 1. "Fecha: DD/MM/YYYY" o "Fecha: DD-MM-YYYY" (etiquetado)
-        m = re.search(r'(?:fecha|date|fec)[:\s]+(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', text_lower)
+        # 1. "Fecha: DD/MM/YYYY" o "Fecha: DD-MM-YYYY" o "Fecha: DD.MM.YYYY" (etiquetado)
+        m = re.search(r'(?:fecha|date|fec)[:\s]+(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})', text_lower)
         if m:
             d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            if y < 100:
-                y += 2000
             result = _valid_date(d, mo, y)
             if result:
                 return result
 
-        # 2. "16 de enero del 2025" / "16 enero 2025"
-        for m in re.finditer(r'(\d{1,2})\s+(?:de\s+)?(\w+)\s+(?:del?\s+)?(\d{4})', text_lower):
+        # 2. "16 de enero del 2025" / "16 enero 2025" / "16 de enero, 2025"
+        for m in re.finditer(r'(\d{1,2})\s+(?:de\s+)?(\w+)[,\s]+(?:del?\s+)?(\d{2,4})', text_lower):
             d_str, month_str, y_str = m.group(1), m.group(2), m.group(3)
             mo = month_map.get(month_str)
             if mo:
@@ -527,8 +531,8 @@ class ReceiptOCR:
                 if result:
                     return result
 
-        # 3. "enero 16, 2025" / "enero 16 2025"
-        for m in re.finditer(r'(\w+)\s+(\d{1,2})[,\s]+(\d{4})', text_lower):
+        # 3. "enero 16, 2025" / "enero 16 2025" / "Mar 07, 2026"
+        for m in re.finditer(r'(\w+)\.?\s+(\d{1,2})[,\s]+(\d{2,4})', text_lower):
             month_str, d_str, y_str = m.group(1), m.group(2), m.group(3)
             mo = month_map.get(month_str)
             if mo:
@@ -536,24 +540,30 @@ class ReceiptOCR:
                 if result:
                     return result
 
-        # 4. DD/MM/YYYY o DD-MM-YYYY (sin etiqueta)
-        for m in re.finditer(r'\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b', text):
+        # 4. DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY (4 dígitos año)
+        for m in re.finditer(r'\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})\b', text):
             d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
             result = _valid_date(d, mo, y)
             if result:
                 return result
 
-        # 5. YYYY-MM-DD / YYYY/MM/DD (ISO)
-        for m in re.finditer(r'\b(\d{4})[/-](\d{1,2})[/-](\d{1,2})\b', text):
+        # 5. DD/MM/YY, DD-MM-YY, DD.MM.YY (2 dígitos año)
+        for m in re.finditer(r'\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2})\b', text):
+            d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            result = _valid_date(d, mo, y)
+            if result:
+                return result
+
+        # 6. YYYY-MM-DD / YYYY/MM/DD (ISO)
+        for m in re.finditer(r'\b(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})\b', text):
             y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
             result = _valid_date(d, mo, y)
             if result:
                 return result
 
-        # 6. DD/MM con año actual (solo 2 partes)
-        for m in re.finditer(r'\b(\d{1,2})[/-](\d{1,2})\b', text):
+        # 7. DD/MM con año actual (solo 2 partes, excluyendo horas HH:MM)
+        for m in re.finditer(r'(?:^|\s)(\d{1,2})[/\-.](\d{1,2})(?:\s|$)', text, re.MULTILINE):
             d, mo = int(m.group(1)), int(m.group(2))
-            # Verificar que no sea hora (HH:MM)
             if 1 <= mo <= 12 and 1 <= d <= 31:
                 result = _valid_date(d, mo, datetime.now().year)
                 if result:
@@ -575,63 +585,89 @@ class ReceiptOCR:
         """Detecta si una línea es ruido (teléfonos, RNC, etc.)."""
         return bool(_NOISE_KEYWORDS.search(line))
 
+    # ── Patrones para identificar líneas de encabezado vs. ítems ──
+    _HEADER_PATTERNS = re.compile(
+        r'^(recibo|factura|comprobante|cotizaci[oó]n|nota\s+de\s+cr[eé]dito|'
+        r'conduce|orden\s+de\s+compra|presupuesto|ticket|receipt|invoice)\b',
+        re.IGNORECASE
+    )
+    _TOTAL_PATTERNS = re.compile(
+        r'^(total|subtotal|sub\s*total|itbis|iva|tax|impuesto|cambio|efectivo|'
+        r'descuento|desc\.?|propina|tip|vuelto|balance|neto|monto|importe|'
+        r'tarjeta|visa|mastercard|cash|amount|paid|pago|abono)\b',
+        re.IGNORECASE
+    )
+    _ITEM_HINT = re.compile(
+        r'(\d+\s*[xX×]\s*\d|\d+\s+\d+[.,]\d{2}|\$\s*\d|rd\$|\d+[.,]\d{2}$|'
+        r'\bund\b|\bpza\b|\bpieza|\bcaja|\bgal[oó]n|\blb\b|\bkg\b|\blt\b)',
+        re.IGNORECASE
+    )
+
+    @staticmethod
+    def _is_supplier_line(line: str) -> bool:
+        """Detecta si una línea es probablemente el nombre del vendedor (encabezado)."""
+        low = line.lower().strip()
+        # Líneas todo en mayúsculas y cortas suelen ser el nombre del negocio
+        if line == line.upper() and len(line) > 3 and re.search(r'[A-Z]{3,}', line):
+            # Pero no si es un total o etiqueta
+            if not ReceiptOCR._TOTAL_PATTERNS.match(low):
+                return True
+        # Contains SRL, SA, EIRL, INC, LLC, etc.
+        if re.search(r'\b(s\.?r\.?l|s\.?a\.?s?|e\.?i\.?r\.?l|inc|llc|ltda|cia|c\.?a)\b', low):
+            return True
+        return False
+
     @staticmethod
     def _extract_description(text: str) -> str:
-        """Extrae descripción limpia: tipo de documento + ítems, sin dirección ni ruido."""
+        """Extrae el DETALLE de lo que se compró (items/productos), no el encabezado."""
         lines = [l.strip() for l in text.strip().split('\n') if l.strip() and len(l.strip()) > 2]
         if not lines:
             return "Gasto sin descripción"
 
-        # Detectar tipo de documento
-        doc_type = ""
-        doc_patterns = [
-            (r'\b(recibo)\b', 'RECIBO'),
-            (r'\b(factura)\b', 'FACTURA'),
-            (r'\b(cotizacion|cotización)\b', 'COTIZACIÓN'),
-            (r'\b(nota\s+de\s+credito|nota\s+credito)\b', 'NOTA DE CRÉDITO'),
-            (r'\b(comprobante)\b', 'COMPROBANTE'),
-        ]
-        for pat, label in doc_patterns:
-            if re.search(pat, text, re.IGNORECASE):
-                doc_type = label
-                break
-
-        # Filtrar líneas: excluir dirección, ruido, totales puros, líneas solo numérico
-        relevant = []
+        items = []
         for line in lines:
             low = line.lower()
-            # Saltar direcciones
+            # Excluir encabezados de documento
+            if ReceiptOCR._HEADER_PATTERNS.match(low):
+                continue
+            # Excluir nombre del vendedor (líneas tipo encabezado)
+            if ReceiptOCR._is_supplier_line(line):
+                continue
+            # Excluir direcciones
             if ReceiptOCR._is_address_line(line):
                 continue
-            # Saltar ruido
+            # Excluir ruido (tel, RNC, NCF, etc.)
             if ReceiptOCR._is_noise_line(line):
                 continue
-            # Saltar líneas solo numéricas o con formato de total
+            # Excluir líneas solo numéricas
             if re.match(r'^[\d\s.,\$RD:]+$', line):
                 continue
-            # Saltar líneas de totales
-            if re.match(r'^(total|subtotal|itbis|cambio|efectivo|descuento)', low):
+            # Excluir totales y subtotales
+            if ReceiptOCR._TOTAL_PATTERNS.match(low):
                 continue
-            # Saltar líneas tipo "RECIBO" solo (ya capturado como doc_type)
-            if re.match(r'^(recibo|factura|comprobante|cotizacion)$', low):
+            # Excluir líneas de fecha sola
+            if re.match(r'^\s*(?:fecha|date)[:\s]*\d', low):
                 continue
-            # La línea tiene contenido textual relevante
+            # Excluir líneas muy cortas sin sustancia
+            if len(low) < 4:
+                continue
+            # La línea tiene contenido textual
             if re.search(r'[a-záéíóúñü]', low):
-                relevant.append(line)
+                items.append(line)
 
-        # Construir descripción
-        if doc_type and relevant:
-            desc = f"{doc_type} - {relevant[0]}"
-        elif relevant:
-            desc = relevant[0]
-        elif doc_type:
-            desc = doc_type
-        else:
-            desc = lines[0] if lines else "Gasto sin descripción"
+        # Priorizar líneas que parecen ítems (tienen precio o cantidad)
+        item_lines = [l for l in items if ReceiptOCR._ITEM_HINT.search(l)]
+        # Si hay líneas con pistas de ítem, usarlas primero
+        ordered = item_lines + [l for l in items if l not in item_lines]
 
-        # Agregar segunda línea relevante si es un ítem
-        if len(relevant) > 1 and len(desc) < 80:
-            desc += f" | {relevant[1]}"
+        if not ordered:
+            return "Gasto sin descripción"
+
+        # Tomar primeros items, unir con " | "
+        desc = ordered[0]
+        for extra in ordered[1:3]:
+            if len(desc) + len(extra) + 3 <= 150:
+                desc += f" | {extra}"
 
         if len(desc) > 150:
             desc = desc[:147] + "..."
@@ -643,39 +679,61 @@ class ReceiptOCR:
     # ─────────────────────────────────────────────
     @staticmethod
     def _extract_supplier(text: str) -> Optional[str]:
-        """Extrae nombre del proveedor. Excluye direcciones y líneas de ruido."""
-        lines = [l.strip() for l in text.strip().split('\n') if l.strip() and len(l.strip()) > 3]
+        """Extrae nombre del vendedor/proveedor del recibo."""
+        lines = [l.strip() for l in text.strip().split('\n') if l.strip() and len(l.strip()) > 2]
+        if not lines:
+            return None
 
-        # Buscar etiqueta explícita primero
+        # 1. Buscar etiqueta explícita
         for line in lines:
-            m = re.match(r'(?:empresa|proveedor|suplidor|negocio|tienda)[:\s]+(.+)', line, re.IGNORECASE)
+            m = re.match(
+                r'(?:empresa|proveedor|suplidor|negocio|tienda|vendedor|'  
+                r'raz[oó]n\s*social|comercio|establecimiento)[:\s]+(.+)',
+                line, re.IGNORECASE
+            )
             if m:
                 name = m.group(1).strip()
-                if len(name) > 3:
+                if len(name) > 2:
                     return name[:60]
 
-        # Buscar primera línea con letras, excluyendo dirección/ruido/doc-type-solo
-        for line in lines[:6]:
-            # Debe tener letras
-            if not re.search(r'[a-záéíóúñü]{3,}', line.lower()):
+        # 2. Buscar línea con razón social (SRL, SA, EIRL, etc.)
+        for line in lines[:8]:
+            if re.search(r'\b(s\.?r\.?l|s\.?a\.?s?|e\.?i\.?r\.?l|inc|llc|ltda|cia|c\.?a)\b', line, re.IGNORECASE):
+                # Limpiar línea
+                supplier = re.sub(r'\s*[-:]\s*$', '', line).strip()
+                if len(supplier) > 2:
+                    return supplier[:60]
+
+        # 3. Primera línea en mayúsculas (típico de recibos: nombre del negocio arriba)
+        for line in lines[:5]:
+            low = line.lower()
+            # Saltar doc types puros
+            if ReceiptOCR._HEADER_PATTERNS.match(low):
                 continue
-            # No debe empezar con número (podría ser dirección)
-            if re.match(r'^\d+\s', line):
-                continue
-            # No debe ser dirección
+            # Saltar direcciones
             if ReceiptOCR._is_address_line(line):
                 continue
-            # No debe ser ruido
+            # Saltar ruido
             if ReceiptOCR._is_noise_line(line):
                 continue
-            # No doc type solo
-            if re.match(r'^(recibo|factura|comprobante|cotizacion|nota)\b', line.lower()):
+            # Saltar líneas de totales
+            if ReceiptOCR._TOTAL_PATTERNS.match(low):
                 continue
-            # Esta es probablemente el nombre del proveedor
-            supplier = line.strip()
-            if len(supplier) > 60:
-                supplier = supplier[:60].rstrip()
-            return supplier
+            # Saltar líneas solo numéricas
+            if re.match(r'^[\d\s.,\$RD:]+$', line):
+                continue
+            # Saltar líneas que empiezan con número (probablemente dirección o item)
+            if re.match(r'^\d+\s', line):
+                continue
+            # Saltar si parece un item (tiene precio al final)
+            if re.search(r'\d+[.,]\d{2}\s*$', line):
+                continue
+            # Línea en mayúsculas o con al menos 3 letras seguidas
+            if line == line.upper() and re.search(r'[A-Z]{3,}', line):
+                return line.strip()[:60]
+            # Primera línea con letras alfabéticas sustanciales
+            if re.search(r'[a-záéíóúñü]{3,}', low):
+                return line.strip()[:60]
 
         return None
 
