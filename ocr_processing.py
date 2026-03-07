@@ -14,15 +14,28 @@ from datetime import datetime
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 import requests
 
+import platform
+
 # Configurar variables de entorno ANTES de importar pytesseract
 def _setup_tesseract_env():
-    """Configura variables de entorno para Tesseract"""
+    """Configura variables de entorno para Tesseract (Windows y Linux)."""
+    # --- Linux / PythonAnywhere ---
+    if platform.system() != 'Windows':
+        for p in ('/usr/bin/tesseract', '/usr/local/bin/tesseract'):
+            if os.path.exists(p):
+                return p
+        return None
+
+    # --- Windows ---
     possible_paths = [
         r'C:\Users\anyinson.osoria\AppData\Local\Programs\Tesseract-OCR',
         r'C:\Program Files\Tesseract-OCR',
         r'C:\Program Files (x86)\Tesseract-OCR',
     ]
-    
+    app_data_dir = os.path.expandvars(r'%USERPROFILE%\AppData\Local\Programs\Tesseract-OCR')
+    if app_data_dir not in possible_paths:
+        possible_paths.append(app_data_dir)
+
     for base_path in possible_paths:
         tesseract_exe = os.path.join(base_path, 'tesseract.exe')
         if os.path.exists(tesseract_exe):
@@ -33,29 +46,45 @@ def _setup_tesseract_env():
             if base_path not in current_path:
                 os.environ['PATH'] = base_path + ';' + current_path
             return tesseract_exe
-    
-    app_data_dir = os.path.expandvars(r'%USERPROFILE%\AppData\Local\Programs\Tesseract-OCR')
-    if os.path.exists(app_data_dir):
-        tessdata_dir = os.path.join(app_data_dir, 'tessdata')
-        if os.path.exists(tessdata_dir):
-            os.environ['TESSDATA_PREFIX'] = tessdata_dir
-        current_path = os.environ.get('PATH', '')
-        if app_data_dir not in current_path:
-            os.environ['PATH'] = app_data_dir + ';' + current_path
-        return os.path.join(app_data_dir, 'tesseract.exe')
-    
+
     return None
+
+
+def _check_tesseract_langs() -> list:
+    """Devuelve idiomas disponibles en Tesseract local."""
+    try:
+        cmd = pytesseract.pytesseract.pytesseract_cmd or 'tesseract'
+        proc = subprocess.run([cmd, '--list-langs'], capture_output=True, text=True, timeout=5)
+        langs = [l.strip() for l in proc.stdout.strip().split('\n')[1:] if l.strip()]
+        return langs
+    except Exception:
+        return []
+
 
 _tesseract_exe = _setup_tesseract_env()
 
 import pytesseract
 
+_TESSERACT_AVAILABLE = False
+_TESSERACT_HAS_SPA = False
+
 if _tesseract_exe:
     pytesseract.pytesseract.pytesseract_cmd = _tesseract_exe
+    _TESSERACT_AVAILABLE = True
+    _langs = _check_tesseract_langs()
+    _TESSERACT_HAS_SPA = 'spa' in _langs
     print(f"[OCR] Tesseract configurado: {_tesseract_exe}")
-    print(f"[OCR] TESSDATA_PREFIX: {os.environ.get('TESSDATA_PREFIX', 'NO CONFIGURADO')}")
+    print(f"[OCR] Idiomas disponibles: {_langs}")
 else:
-    print("[OCR] ADVERTENCIA: Tesseract no encontrado. Instálalo desde https://github.com/UB-Mannheim/tesseract/wiki")
+    # En Linux, tesseract podría estar en PATH aunque no lo encontramos
+    try:
+        pytesseract.get_tesseract_version()
+        _TESSERACT_AVAILABLE = True
+        _langs = _check_tesseract_langs()
+        _TESSERACT_HAS_SPA = 'spa' in _langs
+        print(f"[OCR] Tesseract en PATH. Idiomas: {_langs}")
+    except Exception:
+        print("[OCR] Tesseract no disponible. Se usará OCR.space (API cloud).")
 
 
 # ── Palabras clave para filtrar líneas de dirección ──
@@ -85,9 +114,17 @@ class ReceiptOCR:
     @staticmethod
     def _run_ocr(image: Image.Image) -> str:
         """Ejecuta Tesseract con la mejor configuración disponible."""
+        if not _TESSERACT_AVAILABLE:
+            return ""
+
         raw_text = ""
-        # Intentar español primero, luego español+inglés, luego sin lang
-        for lang in ('spa', 'spa+eng', None):
+        # Elegir idiomas según lo que esté instalado
+        if _TESSERACT_HAS_SPA:
+            lang_list = ('spa', 'spa+eng', None)
+        else:
+            lang_list = ('eng', None)
+
+        for lang in lang_list:
             try:
                 kw = {'config': ReceiptOCR.TESSERACT_CONFIG}
                 if lang:
@@ -160,38 +197,8 @@ class ReceiptOCR:
         return gray
 
     @staticmethod
-    def _process(image: Image.Image) -> Dict:
-        """Pipeline unificado de procesamiento: prueba varias estrategias."""
-        # Corregir orientación EXIF (fotos de móviles vienen rotadas)
-        try:
-            image = ImageOps.exif_transpose(image)
-        except Exception:
-            pass
-
-        # Guardar copia original antes de modificar
-        orig = image.copy()
-
-        # Estrategia 1: preprocesamiento suave (sin binarización)
-        img_soft = ReceiptOCR._preprocess_soft(orig)
-        text_soft = ReceiptOCR._run_ocr(img_soft)
-
-        # Estrategia 2: preprocesamiento agresivo (binarización)
-        img_hard = ReceiptOCR._preprocess_hard(orig)
-        text_hard = ReceiptOCR._run_ocr(img_hard)
-
-        # Usar el que devuelva más texto
-        raw_text = text_soft if len(text_soft.strip()) >= len(text_hard.strip()) else text_hard
-
-        # Estrategia 3: fallback a OCR.space (API en la nube)
-        if not raw_text.strip():
-            raw_text = ReceiptOCR._run_ocrspace(orig)
-
-        if not raw_text.strip():
-            return {
-                'error': 'No se pudo extraer texto de la imagen. Verifica que sea un recibo claro.',
-                'raw_text': '', 'confidence': 0.0
-            }
-
+    def _build_result(raw_text: str) -> Dict:
+        """Construye diccionario de resultado a partir del texto extraído."""
         return {
             'raw_text': raw_text,
             'description': ReceiptOCR._extract_description(raw_text),
@@ -200,6 +207,69 @@ class ReceiptOCR:
             'supplier_name': ReceiptOCR._extract_supplier(raw_text),
             'confidence': ReceiptOCR._calculate_confidence(raw_text),
             'error': None
+        }
+
+    @staticmethod
+    def _result_quality(result: Dict) -> int:
+        """Puntúa la calidad de un resultado OCR (más alto = mejor)."""
+        score = 0
+        if result.get('amount'):  score += 3
+        if result.get('date'):  score += 2
+        if result.get('supplier_name'):  score += 1
+        desc = result.get('description', '')
+        if desc and desc != 'Gasto sin descripción':  score += 1
+        return score
+
+    @staticmethod
+    def _process(image: Image.Image) -> Dict:
+        """Pipeline unificado: OCR.space (cloud) + Tesseract local, elige el mejor."""
+        # Corregir orientación EXIF (fotos de móviles vienen rotadas)
+        try:
+            image = ImageOps.exif_transpose(image)
+        except Exception:
+            pass
+
+        orig = image.copy()
+        best_text = ""
+        best_result = None
+
+        # ── Estrategia 1: OCR.space (cloud, fiable con español) ──
+        cloud_text = ReceiptOCR._run_ocrspace(orig)
+        if cloud_text.strip():
+            cloud_result = ReceiptOCR._build_result(cloud_text)
+            best_text = cloud_text
+            best_result = cloud_result
+            # Si la nube ya extrajo monto + fecha, devolver directo
+            if cloud_result.get('amount') and cloud_result.get('date'):
+                print(f"[OCR] Cloud exitoso: confianza {cloud_result['confidence']:.0%}")
+                return cloud_result
+
+        # ── Estrategia 2: Tesseract local (soft preprocessing) ──
+        if _TESSERACT_AVAILABLE:
+            img_soft = ReceiptOCR._preprocess_soft(orig)
+            text_soft = ReceiptOCR._run_ocr(img_soft)
+
+            # ── Estrategia 3: Tesseract local (hard preprocessing) ──
+            img_hard = ReceiptOCR._preprocess_hard(orig)
+            text_hard = ReceiptOCR._run_ocr(img_hard)
+
+            local_text = text_soft if len(text_soft.strip()) >= len(text_hard.strip()) else text_hard
+
+            if local_text.strip():
+                local_result = ReceiptOCR._build_result(local_text)
+                # Comparar calidad: usar el que extraiga más campos
+                if best_result is None or ReceiptOCR._result_quality(local_result) > ReceiptOCR._result_quality(best_result):
+                    best_text = local_text
+                    best_result = local_result
+
+        if best_result:
+            print(f"[OCR] Resultado final: confianza {best_result['confidence']:.0%}, "
+                  f"monto={best_result.get('amount')}, fecha={best_result.get('date')}")
+            return best_result
+
+        return {
+            'error': 'No se pudo extraer texto de la imagen. Verifica que sea un recibo claro.',
+            'raw_text': best_text, 'confidence': 0.0
         }
 
     # ─────────────────────────────────────────────
@@ -261,11 +331,17 @@ class ReceiptOCR:
         try:
             api_key = os.environ.get('OCR_SPACE_API_KEY', 'helloworld')
 
-            # Convertir imagen a PNG en memoria → base64
+            # Redimensionar si es muy grande (OCR.space tiene límite de 1MB en free tier)
+            img = image.convert('RGB')
+            max_dim = 2000
+            if img.width > max_dim or img.height > max_dim:
+                ratio = min(max_dim / img.width, max_dim / img.height)
+                img = img.resize((int(img.width * ratio), int(img.height * ratio)), Image.Resampling.LANCZOS)
+
             buf = io.BytesIO()
-            image.convert('RGB').save(buf, format='PNG')
+            img.save(buf, format='JPEG', quality=85)
             b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-            payload = f'data:image/png;base64,{b64}'
+            payload = f'data:image/jpeg;base64,{b64}'
 
             resp = requests.post(
                 'https://api.ocr.space/parse/base64',
@@ -634,35 +710,15 @@ class ReceiptOCR:
 
 
 def check_tesseract_available() -> Tuple[bool, str]:
-    """Verifica si Tesseract-OCR está instalado."""
-    try:
-        result = pytesseract.get_tesseract_version()
-        return True, f"Tesseract {result} disponible"
-    except Exception:
-        pass
+    """Verifica si hay algún motor OCR disponible (Tesseract local o OCR.space cloud)."""
+    # Tesseract local disponible
+    if _TESSERACT_AVAILABLE:
+        try:
+            result = pytesseract.get_tesseract_version()
+            lang_info = " (spa)" if _TESSERACT_HAS_SPA else " (eng only)"
+            return True, f"Tesseract {result}{lang_info} + OCR.space cloud"
+        except Exception:
+            return True, "Tesseract local + OCR.space cloud"
 
-    try:
-        tesseract_cmd = pytesseract.pytesseract.pytesseract_cmd
-        if tesseract_cmd and os.path.exists(tesseract_cmd):
-            result = subprocess.run(
-                [tesseract_cmd, '--version'],
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                version_line = result.stdout.split('\n')[0] if result.stdout else "v5.0+"
-                return True, f"Tesseract {version_line} disponible"
-    except Exception:
-        pass
-
-    try:
-        result = subprocess.run(
-            ['tesseract', '--version'],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            version_line = result.stdout.split('\n')[0] if result.stdout else "v5.0+"
-            return True, f"Tesseract {version_line} disponible"
-    except Exception:
-        pass
-
-    return False, "Tesseract-OCR no está instalado o no es accesible"
+    # Sin Tesseract, pero OCR.space cloud está siempre disponible
+    return True, "OCR.space cloud (sin Tesseract local)"
