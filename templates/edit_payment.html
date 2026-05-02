@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Editar Pago - Xpack{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-pencil-square"></i> Editar Pago #{{ payment.id }}</h1>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="bi bi-receipt"></i> Resumen de la factura
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <small class="text-muted">Factura</small>
+                <div class="fw-semibold">#{{ invoice.id }}</div>
+            </div>
+            <div class="col-md-3">
+                <small class="text-muted">Cliente</small>
+                <div class="fw-semibold">{{ unit.resident_name or 'N/A' }}</div>
+            </div>
+            <div class="col-md-3">
+                <small class="text-muted">Apartamento</small>
+                <div class="fw-semibold">{{ unit.number or 'N/A' }}</div>
+            </div>
+            <div class="col-md-3">
+                <small class="text-muted">Monto factura</small>
+                <div class="fw-semibold">RD$ {{ "{:,.2f}".format(invoice.amount or 0) }}</div>
+            </div>
+            <div class="col-12">
+                <small class="text-muted">Descripción</small>
+                <div>{{ invoice.description or '-' }}</div>
+            </div>
+            <div class="col-md-6">
+                <small class="text-muted">Otros pagos aplicados</small>
+                <div>RD$ {{ "{:,.2f}".format(other_paid or 0) }}</div>
+            </div>
+            <div class="col-md-6">
+                <small class="text-muted">Máximo permitido para este pago</small>
+                <div style="font-weight:700;color:var(--danger);">RD$ {{ "{:,.2f}".format(max_amount or 0) }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <i class="bi bi-cash-coin"></i> Datos del pago
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('billing.update_payment', payment_id=payment.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ next_url }}">
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="amount" class="form-label">Monto</label>
+                    <input type="number" class="form-control" id="amount" name="amount" step="0.01" min="0.01" max="{{ max_amount }}" value="{{ payment.amount }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="method" class="form-label">Método</label>
+                    <select class="form-select" id="method" name="method">
+                        <option value="transferencia" {% if payment.method == 'transferencia' %}selected{% endif %}>Transferencia</option>
+                        <option value="efectivo" {% if payment.method == 'efectivo' %}selected{% endif %}>Efectivo</option>
+                        <option value="cheque" {% if payment.method == 'cheque' %}selected{% endif %}>Cheque</option>
+                        <option value="tarjeta" {% if payment.method == 'tarjeta' %}selected{% endif %}>Tarjeta</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="paid_date" class="form-label">Fecha y hora de pago</label>
+                    <input type="datetime-local" class="form-control" id="paid_date" name="paid_date" value="{{ payment.paid_date_form }}">
+                </div>
+                <div class="col-12">
+                    <label for="notes" class="form-label">Notas</label>
+                    <textarea class="form-control" id="notes" name="notes" rows="3" placeholder="Referencia, observaciones, ajuste realizado">{{ payment.notes or '' }}</textarea>
+                </div>
+            </div>
+
+            <div class="alert alert-info mt-4 mb-0">
+                <i class="bi bi-envelope"></i> Esta edición enviará un correo solo al administrador.
+            </div>
+
+            <div class="d-flex gap-2 mt-4">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg"></i> Guardar cambios
+                </button>
+                <a href="{{ next_url }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Cancelar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

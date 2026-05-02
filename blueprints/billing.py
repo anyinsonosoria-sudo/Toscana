@@ -3,6 +3,7 @@ Blueprint para Facturación y Pagos (Billing)
 Gestión completa de facturas, pagos, cuentas por cobrar y ventas recurrentes
 """
 import logging
+import os
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
 from flask_login import login_required
 from datetime import datetime
@@ -22,6 +23,191 @@ import billing
 logger = logging.getLogger(__name__)
 
 billing_bp = Blueprint('billing', __name__, url_prefix='/ventas')
+
+
+def _get_safe_next_url(next_url=None):
+    """Retorna una URL interna segura para redireccionar."""
+    if next_url and next_url.startswith('/'):
+        return next_url
+    return url_for('billing.register_payment')
+
+
+def _format_datetime_local(value):
+    """Convierte fecha de BD a formato compatible con datetime-local."""
+    if not value:
+        return ""
+    return str(value).replace(' ', 'T')[:16]
+
+
+def _normalize_payment_datetime(value, fallback=None):
+    """Normaliza la fecha del formulario al formato guardado en SQLite."""
+    if not value:
+        return fallback
+
+    normalized = str(value).strip().replace('T', ' ')
+    if len(normalized) == 10:
+        return f"{normalized} 00:00:00"
+    if len(normalized) == 16:
+        return f"{normalized}:00"
+    return normalized
+
+
+def _load_payment_bundle(payment_id, conn):
+    """Obtiene pago, factura y unidad relacionados para edición o borrado."""
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT p.id,
+               p.invoice_id,
+               p.amount,
+               p.paid_date,
+               p.method,
+               p.notes,
+               i.description AS invoice_desc,
+               i.amount AS invoice_amount,
+               i.unit_id,
+               a.number AS apartment_number,
+               a.resident_name AS client_name
+        FROM payments p
+        JOIN invoices i ON p.invoice_id = i.id
+        LEFT JOIN apartments a ON i.unit_id = a.id
+        WHERE p.id = ?
+        """,
+        (payment_id,)
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+
+    row = dict(row)
+    return {
+        'payment': {
+            'id': row['id'],
+            'invoice_id': row['invoice_id'],
+            'amount': row['amount'],
+            'paid_date': row['paid_date'],
+            'method': row['method'],
+            'notes': row.get('notes') or '',
+        },
+        'invoice': {
+            'id': row['invoice_id'],
+            'description': row['invoice_desc'],
+            'amount': row['invoice_amount'],
+            'unit_id': row['unit_id'],
+        },
+        'unit': {
+            'id': row['unit_id'],
+            'number': row['apartment_number'] or 'N/A',
+            'resident_name': row.get('client_name') or 'N/A',
+        },
+    }
+
+
+def _get_payment_edit_limit(payment_id, invoice_id, invoice_amount, conn):
+    """Calcula el máximo permitido al editar un pago sin sobrepasar la factura."""
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS total_paid FROM payments WHERE invoice_id = ? AND id != ?",
+        (invoice_id, payment_id)
+    )
+    row = cur.fetchone()
+    other_paid = row['total_paid'] if row else 0
+    max_amount = max(float(invoice_amount) - float(other_paid), 0)
+    return max_amount, float(other_paid)
+
+
+def _sync_invoice_payment_state(invoice_id, conn):
+    """Recalcula el estado de la factura según sus pagos actuales."""
+    cur = conn.cursor()
+    cur.execute("SELECT id, unit_id, description, amount FROM invoices WHERE id = ?", (invoice_id,))
+    invoice_row = cur.fetchone()
+    if not invoice_row:
+        return None, 0
+
+    invoice = dict(invoice_row)
+    cur.execute("SELECT COALESCE(SUM(amount), 0) AS total_paid FROM payments WHERE invoice_id = ?", (invoice_id,))
+    paid_row = cur.fetchone()
+    total_paid = float(paid_row['total_paid'] if paid_row else 0)
+    pending_amount = max(float(invoice['amount']) - total_paid, 0)
+    is_paid = 1 if total_paid >= float(invoice['amount']) else 0
+
+    cur.execute(
+        "UPDATE invoices SET paid = ?, pending_amount = ? WHERE id = ?",
+        (is_paid, pending_amount, invoice_id)
+    )
+
+    invoice['paid'] = is_paid
+    invoice['pending_amount'] = pending_amount
+    return invoice, total_paid
+
+
+def _sync_payment_accounting_entries(invoice_id, conn):
+    """Sincroniza los asientos contables asociados a los pagos de una factura."""
+    cur = conn.cursor()
+    cur.execute("SELECT description FROM invoices WHERE id = ?", (invoice_id,))
+    invoice_row = cur.fetchone()
+    description = invoice_row['description'] if invoice_row else f'Factura #{invoice_id}'
+
+    cur.execute(
+        "DELETE FROM accounting_transactions WHERE reference = ? AND type = ? AND category = ?",
+        (f'INV-{invoice_id}', 'income', 'Ventas/Facturas')
+    )
+
+    cur.execute(
+        "SELECT amount, paid_date FROM payments WHERE invoice_id = ? ORDER BY id",
+        (invoice_id,)
+    )
+    for payment_row in cur.fetchall():
+        payment_date = payment_row['paid_date'] or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        cur.execute(
+            """
+            INSERT INTO accounting_transactions(type, description, amount, category, reference, date)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (
+                'income',
+                f'Pago recibido: {description}',
+                payment_row['amount'],
+                'Ventas/Facturas',
+                f'INV-{invoice_id}',
+                payment_date,
+            )
+        )
+
+
+def _get_admin_email():
+    """Obtiene el correo del administrador para alertas internas."""
+    try:
+        import company
+
+        company_info = company.get_company_info() or {}
+        if company_info.get('email'):
+            return company_info['email']
+    except Exception as exc:
+        logger.warning(f"No se pudo obtener el email de empresa: {exc}")
+
+    return os.environ.get('SMTP_FROM') or os.environ.get('SMTP_USER')
+
+
+def _notify_admin_payment_change(action, payment, invoice, unit, previous_payment=None):
+    """Envía una notificación interna al administrador cuando cambia un pago."""
+    admin_email = _get_admin_email()
+    if not admin_email:
+        return
+
+    try:
+        import senders
+
+        senders.send_payment_change_notification(
+            action,
+            payment,
+            invoice,
+            unit,
+            admin_email=admin_email,
+            previous_payment=previous_payment,
+        )
+    except Exception as exc:
+        logger.warning(f"No se pudo enviar notificación interna del pago {payment.get('id')}: {exc}")
 
 
 # ========== VISTAS PRINCIPALES ==========
@@ -625,62 +811,175 @@ def partial_payment(invoice_id):
 
 # ========== OPERACIONES DE PAGOS ==========
 
+@billing_bp.route('/pagos/edit/<int:payment_id>')
+@login_required
+@permission_required('facturacion.edit')
+def edit_payment(payment_id):
+    """Formulario para editar un pago registrado."""
+    conn = None
+    try:
+        conn = db.get_conn()
+        payment_bundle = _load_payment_bundle(payment_id, conn)
+        if not payment_bundle:
+            flash(f"Pago #{payment_id} no encontrado", "error")
+            return redirect(_get_safe_next_url(request.args.get('next')))
+
+        max_amount, other_paid = _get_payment_edit_limit(
+            payment_id,
+            payment_bundle['invoice']['id'],
+            payment_bundle['invoice']['amount'],
+            conn,
+        )
+        payment_bundle['payment']['paid_date_form'] = _format_datetime_local(payment_bundle['payment'].get('paid_date'))
+
+        try:
+            custom_settings = customization.get_settings_with_defaults()
+        except Exception:
+            custom_settings = {}
+
+        return render_template(
+            'edit_payment.html',
+            payment=payment_bundle['payment'],
+            invoice=payment_bundle['invoice'],
+            unit=payment_bundle['unit'],
+            max_amount=max_amount,
+            other_paid=other_paid,
+            next_url=_get_safe_next_url(request.args.get('next')),
+            customization=custom_settings,
+        )
+    except Exception as exc:
+        logger.error(f"Error cargando pago #{payment_id} para edición: {exc}")
+        flash(f"Error cargando pago: {exc}", "error")
+        return redirect(_get_safe_next_url(request.args.get('next')))
+    finally:
+        if conn:
+            conn.close()
+
+
+@billing_bp.route('/pagos/edit/<int:payment_id>', methods=['POST'], endpoint='update_payment')
+@login_required
+@permission_required('facturacion.edit')
+@audit_log('facturacion.editar_pago', 'Editar pago')
+def update_payment(payment_id):
+    """Actualiza un pago existente y notifica solo al administrador."""
+    next_url = _get_safe_next_url(request.form.get('next'))
+    edit_url = url_for('billing.edit_payment', payment_id=payment_id, next=next_url)
+
+    amount_raw = (request.form.get('amount') or '').replace(',', '.').strip()
+    method = (request.form.get('method') or '').strip() or 'transferencia'
+    notes = (request.form.get('notes') or '').strip()
+    paid_date = request.form.get('paid_date')
+
+    try:
+        amount = float(amount_raw)
+    except ValueError:
+        flash('Debes indicar un monto válido.', 'error')
+        return redirect(edit_url)
+
+    if amount <= 0:
+        flash('El monto del pago debe ser mayor a cero.', 'error')
+        return redirect(edit_url)
+
+    conn = None
+    updated_bundle = None
+    previous_payment = None
+    try:
+        conn = db.get_conn()
+        payment_bundle = _load_payment_bundle(payment_id, conn)
+        if not payment_bundle:
+            flash(f'Pago #{payment_id} no encontrado', 'error')
+            return redirect(next_url)
+
+        max_amount, _ = _get_payment_edit_limit(
+            payment_id,
+            payment_bundle['invoice']['id'],
+            payment_bundle['invoice']['amount'],
+            conn,
+        )
+        if amount > max_amount:
+            flash(
+                f'El monto excede el saldo disponible para la factura (RD${max_amount:,.2f}).',
+                'error',
+            )
+            return redirect(edit_url)
+
+        previous_payment = dict(payment_bundle['payment'])
+        normalized_paid_date = _normalize_payment_datetime(paid_date, previous_payment.get('paid_date'))
+
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE payments SET amount = ?, method = ?, notes = ?, paid_date = ? WHERE id = ?",
+            (amount, method, notes, normalized_paid_date, payment_id),
+        )
+
+        _sync_invoice_payment_state(payment_bundle['invoice']['id'], conn)
+        _sync_payment_accounting_entries(payment_bundle['invoice']['id'], conn)
+        conn.commit()
+
+        updated_bundle = _load_payment_bundle(payment_id, conn)
+        cache.clear()
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        logger.error(f"Error editando pago #{payment_id}: {exc}")
+        flash(f'Error al editar pago: {exc}', 'error')
+        return redirect(edit_url)
+    finally:
+        if conn:
+            conn.close()
+
+    if updated_bundle:
+        _notify_admin_payment_change(
+            'edited',
+            updated_bundle['payment'],
+            updated_bundle['invoice'],
+            updated_bundle['unit'],
+            previous_payment=previous_payment,
+        )
+
+    flash(f'Pago #{payment_id} actualizado correctamente', 'success')
+    return redirect(next_url)
+
 @billing_bp.route('/pagos/delete/<int:payment_id>', methods=['POST'])
 @login_required
 @permission_required('facturacion.delete')
 @audit_log('facturacion.eliminar_pago', 'Eliminar pago')
 def delete_payment(payment_id):
     """Eliminar un pago registrado"""
+    next_url = _get_safe_next_url(request.form.get('next'))
+    conn = None
     try:
         conn = db.get_conn()
-        cur = conn.cursor()
-        
-        # Obtener información del pago antes de eliminarlo
-        cur.execute("SELECT invoice_id, amount FROM payments WHERE id = ?", (payment_id,))
-        payment = cur.fetchone()
-        
-        if payment:
-            invoice_id = payment['invoice_id']
-            payment_amount = payment['amount']
-            
-            # Eliminar el pago
+        payment_bundle = _load_payment_bundle(payment_id, conn)
+
+        if payment_bundle:
+            cur = conn.cursor()
             cur.execute("DELETE FROM payments WHERE id = ?", (payment_id,))
+            _sync_invoice_payment_state(payment_bundle['invoice']['id'], conn)
+            _sync_payment_accounting_entries(payment_bundle['invoice']['id'], conn)
             conn.commit()
-            
-            # Actualizar el estado de la factura
-            cur.execute("""
-                SELECT COALESCE(SUM(amount), 0) as total_paid
-                FROM payments
-                WHERE invoice_id = ?
-            """, (invoice_id,))
-            result = cur.fetchone()
-            total_paid = result['total_paid'] if result else 0
-            
-            cur.execute("SELECT amount FROM invoices WHERE id = ?", (invoice_id,))
-            invoice = cur.fetchone()
-            
-            if invoice:
-                invoice_amount = invoice['amount']
-                is_paid = total_paid >= invoice_amount
-                
-                cur.execute("""
-                    UPDATE invoices 
-                    SET paid = ?,
-                        pending_amount = ?
-                    WHERE id = ?
-                """, (is_paid, invoice_amount - total_paid, invoice_id))
-                conn.commit()
-            
-            conn.close()
+
+            _notify_admin_payment_change(
+                'deleted',
+                payment_bundle['payment'],
+                payment_bundle['invoice'],
+                payment_bundle['unit'],
+            )
+
             flash(f"Pago #{payment_id} eliminado correctamente", "success")
             cache.clear()
         else:
             flash(f"Pago #{payment_id} no encontrado", "error")
-            
+
     except Exception as e:
+        if conn:
+            conn.rollback()
         flash(f"Error al eliminar pago: {str(e)}", "error")
-    
-    return redirect(url_for("billing.register_payment"))
+    finally:
+        if conn:
+            conn.close()
+
+    return redirect(next_url)
 
 
 # ========== VENTAS RECURRENTES ==========

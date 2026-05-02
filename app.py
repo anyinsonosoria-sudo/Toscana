@@ -255,6 +255,20 @@ def _register_context_processors(app: Flask) -> None:
                             "endpoint": "billing.invoices"
                         },
                         {
+                            "key": "billing_registrar_pago",
+                            "label": "Registrar Pago",
+                            "icon": "bi bi-cash-coin",
+                            "url": "/ventas/registrar-pago",
+                            "endpoint": "billing.register_payment"
+                        },
+                        {
+                            "key": "billing_historial_pagos",
+                            "label": "Historial de Pagos",
+                            "icon": "bi bi-clock-history",
+                            "url": "/ventas/pagos",
+                            "endpoint": "billing.payments"
+                        },
+                        {
                             "key": "billing_recurrentes",
                             "label": "Facturas Recurrentes",
                             "icon": "bi bi-arrow-repeat",

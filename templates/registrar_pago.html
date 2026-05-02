@@ -2,8 +2,12 @@
 {% block title %}Registrar Pago - Xpack{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1 class="page-title"><i class="bi bi-cash-coin"></i> Registrar Pago</h1>
+{% set return_url = request.full_path if request.query_string else request.path %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <h1 class="page-title mb-0"><i class="bi bi-cash-coin"></i> Registrar Pago</h1>
+    <a href="{{ url_for('billing.payments') }}" class="btn btn-outline-primary">
+        <i class="bi bi-clock-history"></i> Ver Historial Completo
+    </a>
 </div>
 
 <!-- Facturas Pendientes -->
@@ -89,9 +93,13 @@
                         <td data-label="Método"><span class="badge-status badge-active">{{ p.method or '-' }}</span></td>
                         <td data-label="Fecha"><small>{{ p.paid_date or '-' }}</small></td>
                         <td data-label="Acciones">
+                            <a href="{{ url_for('billing.edit_payment', payment_id=p.id, next=return_url) }}" class="btn-action edit" title="Editar">
+                                <i class="bi bi-pencil"></i>
+                            </a>
                             <form method="POST" action="{{ url_for('billing.delete_payment', payment_id=p.id) }}" style="display:inline;"
                                   onsubmit="return confirm('¿Eliminar pago #{{ p.id }}?')">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="next" value="{{ return_url }}">
                                 <button type="submit" class="btn-action delete" title="Eliminar">
                                     <i class="bi bi-trash"></i>
                                 </button>

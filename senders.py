@@ -277,6 +277,114 @@ def send_payment_notification(payment: dict, invoice: dict, unit: dict, client_e
         except Exception as e:
             # Log error but don't fail the whole operation
             print(f"✗ Error sending payment notification to admin: {e}")
+
+
+def generate_payment_change_notification_html(action: str, payment: dict, invoice: dict, unit: dict,
+                                              previous_payment: dict = None) -> str:
+    """Genera el HTML para avisos internos de edición o eliminación de pagos."""
+
+    def format_amount(val):
+        try:
+            amount = float(val or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        return f"RD${amount:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    def format_method(value):
+        if not value:
+            return 'N/A'
+        return str(value).capitalize()
+
+    action_labels = {
+        'edited': 'Pago editado',
+        'deleted': 'Pago eliminado',
+    }
+    action_label = action_labels.get(action, 'Cambio de pago')
+
+    payment_date = payment.get('paid_date') or payment.get('payment_date') or 'N/A'
+    previous_date = 'N/A'
+    if previous_payment:
+        previous_date = previous_payment.get('paid_date') or previous_payment.get('payment_date') or 'N/A'
+
+    change_details_html = f"""
+        <div class="detail"><strong>Monto:</strong> {format_amount(payment.get('amount', 0))}</div>
+        <div class="detail"><strong>Método:</strong> {format_method(payment.get('method'))}</div>
+        <div class="detail"><strong>Fecha:</strong> {payment_date}</div>
+    """
+
+    if action == 'edited' and previous_payment:
+        change_details_html = f"""
+            <div class="detail"><strong>Antes:</strong> {format_amount(previous_payment.get('amount', 0))} | {format_method(previous_payment.get('method'))} | {previous_date}</div>
+            <div class="detail"><strong>Después:</strong> {format_amount(payment.get('amount', 0))} | {format_method(payment.get('method'))} | {payment_date}</div>
+        """
+
+    notes_html = ""
+    if action == 'edited' and previous_payment:
+        previous_notes = previous_payment.get('notes') or '-'
+        current_notes = payment.get('notes') or '-'
+        notes_html = f"""
+            <div class="detail"><strong>Notas antes:</strong> {previous_notes}</div>
+            <div class="detail"><strong>Notas después:</strong> {current_notes}</div>
+        """
+    elif payment.get('notes'):
+        notes_html = f"""
+            <div class="detail"><strong>Notas:</strong> {payment.get('notes')}</div>
+        """
+
+    return f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: #0d6efd; color: white; padding: 20px; text-align: center; border-radius: 8px; }}
+            .content {{ background: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px; }}
+            .detail {{ margin: 10px 0; padding: 8px; background: white; border-radius: 4px; }}
+            .footer {{ text-align: center; color: #666; font-size: 12px; padding: 20px; margin-top: 30px; border-top: 1px solid #ddd; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h2>{action_label}</h2>
+            </div>
+            <div class="content">
+                <p>Estimado Administrador,</p>
+                <p>Se registró un cambio en un pago existente.</p>
+
+                <div class="detail"><strong>Pago #:</strong> {payment.get('id', 'N/A')}</div>
+                <div class="detail"><strong>Factura #:</strong> {invoice.get('id', 'N/A')}</div>
+                <div class="detail"><strong>Unidad:</strong> {unit.get('number', 'N/A')}</div>
+                <div class="detail"><strong>Residente:</strong> {unit.get('resident_name', 'N/A')}</div>
+                <div class="detail"><strong>Descripción:</strong> {invoice.get('description', 'N/A')}</div>
+                {change_details_html}
+                {notes_html}
+            </div>
+            <div class="footer">
+                <p>Este correo se envía solo al administrador.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+def send_payment_change_notification(action: str, payment: dict, invoice: dict, unit: dict,
+                                     admin_email: str = None, previous_payment: dict = None):
+    """Envía avisos internos al administrador cuando un pago se edita o elimina."""
+    if not admin_email:
+        return
+
+    action_labels = {
+        'edited': 'Pago editado',
+        'deleted': 'Pago eliminado',
+    }
+    action_label = action_labels.get(action, 'Cambio de pago')
+    subject = f"{action_label} - Factura #{invoice.get('id', 'N/A')} - Unidad {unit.get('number', 'N/A')}"
+    html = generate_payment_change_notification_html(action, payment, invoice, unit, previous_payment=previous_payment)
+    send_email(admin_email, subject, html)
+
 def generate_account_statement_html(unit: dict, invoices: list, payments: list, balance: float) -> str:
     """Genera el HTML para el estado de cuenta"""
     
