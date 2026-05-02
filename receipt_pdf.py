@@ -11,6 +11,7 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from datetime import datetime
 from pathlib import Path
 import io
+from xml.sax.saxutils import escape
 
 # ===== Color Palette =====
 BROWN       = colors.HexColor('#795548')
@@ -55,6 +56,10 @@ def _get_logo(company_info):
         except:
             pass
     return None
+
+
+def _safe_text(value):
+    return escape(str(value or ''))
 
 
 # ============================================================
@@ -497,6 +502,240 @@ def generate_account_statement_pdf(unit_data, invoices, payments, company_info, 
         f"<i>Documento generado el {_fecha()}  ·  Este documento no requiere firma</i>", ft_s))
     
     # Build
+    doc.build(story)
+    if output_path:
+        return None
+    buffer.seek(0)
+    return buffer
+
+
+def generate_monthly_financial_report_pdf(report_data, company_info, output_path=None):
+    """Genera el reporte financiero mensual consolidado en PDF."""
+
+    if output_path:
+        doc = SimpleDocTemplate(output_path, pagesize=letter,
+                                rightMargin=0.55*inch, leftMargin=0.55*inch,
+                                topMargin=0.45*inch, bottomMargin=0.45*inch)
+    else:
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter,
+                                rightMargin=0.55*inch, leftMargin=0.55*inch,
+                                topMargin=0.45*inch, bottomMargin=0.45*inch)
+
+    story = []
+    styles = getSampleStyleSheet()
+    W = 6.9 * inch
+
+    co_name = (company_info or {}).get('name', 'Administración')
+    co_addr = (company_info or {}).get('address', '')
+    co_phone = (company_info or {}).get('phone', '')
+    co_email = (company_info or {}).get('email', '')
+
+    hdr_s = ParagraphStyle('MR_H', parent=styles['Normal'], fontSize=8,
+                           textColor=WHITE, alignment=TA_RIGHT, leading=12)
+    title_s = ParagraphStyle('MR_T', parent=styles['Normal'], fontSize=18,
+                             fontName='Helvetica-Bold', textColor=BROWN, leading=22)
+    sub_s = ParagraphStyle('MR_SUB', parent=styles['Normal'], fontSize=9,
+                           textColor=TEXT_MID, alignment=TA_RIGHT, leading=13)
+    sec_s = ParagraphStyle('MR_SEC', parent=styles['Normal'], fontSize=11,
+                           fontName='Helvetica-Bold', textColor=BROWN, spaceAfter=6)
+    th_s = ParagraphStyle('MR_TH', parent=styles['Normal'], fontSize=8,
+                          fontName='Helvetica-Bold', textColor=WHITE)
+    td_s = ParagraphStyle('MR_TD', parent=styles['Normal'], fontSize=8,
+                          textColor=TEXT_DARK, leading=11)
+    td_r = ParagraphStyle('MR_TDR', parent=styles['Normal'], fontSize=8,
+                          textColor=TEXT_DARK, alignment=TA_RIGHT, leading=11)
+    td_c = ParagraphStyle('MR_TDC', parent=styles['Normal'], fontSize=8,
+                          textColor=TEXT_DARK, alignment=TA_CENTER, leading=11)
+    empty_s = ParagraphStyle('MR_EMPTY', parent=styles['Normal'], fontSize=8,
+                             textColor=TEXT_MID, alignment=TA_CENTER, leading=11)
+
+    logo = _get_logo(company_info)
+    co_text = f"<b><font size='13'>{_safe_text(co_name)}</font></b>"
+    if co_addr:
+        co_text += f"<br/>{_safe_text(co_addr)}"
+    if co_phone:
+        co_text += f"<br/>Tel: {_safe_text(co_phone)}"
+    if co_email:
+        co_text += f"<br/>{_safe_text(co_email)}"
+
+    if logo:
+        header_table = Table([[logo, Paragraph(co_text, hdr_s)]], colWidths=[1.2*inch, W - 1.2*inch])
+    else:
+        header_table = Table([[Paragraph(co_text, hdr_s)]], colWidths=[W])
+
+    header_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), BROWN),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 14),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 14),
+        ('LEFTPADDING', (0,0), (-1,-1), 16),
+        ('RIGHTPADDING', (0,0), (-1,-1), 16),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, 0.18*inch))
+
+    summary_header = Table([
+        [
+            Paragraph('REPORTE FINANCIERO MENSUAL', title_s),
+            Paragraph(
+                f"<b>Período:</b> {_safe_text(report_data.get('period_label', report_data.get('report_period', '')))}<br/>"
+                f"<b>Generado:</b> {_safe_text(report_data.get('generated_at', ''))}",
+                sub_s,
+            ),
+        ]
+    ], colWidths=[W * 0.58, W * 0.42])
+    summary_header.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP')]))
+    story.append(summary_header)
+    story.append(Spacer(1, 0.18*inch))
+
+    summary_rows = [
+        [Paragraph('Saldo inicial', td_s), Paragraph(_fmt(report_data.get('opening_balance', 0)), td_r)],
+        [Paragraph('Cobros del mes', td_s), Paragraph(_fmt(report_data.get('total_collections', 0)), td_r)],
+        [Paragraph('Por cobrar al cierre', td_s), Paragraph(_fmt(report_data.get('total_pending_receivables', 0)), td_r)],
+        [Paragraph('Gastos del mes', td_s), Paragraph(_fmt(report_data.get('total_expenses', 0)), td_r)],
+        [Paragraph('Saldo final', td_s), Paragraph(_fmt(report_data.get('closing_balance', 0)), td_r)],
+    ]
+    summary_table = Table(summary_rows, colWidths=[W - 1.8*inch, 1.8*inch])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), BROWN_BG),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('LEFTPADDING', (0,0), (-1,-1), 12),
+        ('RIGHTPADDING', (0,0), (-1,-1), 12),
+        ('LINEBELOW', (0,0), (-1,-2), 0.35, BROWN_LIGHT),
+        ('LINEABOVE', (0,-1), (-1,-1), 1.3, BROWN),
+    ]))
+    story.append(summary_table)
+    story.append(Spacer(1, 0.2*inch))
+
+    def _append_section(title, headers, rows, widths, header_color=BROWN, empty_message='Sin movimientos registrados.'):
+        story.append(Paragraph(title, sec_s))
+        table_rows = [[Paragraph(_safe_text(header), th_s) for header in headers]]
+
+        if rows:
+            for row in rows:
+                table_rows.append(row)
+        else:
+            table_rows.append([Paragraph(empty_message, empty_s)] + [''] * (len(headers) - 1))
+
+        table = Table(table_rows, colWidths=widths, repeatRows=1)
+        table_style = [
+            ('BACKGROUND', (0,0), (-1,0), header_color),
+            ('TOPPADDING', (0,0), (-1,-1), 6),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ('LEFTPADDING', (0,0), (-1,-1), 7),
+            ('RIGHTPADDING', (0,0), (-1,-1), 7),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ]
+        if rows:
+            table_style.extend([
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [WHITE, BROWN_BG]),
+                ('LINEBELOW', (0,0), (-1,0), 0, WHITE),
+            ])
+        else:
+            table_style.extend([
+                ('SPAN', (0,1), (-1,1)),
+                ('BACKGROUND', (0,1), (-1,1), WHITE),
+            ])
+        table.setStyle(TableStyle(table_style))
+        story.append(table)
+        story.append(Spacer(1, 0.18*inch))
+
+    collections_rows = []
+    for payment in report_data.get('collections', []):
+        collections_rows.append([
+            Paragraph(_safe_text(payment.get('apt_number', 'N/A')), td_c),
+            Paragraph(_safe_text(payment.get('resident_name', 'N/A')), td_s),
+            Paragraph(f"#{_safe_text(payment.get('invoice_id', ''))}", td_c),
+            Paragraph(_safe_text(str(payment.get('paid_date', ''))[:10]), td_c),
+            Paragraph(_safe_text((payment.get('method', '') or '').capitalize()), td_s),
+            Paragraph(_fmt(payment.get('amount', 0)), td_r),
+        ])
+    _append_section(
+        'Cobros realizados',
+        ['Apto', 'Residente', 'Factura', 'Fecha', 'Método', 'Monto'],
+        collections_rows,
+        [0.65*inch, 1.65*inch, 0.7*inch, 0.85*inch, 1.15*inch, 1.25*inch],
+        header_color=BROWN,
+        empty_message='No se registraron cobros en el período.',
+    )
+
+    pending_rows = []
+    for invoice in report_data.get('pending_receivables', []):
+        pending_rows.append([
+            Paragraph(_safe_text(invoice.get('apt_number', 'N/A')), td_c),
+            Paragraph(_safe_text(invoice.get('resident_name', 'N/A')), td_s),
+            Paragraph(_safe_text(invoice.get('description', 'N/A')), td_s),
+            Paragraph(_safe_text(str(invoice.get('due_date', ''))[:10]), td_c),
+            Paragraph(_safe_text(invoice.get('days_overdue', '0')), td_c),
+            Paragraph(_fmt(invoice.get('pending', 0)), td_r),
+        ])
+    _append_section(
+        'Pendientes por cobrar',
+        ['Apto', 'Residente', 'Concepto', 'Vence', 'Mora', 'Pendiente'],
+        pending_rows,
+        [0.65*inch, 1.5*inch, 2.0*inch, 0.85*inch, 0.55*inch, 1.35*inch],
+        header_color=BROWN_DARK,
+        empty_message='No hay cuentas pendientes al cierre del período.',
+    )
+
+    expense_rows = []
+    for expense in report_data.get('expenses', []):
+        expense_rows.append([
+            Paragraph(_safe_text(str(expense.get('date', ''))[:10]), td_c),
+            Paragraph(_safe_text(expense.get('category', 'Sin categoría')), td_s),
+            Paragraph(_safe_text(expense.get('description', 'N/A')), td_s),
+            Paragraph(_safe_text(expense.get('supplier_name', 'N/A')), td_s),
+            Paragraph(_fmt(expense.get('amount', 0)), td_r),
+        ])
+    _append_section(
+        'Gastos ejecutados',
+        ['Fecha', 'Categoría', 'Descripción', 'Suplidor', 'Monto'],
+        expense_rows,
+        [0.8*inch, 1.25*inch, 2.45*inch, 1.05*inch, 1.35*inch],
+        header_color=BROWN,
+        empty_message='No se registraron gastos en el período.',
+    )
+
+    extra_rows = []
+    if report_data.get('other_income'):
+        extra_rows.append([
+            Paragraph('Otros ingresos', td_s),
+            Paragraph(_fmt(report_data.get('other_income', 0)), td_r),
+        ])
+    if report_data.get('other_expenses'):
+        extra_rows.append([
+            Paragraph('Otros gastos', td_s),
+            Paragraph(_fmt(report_data.get('other_expenses', 0)), td_r),
+        ])
+    if report_data.get('financing_inflows'):
+        extra_rows.append([
+            Paragraph('Entradas financieras', td_s),
+            Paragraph(_fmt(report_data.get('financing_inflows', 0)), td_r),
+        ])
+    if report_data.get('financing_outflows'):
+        extra_rows.append([
+            Paragraph('Salidas financieras', td_s),
+            Paragraph(_fmt(report_data.get('financing_outflows', 0)), td_r),
+        ])
+
+    if extra_rows:
+        _append_section(
+            'Otros movimientos considerados en el cierre',
+            ['Concepto', 'Monto'],
+            extra_rows,
+            [W - 1.7*inch, 1.7*inch],
+            header_color=BROWN_DARK,
+        )
+
+    footer_s = ParagraphStyle('MR_FT', parent=styles['Normal'], fontSize=7,
+                              textColor=TEXT_LIGHT, alignment=TA_CENTER, leading=10)
+    story.append(Paragraph(
+        '<i>Documento generado automáticamente. Revise el adjunto para el detalle completo del período.</i>',
+        footer_s,
+    ))
+
     doc.build(story)
     if output_path:
         return None

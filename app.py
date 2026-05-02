@@ -54,6 +54,17 @@ def create_app(config_object: str = None) -> Flask:
     app.config.setdefault('SESSION_COOKIE_SAMESITE', 'Lax')
     app.config.setdefault('PERMANENT_SESSION_LIFETIME', timedelta(hours=8))
     app.config.setdefault('MAX_CONTENT_LENGTH', 16 * 1024 * 1024)  # 16MB max upload
+    app.config.setdefault('SCHEDULER_TIMEZONE', 'America/Santo_Domingo')
+    app.config.setdefault('MONTHLY_FINANCIAL_REPORT_HOUR', 6)
+    app.config.setdefault('MONTHLY_FINANCIAL_REPORT_MINUTE', 0)
+    app.config.setdefault(
+        'MONTHLY_FINANCIAL_REPORT_ADMIN_ONLY',
+        os.environ.get('MONTHLY_FINANCIAL_REPORT_ADMIN_ONLY', '').strip().lower() in {'1', 'true', 'yes', 'on'},
+    )
+    app.config.setdefault(
+        'MONTHLY_FINANCIAL_REPORT_ADMIN_EMAIL',
+        os.environ.get('MONTHLY_FINANCIAL_REPORT_ADMIN_EMAIL', '').strip(),
+    )
     
     # Configurar carpeta de uploads
     upload_folder = Path(__file__).parent / 'static' / 'uploads'
@@ -156,6 +167,41 @@ def _register_scheduler_jobs(app: Flask) -> None:
 
         app.logger.info(
             "[OK] Tarea programada registrada: verificar facturas recurrentes cada minuto"
+        )
+
+        @scheduler.task(
+            'cron',
+            id='send_monthly_financial_report',
+            day=1,
+            hour=app.config.get('MONTHLY_FINANCIAL_REPORT_HOUR', 6),
+            minute=app.config.get('MONTHLY_FINANCIAL_REPORT_MINUTE', 0),
+            misfire_grace_time=43200,
+        )
+        def _job_send_monthly_financial_report():
+            """Envía el reporte financiero consolidado del mes anterior."""
+            with app.app_context():
+                try:
+                    from reports import send_previous_month_financial_report
+
+                    admin_only = app.config.get('MONTHLY_FINANCIAL_REPORT_ADMIN_ONLY', False)
+                    result = send_previous_month_financial_report(
+                        admin_only=admin_only,
+                        admin_email_override=app.config.get('MONTHLY_FINANCIAL_REPORT_ADMIN_EMAIL') or None,
+                    )
+                    app.logger.info(
+                        "[Scheduler] Reporte financiero mensual %s (solo admin=%s, admin=%s): %s enviados, %s omitidos, %s errores",
+                        result.get('report_period', 'N/A'),
+                        admin_only,
+                        result.get('resolved_admin_email', ''),
+                        len(result.get('sent', [])),
+                        len(result.get('skipped', [])),
+                        len(result.get('failed', [])),
+                    )
+                except Exception as exc:
+                    app.logger.error(f"[Scheduler] Fallo al enviar reporte financiero mensual: {exc}")
+
+        app.logger.info(
+            "[OK] Tarea programada registrada: reporte financiero mensual cada día 1 a las 06:00"
         )
     except Exception as e:
         app.logger.warning(f"[WARNING] No se pudo registrar la tarea del scheduler: {e}")

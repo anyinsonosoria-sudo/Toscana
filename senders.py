@@ -2,6 +2,7 @@ import os
 import tempfile
 import subprocess
 from email.message import EmailMessage
+from html import escape
 import smtplib
 from pathlib import Path
 
@@ -384,6 +385,84 @@ def send_payment_change_notification(action: str, payment: dict, invoice: dict, 
     subject = f"{action_label} - Factura #{invoice.get('id', 'N/A')} - Unidad {unit.get('number', 'N/A')}"
     html = generate_payment_change_notification_html(action, payment, invoice, unit, previous_payment=previous_payment)
     send_email(admin_email, subject, html)
+
+
+def generate_monthly_financial_report_html(report_data: dict, recipient_name: str = None,
+                                           recipient_type: str = 'resident', company_name: str = None) -> str:
+    """Genera el HTML del correo para el reporte financiero mensual."""
+
+    def format_amount(val):
+        return f"RD${float(val or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    safe_company_name = escape(company_name or 'la administración')
+    safe_recipient_name = escape(recipient_name or 'residente')
+    safe_period = escape(report_data.get('period_label', report_data.get('report_period', '')))
+
+    if recipient_type == 'admin':
+        greeting = 'Estimado Administrador'
+    else:
+        greeting = f'Estimado/a {safe_recipient_name}'
+
+    return f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 680px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: #6d4c41; color: white; padding: 24px; border-radius: 10px; }}
+            .summary {{ background: #f4eeeb; border-radius: 10px; padding: 20px; margin: 20px 0; }}
+            .row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e0d4cf; }}
+            .row:last-child {{ border-bottom: none; }}
+            .footer {{ color: #666; font-size: 12px; margin-top: 24px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h2 style="margin: 0 0 8px 0;">Reporte financiero mensual</h2>
+                <p style="margin: 0;">Período reportado: <strong>{safe_period}</strong></p>
+            </div>
+
+            <p>{greeting},</p>
+            <p>Adjunto encontrará el reporte financiero mensual consolidado de {safe_company_name}. Incluye saldo inicial, cobros, pendientes por cobrar, gastos y saldo final del período.</p>
+
+            <div class="summary">
+                <div class="row"><span>Saldo inicial</span><strong>{format_amount(report_data.get('opening_balance', 0))}</strong></div>
+                <div class="row"><span>Total cobrado</span><strong>{format_amount(report_data.get('total_collections', 0))}</strong></div>
+                <div class="row"><span>Pendiente por cobrar</span><strong>{format_amount(report_data.get('total_pending_receivables', 0))}</strong></div>
+                <div class="row"><span>Total gastado</span><strong>{format_amount(report_data.get('total_expenses', 0))}</strong></div>
+                <div class="row"><span>Saldo final</span><strong>{format_amount(report_data.get('closing_balance', 0))}</strong></div>
+            </div>
+
+            <p>El detalle completo se encuentra en el PDF adjunto.</p>
+
+            <div class="footer">
+                <p>Este es un mensaje automático. Por favor no responda a este correo.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+def send_monthly_financial_report_email(recipient_email: str, report_data: dict, pdf_path: str,
+                                        recipient_name: str = None, recipient_type: str = 'resident',
+                                        company_name: str = None) -> str:
+    """Envía el reporte financiero mensual a un destinatario individual."""
+    if pdf_path and not Path(pdf_path).exists():
+        raise FileNotFoundError(f"No se encontró el PDF del reporte: {pdf_path}")
+
+    subject = f"Reporte financiero mensual - {report_data.get('period_label', report_data.get('report_period', ''))}"
+    html = generate_monthly_financial_report_html(
+        report_data,
+        recipient_name=recipient_name,
+        recipient_type=recipient_type,
+        company_name=company_name,
+    )
+    attachments = [(pdf_path, Path(pdf_path).name)] if pdf_path else None
+    send_email(recipient_email, subject, html, attachments=attachments)
+    return subject
 
 def generate_account_statement_html(unit: dict, invoices: list, payments: list, balance: float) -> str:
     """Genera el HTML para el estado de cuenta"""

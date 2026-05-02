@@ -3,19 +3,375 @@ Módulo de Reportes
 Análisis y reportes de ventas, cuentas por cobrar y estadísticas financieras
 """
 
+import os
+import sqlite3
 from typing import List, Dict, Optional
 from db import get_conn
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 LOG_PATH = Path(__file__).parent / "run.log"
+REPORT_TIMEZONE = "America/Santo_Domingo"
+MONTHLY_REPORT_TYPE = "monthly_financial_report"
+MONTH_NAMES_ES = {
+    1: "enero",
+    2: "febrero",
+    3: "marzo",
+    4: "abril",
+    5: "mayo",
+    6: "junio",
+    7: "julio",
+    8: "agosto",
+    9: "septiembre",
+    10: "octubre",
+    11: "noviembre",
+    12: "diciembre",
+}
 
 def _log(msg: str):
     try:
         with open(LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(f"{datetime.utcnow().isoformat()}Z - {msg}\n")
+            f.write(f"{datetime.now(timezone.utc).isoformat()} - {msg}\n")
     except Exception:
         pass
+
+
+def _normalize_email(email: Optional[str]) -> str:
+    return (email or "").strip().lower()
+
+
+def _resolve_monthly_report_admin_email(company_info: Optional[Dict] = None,
+                                        admin_email_override: Optional[str] = None) -> str:
+    company_info = company_info or {}
+    candidates = [
+        admin_email_override,
+        os.environ.get('MONTHLY_FINANCIAL_REPORT_ADMIN_EMAIL'),
+        os.environ.get('ADMIN_EMAIL'),
+        company_info.get('email'),
+    ]
+
+    for candidate in candidates:
+        normalized = _normalize_email(candidate)
+        if normalized:
+            return normalized
+    return ""
+
+
+def _utcnow_sql() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def get_previous_month_period(reference_dt: Optional[datetime] = None) -> Dict[str, str]:
+    reference_dt = reference_dt or datetime.now()
+    first_day_current_month = reference_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    last_day_previous_month = first_day_current_month - timedelta(days=1)
+    first_day_previous_month = last_day_previous_month.replace(day=1)
+    month_name = MONTH_NAMES_ES[last_day_previous_month.month]
+
+    return {
+        'date_from': first_day_previous_month.strftime('%Y-%m-%d'),
+        'date_to': last_day_previous_month.strftime('%Y-%m-%d'),
+        'report_period': first_day_previous_month.strftime('%Y-%m'),
+        'month_name': month_name,
+        'period_label': f"{month_name.title()} {last_day_previous_month.year}",
+    }
+
+
+def get_monthly_financial_report_data(reference_dt: Optional[datetime] = None) -> Dict:
+    from accounting import get_cash_flow_statement, get_income_statement
+
+    period = get_previous_month_period(reference_dt=reference_dt)
+    income_statement = get_income_statement(period['date_from'], period['date_to'])
+    cash_flow_statement = get_cash_flow_statement(period['date_from'], period['date_to'])
+
+    return {
+        'report_type': MONTHLY_REPORT_TYPE,
+        'date_from': period['date_from'],
+        'date_to': period['date_to'],
+        'report_period': period['report_period'],
+        'month_name': period['month_name'],
+        'period_label': period['period_label'],
+        'generated_at': _utcnow_sql(),
+        'opening_balance': cash_flow_statement.get('opening_balance', 0),
+        'closing_balance': cash_flow_statement.get('closing_balance', 0),
+        'net_change': cash_flow_statement.get('net_change', 0),
+        'net_operating': cash_flow_statement.get('net_operating', 0),
+        'collections': income_statement.get('income_payments', []),
+        'total_collections': income_statement.get('operating_income', 0),
+        'pending_receivables': income_statement.get('pending_invoices', []),
+        'total_pending_receivables': income_statement.get('total_pending', 0),
+        'expenses': income_statement.get('expense_items', []),
+        'total_expenses': income_statement.get('operating_expenses', 0),
+        'other_income': income_statement.get('other_income', 0),
+        'other_income_detail': income_statement.get('other_income_detail', []),
+        'other_expenses': income_statement.get('other_expenses', 0),
+        'other_expenses_detail': income_statement.get('other_expenses_detail', []),
+        'financing_inflows': cash_flow_statement.get('financing_inflows', 0),
+        'financing_inflows_detail': cash_flow_statement.get('financing_inflows_detail', []),
+        'financing_outflows': cash_flow_statement.get('financing_outflows', 0),
+        'financing_outflows_detail': cash_flow_statement.get('financing_outflows_detail', []),
+        'income_statement': income_statement,
+        'cash_flow_statement': cash_flow_statement,
+    }
+
+
+def get_monthly_report_recipients(admin_email_override: Optional[str] = None) -> Dict[str, object]:
+    from company import get_company_info
+
+    company_info = get_company_info() or {}
+    admin_email = _resolve_monthly_report_admin_email(
+        company_info=company_info,
+        admin_email_override=admin_email_override,
+    )
+
+    recipients: List[Dict[str, str]] = []
+    seen_emails = set()
+
+    if admin_email:
+        recipients.append({
+            'email': admin_email,
+            'name': company_info.get('name') or 'Administración',
+            'recipient_type': 'admin',
+            'unit_number': '',
+        })
+        seen_emails.add(admin_email)
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT resident_email as email,
+                   COALESCE(resident_name, 'Residente') as name,
+                   number as unit_number
+            FROM apartments
+            WHERE resident_email IS NOT NULL AND TRIM(resident_email) != ''
+            ORDER BY number
+        """)
+        apartment_rows = [dict(row) for row in cur.fetchall()]
+
+        cur.execute("""
+            SELECT r.email,
+                   COALESCE(r.name, a.resident_name, 'Residente') as name,
+                   COALESCE(a.number, '') as unit_number
+            FROM residents r
+            LEFT JOIN apartments a ON a.id = r.unit_id
+            WHERE r.email IS NOT NULL AND TRIM(r.email) != ''
+            ORDER BY a.number, r.name
+        """)
+        resident_rows = [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+    for row in apartment_rows + resident_rows:
+        email = _normalize_email(row.get('email'))
+        if not email or email in seen_emails:
+            continue
+
+        recipients.append({
+            'email': email,
+            'name': row.get('name') or 'Residente',
+            'recipient_type': 'resident',
+            'unit_number': row.get('unit_number') or '',
+        })
+        seen_emails.add(email)
+
+    return {
+        'admin_email': admin_email,
+        'resident_recipients': [r for r in recipients if r['recipient_type'] == 'resident'],
+        'all_recipients': recipients,
+    }
+
+
+def claim_monthly_report_dispatch(
+    report_period: str,
+    recipient_email: str,
+    report_type: str = MONTHLY_REPORT_TYPE,
+    allow_retry_failed: bool = True,
+) -> bool:
+    normalized_email = _normalize_email(recipient_email)
+    if not normalized_email:
+        return False
+
+    now = _utcnow_sql()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, status
+            FROM monthly_report_dispatch_log
+            WHERE report_type = ? AND report_period = ? AND recipient_email = ?
+        """, (report_type, report_period, normalized_email))
+        row = cur.fetchone()
+
+        if row:
+            status = row['status']
+            if status in ('sent', 'sending'):
+                return False
+            if status == 'failed' and not allow_retry_failed:
+                return False
+
+            cur.execute("""
+                UPDATE monthly_report_dispatch_log
+                SET status = 'sending',
+                    error_message = NULL,
+                    started_at = ?,
+                    updated_at = ?
+                WHERE id = ? AND status = 'failed'
+            """, (now, now, row['id']))
+            conn.commit()
+            return cur.rowcount == 1
+
+        try:
+            cur.execute("""
+                INSERT INTO monthly_report_dispatch_log (
+                    report_type,
+                    report_period,
+                    recipient_email,
+                    status,
+                    started_at,
+                    created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, 'sending', ?, ?, ?)
+            """, (report_type, report_period, normalized_email, now, now, now))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+    finally:
+        conn.close()
+
+
+def mark_monthly_report_dispatch_sent(
+    report_period: str,
+    recipient_email: str,
+    report_type: str = MONTHLY_REPORT_TYPE,
+    subject: Optional[str] = None,
+) -> None:
+    normalized_email = _normalize_email(recipient_email)
+    now = _utcnow_sql()
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE monthly_report_dispatch_log
+            SET status = 'sent',
+                subject = ?,
+                sent_at = ?,
+                updated_at = ?,
+                error_message = NULL
+            WHERE report_type = ? AND report_period = ? AND recipient_email = ?
+        """, (subject, now, now, report_type, report_period, normalized_email))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def mark_monthly_report_dispatch_failed(
+    report_period: str,
+    recipient_email: str,
+    error_message: str,
+    report_type: str = MONTHLY_REPORT_TYPE,
+) -> None:
+    normalized_email = _normalize_email(recipient_email)
+    now = _utcnow_sql()
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE monthly_report_dispatch_log
+            SET status = 'failed',
+                error_message = ?,
+                updated_at = ?
+            WHERE report_type = ? AND report_period = ? AND recipient_email = ?
+        """, (error_message[:1000], now, report_type, report_period, normalized_email))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def generate_monthly_financial_report_pdf_file(report_data: Dict, company_info: Dict,
+                                               output_path: Optional[str] = None) -> str:
+    from receipt_pdf import generate_monthly_financial_report_pdf
+
+    if output_path:
+        pdf_path = Path(output_path)
+    else:
+        pdf_dir = Path(__file__).parent / 'static' / 'reports'
+        pdf_path = pdf_dir / f"monthly_financial_report_{report_data['report_period']}.pdf"
+
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    generate_monthly_financial_report_pdf(report_data, company_info, output_path=str(pdf_path))
+    return str(pdf_path)
+
+
+def send_previous_month_financial_report(reference_dt: Optional[datetime] = None,
+                                         output_path: Optional[str] = None,
+                                         allow_retry_failed: bool = True,
+                                         admin_only: bool = False,
+                                         admin_email_override: Optional[str] = None) -> Dict:
+    from company import get_company_info
+    from senders import send_monthly_financial_report_email
+
+    report_data = get_monthly_financial_report_data(reference_dt=reference_dt)
+    recipients = get_monthly_report_recipients(admin_email_override=admin_email_override)
+    company_info = get_company_info() or {}
+
+    result = {
+        'report_period': report_data['report_period'],
+        'pdf_path': None,
+        'admin_only': admin_only,
+        'resolved_admin_email': recipients.get('admin_email', ''),
+        'sent': [],
+        'skipped': [],
+        'failed': [],
+    }
+
+    target_recipients = recipients['all_recipients']
+    if admin_only:
+        admin_email = recipients.get('admin_email')
+        target_recipients = [recipient for recipient in recipients['all_recipients'] if recipient['email'] == admin_email]
+
+    if not target_recipients:
+        if admin_only:
+            result['failed'].append({
+                'email': recipients.get('admin_email') or '',
+                'error': 'No se encontró un correo de administrador configurado para el reporte mensual.',
+            })
+        return result
+
+    pdf_path = generate_monthly_financial_report_pdf_file(report_data, company_info, output_path=output_path)
+    result['pdf_path'] = pdf_path
+
+    for recipient in target_recipients:
+        email = recipient['email']
+        if not claim_monthly_report_dispatch(
+            report_data['report_period'],
+            email,
+            allow_retry_failed=allow_retry_failed,
+        ):
+            result['skipped'].append(email)
+            continue
+
+        try:
+            subject = send_monthly_financial_report_email(
+                email,
+                report_data,
+                pdf_path,
+                recipient_name=recipient.get('name'),
+                recipient_type=recipient.get('recipient_type', 'resident'),
+                company_name=company_info.get('name'),
+            )
+            mark_monthly_report_dispatch_sent(report_data['report_period'], email, subject=subject)
+            result['sent'].append(email)
+        except Exception as exc:
+            error_message = str(exc)
+            mark_monthly_report_dispatch_failed(report_data['report_period'], email, error_message)
+            _log(f"Error sending monthly report to {email}: {error_message}")
+            result['failed'].append({'email': email, 'error': error_message})
+
+    return result
 
 def get_sales_by_period(period: str = "month") -> List[Dict]:
     """Ventas agrupadas por período con montos reales cobrados"""
