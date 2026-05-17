@@ -108,6 +108,17 @@ RD$ {{ "{:,.2f}".format(value or 0).replace(",", "X").replace(".", ",").replace(
                 <a class="btn btn-outline-light" href="{{ pdf_preview_url }}" target="_blank">
                     <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
                 </a>
+                {% if current_user.is_authenticated and current_user.is_admin() %}
+                <form method="POST" action="{{ url_for('reports.monthly_send') }}" class="d-inline"
+                      onsubmit="return confirm('Se enviará este reporte a los destinatarios pendientes del período mostrado. ¿Deseas continuar?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="reference_date" value="{{ selected_reference_date }}">
+                    <input type="hidden" name="period_mode" value="{{ selected_period_mode }}">
+                    <button type="submit" class="btn btn-warning text-dark">
+                        <i class="bi bi-send"></i> Enviar a residentes
+                    </button>
+                </form>
+                {% endif %}
             </div>
         </div>
 
@@ -134,6 +145,11 @@ RD$ {{ "{:,.2f}".format(value or 0).replace(",", "X").replace(".", ",").replace(
                     <span class="preview-chip"><i class="bi bi-envelope"></i> {{ recipients.admin_email or 'Sin correo admin' }}</span>
                     <span class="preview-chip"><i class="bi bi-people"></i> {{ recipients.all_recipients|length }} destinatarios</span>
                 </div>
+                {% if current_user.is_authenticated and current_user.is_admin() %}
+                <p class="mb-0 mt-2 text-white-50 text-lg-end">
+                    El envío manual reutiliza el mismo reporte visible y solo reintenta destinatarios fallidos o pendientes del período actual.
+                </p>
+                {% endif %}
             </div>
         </form>
     </div>

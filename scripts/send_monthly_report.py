@@ -154,6 +154,21 @@ def _run_dispatch_mode(args: argparse.Namespace) -> dict:
     )
 
 
+def _result_has_failures(result: dict) -> bool:
+    failed = result.get('failed') or []
+    if failed:
+        return True
+
+    sent = result.get('sent') or []
+    skipped = result.get('skipped') or []
+    dry_run = bool(result.get('dry_run', False))
+
+    if dry_run:
+        return False
+
+    return not sent and not skipped
+
+
 def main() -> int:
     _configure_stdout()
     parser = _build_parser()
@@ -167,6 +182,8 @@ def main() -> int:
 
         print('\nResultado:', flush=True)
         print(result, flush=True)
+        if _result_has_failures(result):
+            return 1
         return 0
     except Exception as exc:
         print(f"\n[ERROR] {exc}", flush=True)

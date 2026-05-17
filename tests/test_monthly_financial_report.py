@@ -1,9 +1,12 @@
 from datetime import datetime
+import sys
 
 import pytest
 
 import customization
+import reports as reports_module
 import senders
+from scripts import send_monthly_report as monthly_report_cli
 from company import get_company_info
 from db import get_conn
 from extensions import scheduler
@@ -162,6 +165,44 @@ def preview_auth_client(app):
 
     with client.session_transaction() as session:
         session['_user_id'] = str(admin_row['id'])
+        session['_fresh'] = True
+
+    yield client
+
+
+@pytest.fixture(scope='function')
+def operator_client(app):
+    client = app.test_client()
+
+    with app.app_context():
+        conn = get_conn()
+        try:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO users (username, email, password_hash, full_name, role, is_active)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    'operator_monthly_send',
+                    'operator_monthly_send@example.com',
+                    'test-hash',
+                    'Operador Monthly Send',
+                    'operator',
+                    1,
+                ),
+            )
+            conn.commit()
+            operator_row = conn.execute(
+                "SELECT id FROM users WHERE username = ?",
+                ('operator_monthly_send',),
+            ).fetchone()
+        finally:
+            conn.close()
+
+    assert operator_row is not None
+
+    with client.session_transaction() as session:
+        session['_user_id'] = str(operator_row['id'])
         session['_fresh'] = True
 
     yield client
@@ -397,6 +438,7 @@ def test_monthly_report_preview_route_renders(preview_auth_client, app):
     assert b'Vista previa del reporte financiero mensual' in response.data
     assert b'Abril 2026' in response.data
     assert b'Cobros incluidos' in response.data
+    assert b'Enviar a residentes' in response.data
 
 
 @pytest.mark.integration
@@ -466,6 +508,85 @@ def test_update_monthly_report_settings_route_persists_configuration(auth_client
 
 
 @pytest.mark.integration
+def test_monthly_report_send_route_dispatches_manual_send(auth_client, monkeypatch):
+    captured = {}
+
+    def fake_send_previous_month_financial_report(reference_dt=None,
+                                                  output_path=None,
+                                                  allow_retry_failed=True,
+                                                  admin_only=False,
+                                                  admin_email_override=None,
+                                                  period_mode='previous_month'):
+        captured['reference_dt'] = reference_dt
+        captured['allow_retry_failed'] = allow_retry_failed
+        captured['admin_only'] = admin_only
+        captured['admin_email_override'] = admin_email_override
+        captured['period_mode'] = period_mode
+        return {
+            'report_period': '2026-04',
+            'sent': ['ana@example.com'],
+            'skipped': ['admin@toscana.com'],
+            'failed': [],
+        }
+
+    monkeypatch.setattr(reports_module, 'send_previous_month_financial_report', fake_send_previous_month_financial_report)
+
+    response = auth_client.post(
+        '/reportes/mensual/send',
+        data={
+            'reference_date': '2026-04-12',
+            'period_mode': 'current_month_to_date',
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert 'reference_date=2026-04-12' in response.headers['Location']
+    assert 'period_mode=current_month_to_date' in response.headers['Location']
+    assert captured['reference_dt'].strftime('%Y-%m-%d') == '2026-04-12'
+    assert captured['allow_retry_failed'] is True
+    assert captured['admin_only'] is False
+    assert captured['admin_email_override'] is None
+    assert captured['period_mode'] == 'current_month_to_date'
+
+    with auth_client.session_transaction() as session:
+        flashes = session.get('_flashes', [])
+
+    assert any(
+        'Reporte 2026-04 enviado: 1 destinatarios enviados y 1 omitidos.' in message
+        for category, message in flashes
+    )
+
+
+@pytest.mark.integration
+def test_monthly_report_send_route_requires_admin(operator_client, monkeypatch):
+    called = {'value': False}
+
+    def fake_send_previous_month_financial_report(*args, **kwargs):
+        called['value'] = True
+        return {
+            'report_period': '2026-04',
+            'sent': ['ana@example.com'],
+            'skipped': [],
+            'failed': [],
+        }
+
+    monkeypatch.setattr(reports_module, 'send_previous_month_financial_report', fake_send_previous_month_financial_report)
+
+    response = operator_client.post(
+        '/reportes/mensual/send',
+        data={
+            'reference_date': '2026-04-12',
+            'period_mode': 'current_month_to_date',
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 403
+    assert called['value'] is False
+
+
+@pytest.mark.integration
 def test_send_previous_month_financial_report_admin_only_sends_only_admin(app, monkeypatch, tmp_path):
     sent_messages = []
 
@@ -506,3 +627,23 @@ def test_scheduler_registers_monthly_financial_report_job(app):
     assert job is not None
     assert job.id == 'send_monthly_financial_report'
     assert "day='1'" in str(job.trigger)
+
+
+@pytest.mark.unit
+def test_send_monthly_report_cli_returns_error_when_dispatch_has_failures(monkeypatch):
+    monkeypatch.setattr(monthly_report_cli, '_configure_stdout', lambda: None)
+    monkeypatch.setattr(
+        monthly_report_cli,
+        '_run_dispatch_mode',
+        lambda args: {
+            'report_period': '2026-04',
+            'sent': [],
+            'skipped': [],
+            'failed': [{'email': 'admin@toscana.com', 'error': 'SMTP error'}],
+        },
+    )
+    monkeypatch.setattr(sys, 'argv', ['send_monthly_report.py', '--mode', 'dispatch'])
+
+    exit_code = monthly_report_cli.main()
+
+    assert exit_code == 1

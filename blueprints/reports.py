@@ -6,10 +6,10 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from flask import Blueprint, render_template, request, jsonify, send_file
+from flask import Blueprint, render_template, request, jsonify, send_file, flash, redirect, url_for
 from flask_login import login_required
 
-from utils.decorators import permission_required
+from utils.decorators import permission_required, admin_required, audit_log
 from extensions import cache
 import reports
 import customization
@@ -37,6 +37,25 @@ def _resolve_period_mode(raw_value: str) -> str:
     if period_mode not in {'previous_month', 'current_month_to_date'}:
         return 'previous_month'
     return period_mode
+
+
+def _resolve_preview_request(raw_reference_date: str, raw_period_mode: str):
+    period_mode = _resolve_period_mode(raw_period_mode)
+    reference_dt = _parse_reference_date(raw_reference_date)
+
+    if raw_reference_date and reference_dt is None:
+        reference_dt = datetime.now()
+        selected_reference_date = reference_dt.strftime('%Y-%m-%d')
+        if period_mode == 'current_month_to_date':
+            date_error = 'La fecha indicada no es válida. Se mostró el mes actual a la fecha de hoy.'
+        else:
+            date_error = 'La fecha indicada no es válida. Se mostró el mes anterior a la fecha actual.'
+    else:
+        reference_dt = reference_dt or datetime.now()
+        selected_reference_date = reference_dt.strftime('%Y-%m-%d')
+        date_error = None
+
+    return reference_dt, selected_reference_date, period_mode, date_error
 
 
 @reports_bp.route('/')
@@ -115,20 +134,10 @@ def list():
 def monthly_preview():
     """Vista previa web del reporte financiero mensual."""
     raw_reference_date = request.args.get('reference_date', '')
-    reference_dt = _parse_reference_date(raw_reference_date)
-    period_mode = _resolve_period_mode(request.args.get('period_mode'))
-
-    if raw_reference_date and reference_dt is None:
-        reference_dt = datetime.now()
-        selected_reference_date = reference_dt.strftime('%Y-%m-%d')
-        if period_mode == 'current_month_to_date':
-            date_error = 'La fecha indicada no es válida. Se mostró el mes actual a la fecha de hoy.'
-        else:
-            date_error = 'La fecha indicada no es válida. Se mostró el mes anterior a la fecha actual.'
-    else:
-        reference_dt = reference_dt or datetime.now()
-        selected_reference_date = reference_dt.strftime('%Y-%m-%d')
-        date_error = None
+    reference_dt, selected_reference_date, period_mode, date_error = _resolve_preview_request(
+        raw_reference_date,
+        request.args.get('period_mode'),
+    )
 
     report_data = reports.get_monthly_financial_report_data(
         reference_dt=reference_dt,
@@ -156,6 +165,71 @@ def monthly_preview():
             f"/reportes/mensual/preview.pdf?reference_date={selected_reference_date}"
             f"&period_mode={period_mode}"
         ),
+    )
+
+
+@reports_bp.route('/mensual/send', methods=['POST'])
+@login_required
+@admin_required
+@audit_log('reportes.enviar_mensual', 'Enviar reporte financiero mensual manualmente')
+def monthly_send():
+    """Permite al administrador disparar manualmente el envío del reporte mensual."""
+    raw_reference_date = request.form.get('reference_date', '')
+    reference_dt, selected_reference_date, period_mode, date_error = _resolve_preview_request(
+        raw_reference_date,
+        request.form.get('period_mode'),
+    )
+
+    if date_error:
+        flash(date_error, 'warning')
+
+    try:
+        result = reports.send_previous_month_financial_report(
+            reference_dt=reference_dt,
+            allow_retry_failed=True,
+            period_mode=period_mode,
+        )
+        sent_count = len(result.get('sent', []))
+        skipped_count = len(result.get('skipped', []))
+        failed_count = len(result.get('failed', []))
+        report_period = result.get('report_period', 'N/A')
+
+        if sent_count == 0 and skipped_count == 0 and failed_count == 0:
+            flash(
+                'No se encontraron destinatarios con correo configurado para este reporte mensual.',
+                'warning',
+            )
+        elif failed_count:
+            flash(
+                f'Reporte {report_period} procesado: {sent_count} enviados, '
+                f'{skipped_count} omitidos y {failed_count} con error.',
+                'warning',
+            )
+            first_failed = result['failed'][0]
+            failed_email = first_failed.get('email') or 'destinatario desconocido'
+            failed_error = first_failed.get('error') or 'Error desconocido'
+            flash(f'Primer error de envío para {failed_email}: {failed_error}', 'warning')
+        elif sent_count:
+            flash(
+                f'Reporte {report_period} enviado: {sent_count} destinatarios enviados '
+                f'y {skipped_count} omitidos.',
+                'success',
+            )
+        else:
+            flash(
+                f'Reporte {report_period} sin nuevos envíos: {skipped_count} destinatarios ya lo habían recibido.',
+                'warning',
+            )
+    except Exception as exc:
+        logger.exception('Error enviando reporte financiero mensual manual: %s', exc)
+        flash(f'Error al enviar el reporte financiero mensual: {exc}', 'error')
+
+    return redirect(
+        url_for(
+            'reports.monthly_preview',
+            reference_date=selected_reference_date,
+            period_mode=period_mode,
+        )
     )
 
 
