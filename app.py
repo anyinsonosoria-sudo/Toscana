@@ -202,23 +202,18 @@ def _register_scheduler_jobs(app: Flask) -> None:
             """Envía el reporte financiero consolidado del mes anterior."""
             with app.app_context():
                 try:
-                    from reports import get_monthly_report_settings, send_previous_month_financial_report
+                    from reports import dispatch_monthly_financial_report
 
-                    monthly_report_settings = get_monthly_report_settings(app.config)
-                    if not monthly_report_settings.get('enabled', True):
-                        app.logger.info('[Scheduler] Reporte financiero mensual deshabilitado por configuración.')
-                        return
-
-                    admin_only = bool(monthly_report_settings.get('admin_only', False))
-                    admin_email_override = str(monthly_report_settings.get('admin_email') or '').strip() or None
-                    result = send_previous_month_financial_report(
-                        admin_only=admin_only,
-                        admin_email_override=admin_email_override,
+                    result = dispatch_monthly_financial_report(
+                        app_config=app.config,
+                        respect_enabled_setting=True,
                     )
+                    summary = result.get('summary', {})
                     app.logger.info(
-                        "[Scheduler] Reporte financiero mensual %s (solo admin=%s, admin=%s): %s enviados, %s omitidos, %s errores",
+                        "[Scheduler] %s | período=%s | solo admin=%s | admin=%s | enviados=%s | omitidos=%s | errores=%s",
+                        summary.get('log_message', 'Reporte financiero mensual procesado.'),
                         result.get('report_period', 'N/A'),
-                        admin_only,
+                        result.get('admin_only', False),
                         result.get('resolved_admin_email', ''),
                         len(result.get('sent', [])),
                         len(result.get('skipped', [])),

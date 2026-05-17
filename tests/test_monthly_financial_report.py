@@ -12,7 +12,9 @@ from db import get_conn
 from extensions import scheduler
 from receipt_pdf import generate_monthly_financial_report_pdf
 from reports import (
+    build_monthly_report_dispatch_summary,
     claim_monthly_report_dispatch,
+    dispatch_monthly_financial_report,
     get_monthly_financial_report_data,
     get_monthly_report_settings,
     get_monthly_report_recipients,
@@ -313,6 +315,48 @@ def test_get_monthly_report_settings_supports_customization_overrides(app):
 
 
 @pytest.mark.unit
+def test_dispatch_monthly_financial_report_respects_disabled_setting(app, monkeypatch):
+    with app.app_context():
+        _clear_monthly_report_settings()
+        customization.set_setting('monthly_financial_report_enabled', '0')
+
+        called = {'value': False}
+
+        def fake_send_previous_month_financial_report(*args, **kwargs):
+            called['value'] = True
+            return {}
+
+        monkeypatch.setattr(reports_module, 'send_previous_month_financial_report', fake_send_previous_month_financial_report)
+
+        result = dispatch_monthly_financial_report(
+            reference_dt=datetime(2026, 5, 3, 8, 0, 0),
+            app_config=app.config,
+            respect_enabled_setting=True,
+        )
+
+        _clear_monthly_report_settings()
+
+    assert called['value'] is False
+    assert result['status'] == 'disabled'
+    assert result['summary']['message'] == 'Reporte financiero mensual deshabilitado por configuración.'
+
+
+@pytest.mark.unit
+def test_build_monthly_report_dispatch_summary_returns_warning_detail_for_failures():
+    summary = build_monthly_report_dispatch_summary({
+        'report_period': '2026-04',
+        'sent': ['ana@example.com'],
+        'skipped': ['bruno@example.com'],
+        'failed': [{'email': 'carla@example.com', 'error': 'SMTP error'}],
+        'status': 'processed',
+    })
+
+    assert summary['category'] == 'warning'
+    assert summary['message'] == 'Reporte 2026-04 procesado: 1 enviados, 1 omitidos y 1 con error.'
+    assert summary['detail'] == 'Primer error de envío para carla@example.com: SMTP error'
+
+
+@pytest.mark.unit
 def test_monthly_report_dispatch_log_blocks_duplicate_send(app):
     with app.app_context():
         _seed_monthly_report_data()
@@ -511,25 +555,35 @@ def test_update_monthly_report_settings_route_persists_configuration(auth_client
 def test_monthly_report_send_route_dispatches_manual_send(auth_client, monkeypatch):
     captured = {}
 
-    def fake_send_previous_month_financial_report(reference_dt=None,
-                                                  output_path=None,
-                                                  allow_retry_failed=True,
-                                                  admin_only=False,
-                                                  admin_email_override=None,
-                                                  period_mode='previous_month'):
+    def fake_dispatch_monthly_financial_report(reference_dt=None,
+                                               output_path=None,
+                                               allow_retry_failed=True,
+                                               period_mode='previous_month',
+                                               app_config=None,
+                                               admin_only=None,
+                                               admin_email_override=None,
+                                               respect_enabled_setting=False):
         captured['reference_dt'] = reference_dt
         captured['allow_retry_failed'] = allow_retry_failed
         captured['admin_only'] = admin_only
         captured['admin_email_override'] = admin_email_override
         captured['period_mode'] = period_mode
+        captured['respect_enabled_setting'] = respect_enabled_setting
         return {
             'report_period': '2026-04',
             'sent': ['ana@example.com'],
             'skipped': ['admin@toscana.com'],
             'failed': [],
+            'status': 'processed',
+            'summary': {
+                'message': 'Reporte 2026-04 enviado: 1 destinatarios enviados y 1 omitidos.',
+                'detail': None,
+                'category': 'success',
+                'log_message': 'Reporte 2026-04 enviado: 1 destinatarios enviados y 1 omitidos.',
+            },
         }
 
-    monkeypatch.setattr(reports_module, 'send_previous_month_financial_report', fake_send_previous_month_financial_report)
+    monkeypatch.setattr(reports_module, 'dispatch_monthly_financial_report', fake_dispatch_monthly_financial_report)
 
     response = auth_client.post(
         '/reportes/mensual/send',
@@ -545,9 +599,10 @@ def test_monthly_report_send_route_dispatches_manual_send(auth_client, monkeypat
     assert 'period_mode=current_month_to_date' in response.headers['Location']
     assert captured['reference_dt'].strftime('%Y-%m-%d') == '2026-04-12'
     assert captured['allow_retry_failed'] is True
-    assert captured['admin_only'] is False
+    assert captured['admin_only'] is None
     assert captured['admin_email_override'] is None
     assert captured['period_mode'] == 'current_month_to_date'
+    assert captured['respect_enabled_setting'] is False
 
     with auth_client.session_transaction() as session:
         flashes = session.get('_flashes', [])
@@ -562,7 +617,7 @@ def test_monthly_report_send_route_dispatches_manual_send(auth_client, monkeypat
 def test_monthly_report_send_route_requires_admin(operator_client, monkeypatch):
     called = {'value': False}
 
-    def fake_send_previous_month_financial_report(*args, **kwargs):
+    def fake_dispatch_monthly_financial_report(*args, **kwargs):
         called['value'] = True
         return {
             'report_period': '2026-04',
@@ -571,7 +626,7 @@ def test_monthly_report_send_route_requires_admin(operator_client, monkeypatch):
             'failed': [],
         }
 
-    monkeypatch.setattr(reports_module, 'send_previous_month_financial_report', fake_send_previous_month_financial_report)
+    monkeypatch.setattr(reports_module, 'dispatch_monthly_financial_report', fake_dispatch_monthly_financial_report)
 
     response = operator_client.post(
         '/reportes/mensual/send',
@@ -627,6 +682,53 @@ def test_scheduler_registers_monthly_financial_report_job(app):
     assert job is not None
     assert job.id == 'send_monthly_financial_report'
     assert "day='1'" in str(job.trigger)
+
+
+@pytest.mark.integration
+def test_scheduler_monthly_report_job_uses_shared_dispatch_service(app, monkeypatch):
+    job = scheduler.get_job('send_monthly_financial_report')
+    captured = {}
+
+    def fake_dispatch_monthly_financial_report(reference_dt=None,
+                                               output_path=None,
+                                               allow_retry_failed=True,
+                                               period_mode='previous_month',
+                                               app_config=None,
+                                               admin_only=None,
+                                               admin_email_override=None,
+                                               respect_enabled_setting=False):
+        captured['reference_dt'] = reference_dt
+        captured['output_path'] = output_path
+        captured['allow_retry_failed'] = allow_retry_failed
+        captured['period_mode'] = period_mode
+        captured['app_config'] = app_config
+        captured['admin_only'] = admin_only
+        captured['admin_email_override'] = admin_email_override
+        captured['respect_enabled_setting'] = respect_enabled_setting
+        return {
+            'report_period': '2026-04',
+            'sent': ['ana@example.com'],
+            'skipped': ['bruno@example.com'],
+            'failed': [],
+            'admin_only': True,
+            'resolved_admin_email': 'automatico@toscana.com',
+            'status': 'processed',
+            'summary': {
+                'message': 'Reporte 2026-04 enviado: 1 destinatarios enviados y 1 omitidos.',
+                'detail': None,
+                'category': 'success',
+                'log_message': 'Reporte 2026-04 enviado: 1 destinatarios enviados y 1 omitidos.',
+            },
+        }
+
+    monkeypatch.setattr(reports_module, 'dispatch_monthly_financial_report', fake_dispatch_monthly_financial_report)
+
+    job.func()
+
+    assert captured['app_config'] is app.config
+    assert captured['respect_enabled_setting'] is True
+    assert captured['allow_retry_failed'] is True
+    assert captured['period_mode'] == 'previous_month'
 
 
 @pytest.mark.unit

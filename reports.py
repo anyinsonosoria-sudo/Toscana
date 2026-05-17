@@ -121,6 +121,132 @@ def get_monthly_report_settings(app_config: Optional[Dict] = None) -> Dict[str, 
     }
 
 
+def build_monthly_report_dispatch_summary(result: Dict) -> Dict[str, object]:
+    sent_count = len(result.get('sent', []))
+    skipped_count = len(result.get('skipped', []))
+    failed_count = len(result.get('failed', []))
+    report_period = result.get('report_period', 'N/A')
+    status = str(result.get('status') or 'processed')
+
+    if status == 'disabled':
+        message = 'Reporte financiero mensual deshabilitado por configuración.'
+        return {
+            'status': status,
+            'category': 'warning',
+            'message': message,
+            'detail': None,
+            'log_message': message,
+            'sent_count': sent_count,
+            'skipped_count': skipped_count,
+            'failed_count': failed_count,
+        }
+
+    if sent_count == 0 and skipped_count == 0 and failed_count == 0:
+        message = 'No se encontraron destinatarios con correo configurado para este reporte mensual.'
+        return {
+            'status': status,
+            'category': 'warning',
+            'message': message,
+            'detail': None,
+            'log_message': message,
+            'sent_count': sent_count,
+            'skipped_count': skipped_count,
+            'failed_count': failed_count,
+        }
+
+    if failed_count:
+        first_failed = (result.get('failed') or [{}])[0]
+        failed_email = first_failed.get('email') or 'destinatario desconocido'
+        failed_error = first_failed.get('error') or 'Error desconocido'
+        message = (
+            f'Reporte {report_period} procesado: {sent_count} enviados, '
+            f'{skipped_count} omitidos y {failed_count} con error.'
+        )
+        detail = f'Primer error de envío para {failed_email}: {failed_error}'
+        return {
+            'status': status,
+            'category': 'warning',
+            'message': message,
+            'detail': detail,
+            'log_message': f'{message} {detail}',
+            'sent_count': sent_count,
+            'skipped_count': skipped_count,
+            'failed_count': failed_count,
+        }
+
+    if sent_count:
+        message = (
+            f'Reporte {report_period} enviado: {sent_count} destinatarios enviados '
+            f'y {skipped_count} omitidos.'
+        )
+        return {
+            'status': status,
+            'category': 'success',
+            'message': message,
+            'detail': None,
+            'log_message': message,
+            'sent_count': sent_count,
+            'skipped_count': skipped_count,
+            'failed_count': failed_count,
+        }
+
+    message = f'Reporte {report_period} sin nuevos envíos: {skipped_count} destinatarios ya lo habían recibido.'
+    return {
+        'status': status,
+        'category': 'warning',
+        'message': message,
+        'detail': None,
+        'log_message': message,
+        'sent_count': sent_count,
+        'skipped_count': skipped_count,
+        'failed_count': failed_count,
+    }
+
+
+def dispatch_monthly_financial_report(reference_dt: Optional[datetime] = None,
+                                      output_path: Optional[str] = None,
+                                      allow_retry_failed: bool = True,
+                                      period_mode: str = 'previous_month',
+                                      app_config: Optional[Dict] = None,
+                                      admin_only: Optional[bool] = None,
+                                      admin_email_override: Optional[str] = None,
+                                      respect_enabled_setting: bool = False) -> Dict:
+    settings = get_monthly_report_settings(app_config)
+
+    effective_admin_only = settings['admin_only'] if admin_only is None else bool(admin_only)
+    effective_admin_email = admin_email_override
+    if effective_admin_email is None:
+        configured_admin_email = str(settings.get('admin_email') or '').strip()
+        effective_admin_email = configured_admin_email or None
+
+    if respect_enabled_setting and not settings.get('enabled', True):
+        result = {
+            'report_period': get_report_period(reference_dt=reference_dt, period_mode=period_mode)['report_period'],
+            'period_mode': _normalize_period_mode(period_mode),
+            'pdf_path': None,
+            'admin_only': effective_admin_only,
+            'resolved_admin_email': _normalize_email(effective_admin_email),
+            'sent': [],
+            'skipped': [],
+            'failed': [],
+            'status': 'disabled',
+        }
+        result['summary'] = build_monthly_report_dispatch_summary(result)
+        return result
+
+    result = send_previous_month_financial_report(
+        reference_dt=reference_dt,
+        output_path=output_path,
+        allow_retry_failed=allow_retry_failed,
+        admin_only=effective_admin_only,
+        admin_email_override=effective_admin_email,
+        period_mode=period_mode,
+    )
+    result['status'] = 'processed'
+    result['summary'] = build_monthly_report_dispatch_summary(result)
+    return result
+
+
 def get_previous_month_period(reference_dt: Optional[datetime] = None) -> Dict[str, str]:
     reference_dt = reference_dt or datetime.now()
     first_day_current_month = reference_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)

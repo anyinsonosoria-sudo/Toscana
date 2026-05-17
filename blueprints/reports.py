@@ -184,42 +184,15 @@ def monthly_send():
         flash(date_error, 'warning')
 
     try:
-        result = reports.send_previous_month_financial_report(
+        result = reports.dispatch_monthly_financial_report(
             reference_dt=reference_dt,
             allow_retry_failed=True,
             period_mode=period_mode,
         )
-        sent_count = len(result.get('sent', []))
-        skipped_count = len(result.get('skipped', []))
-        failed_count = len(result.get('failed', []))
-        report_period = result.get('report_period', 'N/A')
-
-        if sent_count == 0 and skipped_count == 0 and failed_count == 0:
-            flash(
-                'No se encontraron destinatarios con correo configurado para este reporte mensual.',
-                'warning',
-            )
-        elif failed_count:
-            flash(
-                f'Reporte {report_period} procesado: {sent_count} enviados, '
-                f'{skipped_count} omitidos y {failed_count} con error.',
-                'warning',
-            )
-            first_failed = result['failed'][0]
-            failed_email = first_failed.get('email') or 'destinatario desconocido'
-            failed_error = first_failed.get('error') or 'Error desconocido'
-            flash(f'Primer error de envío para {failed_email}: {failed_error}', 'warning')
-        elif sent_count:
-            flash(
-                f'Reporte {report_period} enviado: {sent_count} destinatarios enviados '
-                f'y {skipped_count} omitidos.',
-                'success',
-            )
-        else:
-            flash(
-                f'Reporte {report_period} sin nuevos envíos: {skipped_count} destinatarios ya lo habían recibido.',
-                'warning',
-            )
+        summary = result.get('summary') or reports.build_monthly_report_dispatch_summary(result)
+        flash(summary['message'], summary['category'])
+        if summary.get('detail'):
+            flash(summary['detail'], summary['category'])
     except Exception as exc:
         logger.exception('Error enviando reporte financiero mensual manual: %s', exc)
         flash(f'Error al enviar el reporte financiero mensual: {exc}', 'error')
