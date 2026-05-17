@@ -4,13 +4,18 @@ Maneja conexiones SQLite y migraciones.
 """
 import os
 import sqlite3
+import shutil
 from pathlib import Path
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Optional
 
 # Configuración de ruta
 _default_db = Path(__file__).parent / 'data' / 'data.db'
 DB_PATH = Path(os.environ.get('BUILDING_MAINTENANCE_DB', str(_default_db)))
+DEFAULT_SNAPSHOT_DIR = Path(__file__).parent / 'backups' / 'db'
+SNAPSHOT_EXTENSIONS = frozenset({'.sqlite', '.sqlite3', '.db'})
+REQUIRED_SNAPSHOT_TABLES = ('users', 'apartments', 'invoices', 'payments')
 
 _initialized = False
 
@@ -287,8 +292,11 @@ def _apply_migrations():
             
             try:
                 sql_text = sql_file.read_text(encoding='utf-8')
+                sql_text = '\n'.join(
+                    line for line in sql_text.splitlines() if not line.lstrip().startswith('--')
+                )
                 # Ejecutar cada sentencia por separado para tolerar columnas ya existentes
-                statements = [s.strip() for s in sql_text.split(';') if s.strip() and not s.strip().startswith('--')]
+                statements = [s.strip() for s in sql_text.split(';') if s.strip()]
                 for stmt in statements:
                     try:
                         conn.execute(stmt)
@@ -308,6 +316,154 @@ def _apply_migrations():
             except Exception as e:
                 conn.rollback()
                 print(f"[MIGRATION] ERROR {sql_file.name}: {e}")
+
+
+def _resolve_repo_path(path_value, fallback: Path) -> Path:
+    """Resuelve rutas relativas tomando como base el directorio del proyecto."""
+    path = Path(path_value) if path_value is not None else fallback
+    if not path.is_absolute():
+        path = Path(__file__).parent / path
+    return path.resolve()
+
+
+def get_db_file_info(path: Optional[Path] = None) -> dict:
+    """Retorna metadata útil del archivo SQLite actual."""
+    db_path = _resolve_repo_path(path, DB_PATH)
+    info = {
+        'path': str(db_path),
+        'exists': db_path.exists(),
+        'size_bytes': 0,
+        'size_mb': 0.0,
+        'modified_at': None,
+    }
+
+    if db_path.exists():
+        stat = db_path.stat()
+        info['size_bytes'] = stat.st_size
+        info['size_mb'] = round(stat.st_size / (1024 * 1024), 2)
+        info['modified_at'] = datetime.fromtimestamp(stat.st_mtime)
+
+    return info
+
+
+def inspect_snapshot(snapshot_path: Path) -> tuple[list[str], dict[str, int]]:
+    """Inspecciona una copia SQLite y retorna tablas y conteos clave."""
+    resolved_path = _resolve_repo_path(snapshot_path, DB_PATH)
+    with sqlite3.connect(resolved_path) as conn:
+        table_cursor = conn.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+            ORDER BY name
+            """
+        )
+        tables = [row[0] for row in table_cursor.fetchall()]
+        counts = {
+            table: conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in REQUIRED_SNAPSHOT_TABLES
+            if table in tables
+        }
+        return tables, counts
+
+
+def validate_snapshot(snapshot_path: Path) -> dict:
+    """Valida que un archivo sea una copia SQLite utilizable por la app."""
+    resolved_path = _resolve_repo_path(snapshot_path, DB_PATH)
+    if not resolved_path.exists():
+        raise FileNotFoundError(f"El backup no existe: {resolved_path}")
+
+    tables, counts = inspect_snapshot(resolved_path)
+    missing_tables = [table for table in REQUIRED_SNAPSHOT_TABLES if table not in tables]
+    if missing_tables:
+        raise ValueError(
+            "El archivo no parece ser una base valida de Toscana. "
+            f"Faltan tablas: {', '.join(missing_tables)}"
+        )
+
+    return {
+        'path': resolved_path,
+        'tables': tables,
+        'counts': counts,
+    }
+
+
+def create_snapshot(
+    source_path: Optional[Path] = None,
+    output_dir: Optional[Path] = None,
+    filename: Optional[str] = None,
+) -> Path:
+    """Crea una copia consistente de la SQLite activa."""
+    source = _resolve_repo_path(source_path, DB_PATH)
+    destination_dir = _resolve_repo_path(output_dir, DEFAULT_SNAPSHOT_DIR)
+
+    if not source.exists():
+        raise FileNotFoundError(f"La base origen no existe: {source}")
+
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_name = filename or f"toscana-db-backup-{datetime.now():%Y%m%d-%H%M%S}.sqlite3"
+    destination = (destination_dir / snapshot_name).resolve()
+
+    if destination.exists():
+        raise FileExistsError(f"El archivo destino ya existe: {destination}")
+
+    with sqlite3.connect(source) as source_conn:
+        with sqlite3.connect(destination) as destination_conn:
+            source_conn.backup(destination_conn)
+
+    validate_snapshot(destination)
+    return destination
+
+
+def restore_snapshot(
+    snapshot_path: Path,
+    target_path: Optional[Path] = None,
+    backup_dir: Optional[Path] = None,
+    create_backup: bool = True,
+    run_post_restore_init: bool = True,
+) -> dict:
+    """Restaura una copia SQLite sobre la base objetivo."""
+    source = _resolve_repo_path(snapshot_path, DB_PATH)
+    target = _resolve_repo_path(target_path, DB_PATH)
+
+    if source == target:
+        raise ValueError("El archivo origen y destino son el mismo.")
+
+    validation = validate_snapshot(source)
+    destination_backup_dir = _resolve_repo_path(backup_dir, DEFAULT_SNAPSHOT_DIR)
+    backup_path = None
+
+    if create_backup and target.exists():
+        destination_backup_dir.mkdir(parents=True, exist_ok=True)
+        backup_filename = (
+            f"{target.stem}-before-restore-{datetime.now():%Y%m%d-%H%M%S}{target.suffix}"
+        )
+        backup_path = create_snapshot(
+            source_path=target,
+            output_dir=destination_backup_dir,
+            filename=backup_filename,
+        )
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(source) as source_conn:
+        with sqlite3.connect(target) as target_conn:
+            source_conn.backup(target_conn)
+            target_conn.commit()
+
+    validate_snapshot(target)
+
+    if run_post_restore_init:
+        global _initialized
+        _initialized = False
+        init_db()
+
+    return {
+        'snapshot_path': source,
+        'target_path': target,
+        'backup_path': backup_path.resolve() if backup_path else None,
+        'tables': validation['tables'],
+        'counts': validation['counts'],
+    }
 
 
 def reset_db():

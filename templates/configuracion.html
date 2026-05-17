@@ -20,6 +20,13 @@
             <i class="bi bi-palette"></i> Personalización
         </button>
     </li>
+    {% if db_tools and db_tools.enabled %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="database-tab" data-bs-toggle="tab" data-bs-target="#database" type="button" role="tab">
+            <i class="bi bi-database"></i> Base de Datos
+        </button>
+    </li>
+    {% endif %}
 </ul>
 
 <!-- Tab content -->
@@ -206,6 +213,100 @@
             </div>
         </div>
     </div>
+
+    {% if db_tools and db_tools.enabled %}
+    <div class="tab-pane fade" id="database" role="tabpanel">
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card h-100 border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-download"></i> Backup Web</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">
+                            Genera una copia consistente de la SQLite activa y la descarga al navegador.
+                            El archivo también queda guardado en el servidor para trazabilidad.
+                        </p>
+
+                        {% if db_tools.db_info.exists %}
+                        <dl class="row small mb-4">
+                            <dt class="col-sm-4">Archivo actual</dt>
+                            <dd class="col-sm-8"><span class="font-monospace">{{ db_tools.db_info.path }}</span></dd>
+                            <dt class="col-sm-4">Tamaño</dt>
+                            <dd class="col-sm-8">{{ db_tools.db_info.size_mb }} MB</dd>
+                            <dt class="col-sm-4">Última edición</dt>
+                            <dd class="col-sm-8">{{ db_tools.db_info.modified_at.strftime('%Y-%m-%d %H:%M:%S') if db_tools.db_info.modified_at else 'N/D' }}</dd>
+                            <dt class="col-sm-4">Carpeta backups</dt>
+                            <dd class="col-sm-8"><span class="font-monospace">{{ db_tools.snapshot_dir }}</span></dd>
+                        </dl>
+                        {% else %}
+                        <div class="alert alert-warning mb-4">
+                            No se encontró la base de datos activa en la ruta esperada.
+                        </div>
+                        {% endif %}
+
+                        {% if db_tools.backup_enabled %}
+                        <form method="POST" action="{{ url_for('settings.download_database_snapshot') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-cloud-arrow-down"></i> Crear y Descargar Backup
+                            </button>
+                        </form>
+                        {% else %}
+                        <div class="alert alert-secondary mb-0">
+                            La creación de backups web está deshabilitada por configuración.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card h-100 border-danger">
+                    <div class="card-header bg-danger text-white">
+                        <h5 class="mb-0"><i class="bi bi-upload"></i> Restaurar Snapshot</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-warning">
+                            Esta acción reemplaza la base actual. Antes de restaurar, el sistema crea un respaldo automático de la SQLite vigente.
+                        </div>
+
+                        {% if db_tools.restore_enabled %}
+                        <form method="POST" action="{{ url_for('settings.restore_database_snapshot') }}" enctype="multipart/form-data">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                            <div class="mb-3">
+                                <label class="form-label">Archivo SQLite</label>
+                                <input type="file" class="form-control" name="snapshot_file" accept=".sqlite,.sqlite3,.db" required>
+                                <small class="text-muted">
+                                    Formatos permitidos: .sqlite, .sqlite3, .db{% if db_tools.upload_limit_mb %}. Límite actual: {{ db_tools.upload_limit_mb }} MB{% endif %}.
+                                </small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Confirmación manual</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    name="restore_confirmation"
+                                    placeholder="{{ db_tools.restore_confirmation_text }}"
+                                    required
+                                >
+                                <small class="text-muted">Escribe <strong>{{ db_tools.restore_confirmation_text }}</strong> para confirmar.</small>
+                            </div>
+                            <button type="submit" class="btn btn-danger">
+                                <i class="bi bi-arrow-clockwise"></i> Restaurar Base de Datos
+                            </button>
+                        </form>
+                        {% else %}
+                        <div class="alert alert-secondary mb-0">
+                            La restauración web está deshabilitada en este entorno. Esto es intencional para no permitir sobrescribir la base desde producción sin una bandera explícita.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 <!-- MODALS -->

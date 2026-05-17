@@ -6,6 +6,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import timedelta
+from typing import Optional
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde .env
@@ -30,7 +31,7 @@ from blueprints.reports import reports_bp
 from blueprints.suppliers import suppliers_bp
 
 
-def create_app(config_object: str = None) -> Flask:
+def create_app(config_object: Optional[str] = None) -> Flask:
     """Factory para crear la aplicación Flask."""
     app = Flask(__name__)
     
@@ -64,6 +65,22 @@ def create_app(config_object: str = None) -> Flask:
     app.config.setdefault(
         'MONTHLY_FINANCIAL_REPORT_ADMIN_EMAIL',
         os.environ.get('MONTHLY_FINANCIAL_REPORT_ADMIN_EMAIL', '').strip(),
+    )
+    restore_enabled_default = os.environ.get('FLASK_ENV') != 'production'
+    app.config.setdefault(
+        'WEB_DB_BACKUP_ENABLED',
+        os.environ.get('WEB_DB_BACKUP_ENABLED', '1').strip().lower() in {'1', 'true', 'yes', 'on'},
+    )
+    app.config.setdefault(
+        'WEB_DB_RESTORE_ENABLED',
+        os.environ.get(
+            'WEB_DB_RESTORE_ENABLED',
+            '1' if restore_enabled_default else '0',
+        ).strip().lower() in {'1', 'true', 'yes', 'on'},
+    )
+    app.config.setdefault(
+        'WEB_DB_RESTORE_CONFIRM_TEXT',
+        os.environ.get('WEB_DB_RESTORE_CONFIRM_TEXT', 'RESTAURAR').strip() or 'RESTAURAR',
     )
     
     # Configurar carpeta de uploads

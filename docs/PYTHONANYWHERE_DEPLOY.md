@@ -8,6 +8,98 @@ Esta app ya tiene pistas concretas para PythonAnywhere dentro del repo:
 - Verificación post-despliegue: `scripts/verify_deployment.py`
 - Reparación de esquema/BD: `scripts/fix_db_pythonanywhere.py`
 
+## Exportar la BD de PythonAnywhere y restaurarla localmente
+
+La app usa SQLite. Por defecto, la BD activa vive en `~/Toscana/data/data.db`, aunque si en PythonAnywhere existe `BUILDING_MAINTENANCE_DB`, los scripts nuevos respetan esa ruta.
+
+## Módulo web de backup/restore
+
+La pantalla `Configuración -> Base de Datos` ahora incluye un módulo admin para:
+
+- crear y descargar un backup consistente de la SQLite activa,
+- restaurar un snapshot subido desde la interfaz web,
+- guardar automáticamente un respaldo previo antes de restaurar.
+
+Comportamiento por defecto:
+
+- `WEB_DB_BACKUP_ENABLED=1`: el backup web queda habilitado.
+- `WEB_DB_RESTORE_ENABLED=0` en producción: la restauración web queda deshabilitada por seguridad.
+- `WEB_DB_RESTORE_ENABLED=1` fuera de producción: útil para tu ambiente local.
+
+Si alguna vez quisieras habilitar restauración web también en PythonAnywhere, tendrías que hacerlo explícitamente en el entorno/Wsgi file:
+
+```python
+os.environ['WEB_DB_RESTORE_ENABLED'] = '1'
+```
+
+No es recomendable dejar esa bandera activa en un entorno público salvo que tengas un motivo operativo claro.
+
+### 1. Crear el backup en PythonAnywhere
+
+En una consola Bash de PythonAnywhere:
+
+```bash
+cd ~/Toscana
+python3 scripts/export_db_snapshot.py
+ls -lh backups/db
+```
+
+Eso genera un archivo como este:
+
+```text
+~/Toscana/backups/db/toscana-db-backup-20260516-233116.sqlite3
+```
+
+### 2. Descargar el archivo `.sqlite3`
+
+Opciones prácticas:
+
+- Desde la pestaña **Files** de PythonAnywhere, navega a `~/Toscana/backups/db/` y descarga el archivo.
+- O por SSH/SCP desde tu máquina:
+
+```bash
+scp TU_USUARIO@ssh.pythonanywhere.com:~/Toscana/backups/db/toscana-db-backup-20260516-233116.sqlite3 .
+```
+
+### 3. Restaurar ese backup en tu máquina local
+
+Primero cierra la app local si la tienes abierta para evitar que SQLite bloquee el archivo.
+
+En PowerShell local:
+
+```powershell
+Set-Location "c:\Users\Usuario\OneDrive\Desktop\Toscana"
+.\.venv\Scripts\python.exe .\scripts\restore_db_snapshot.py "C:\ruta\al\toscana-db-backup-20260516-233116.sqlite3"
+```
+
+Ese comando:
+
+- valida que el archivo sea una BD SQLite de Toscana,
+- crea un respaldo automático de tu `data/data.db` actual en `backups/db/`,
+- reemplaza la base local por la copia descargada.
+
+Si quieres validar el archivo sin reemplazar nada todavía:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\restore_db_snapshot.py "C:\ruta\al\backup.sqlite3" --dry-run
+```
+
+### 4. Alinear esquema local con el código actual
+
+Si tu código local está más adelantado que lo desplegado en PythonAnywhere, ejecuta después:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\fix_db_pythonanywhere.py
+```
+
+### 5. Levantar la app y probar reportes
+
+```powershell
+.\.venv\Scripts\python.exe .\app.py
+```
+
+Con eso ya deberías poder probar los reportes mensuales con datos reales de producción en local.
+
 ## Opción 1: flujo recomendado con Git
 
 ### 1. Desde tu máquina local
