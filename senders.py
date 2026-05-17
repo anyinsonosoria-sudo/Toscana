@@ -105,12 +105,22 @@ def send_email(to_email, subject: str, html: str, attach_pdf=None, attachments=N
                     msg.add_attachment(file_data, maintype="application", subtype="pdf", filename=file_name)
     
     # Conectar y enviar
+    if (user and not passwd) or (passwd and not user):
+        raise RuntimeError("SMTP_USER and SMTP_PASSWORD must be configured together")
+
     if port == 465:
         smtp = smtplib.SMTP_SSL(host, port)
+        smtp.ehlo()
     else:
         smtp = smtplib.SMTP(host, port)
+        smtp.ehlo()
         smtp.starttls()
+        smtp.ehlo()
     try:
+        if not (user and passwd) and smtp.has_extn("auth"):
+            raise RuntimeError(
+                "SMTP authentication is required, but SMTP_USER/SMTP_PASSWORD are not configured"
+            )
         if user and passwd:
             smtp.login(user, passwd)
         smtp.send_message(msg)

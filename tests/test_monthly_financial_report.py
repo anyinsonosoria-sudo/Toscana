@@ -257,8 +257,9 @@ def test_monthly_report_pending_days_overdue_never_negative(app):
 
 
 @pytest.mark.unit
-def test_get_monthly_report_recipients_deduplicates_emails(app):
+def test_get_monthly_report_recipients_deduplicates_emails(app, monkeypatch):
     with app.app_context():
+        monkeypatch.setenv('ADMIN_EMAIL', 'admin@toscana.local')
         _seed_monthly_report_data()
         recipients = get_monthly_report_recipients()
 
@@ -271,6 +272,22 @@ def test_get_monthly_report_recipients_deduplicates_emails(app):
         'bruno@example.com',
         'carla@example.com',
     ]
+
+
+@pytest.mark.unit
+def test_get_monthly_report_recipients_prefers_customized_admin_email(app, monkeypatch):
+    with app.app_context():
+        monkeypatch.setenv('ADMIN_EMAIL', 'admin@toscana.local')
+        _seed_monthly_report_data()
+        _clear_monthly_report_settings()
+        customization.set_setting('monthly_financial_report_admin_email', 'REPORTES@TOSCANA.COM')
+
+        recipients = get_monthly_report_recipients()
+
+        _clear_monthly_report_settings()
+
+    assert recipients['admin_email'] == 'reportes@toscana.com'
+    assert recipients['all_recipients'][0]['email'] == 'reportes@toscana.com'
 
 
 @pytest.mark.unit
@@ -482,6 +499,7 @@ def test_monthly_report_preview_route_renders(preview_auth_client, app):
     assert b'Vista previa del reporte financiero mensual' in response.data
     assert b'Abril 2026' in response.data
     assert b'Cobros incluidos' in response.data
+    assert b'Probar solo admin' in response.data
     assert b'Enviar a residentes' in response.data
 
 
@@ -590,6 +608,7 @@ def test_monthly_report_send_route_dispatches_manual_send(auth_client, monkeypat
         data={
             'reference_date': '2026-04-12',
             'period_mode': 'current_month_to_date',
+            'send_scope': 'residents',
         },
         follow_redirects=False,
     )
@@ -599,7 +618,7 @@ def test_monthly_report_send_route_dispatches_manual_send(auth_client, monkeypat
     assert 'period_mode=current_month_to_date' in response.headers['Location']
     assert captured['reference_dt'].strftime('%Y-%m-%d') == '2026-04-12'
     assert captured['allow_retry_failed'] is True
-    assert captured['admin_only'] is None
+    assert captured['admin_only'] is False
     assert captured['admin_email_override'] is None
     assert captured['period_mode'] == 'current_month_to_date'
     assert captured['respect_enabled_setting'] is False
@@ -609,6 +628,69 @@ def test_monthly_report_send_route_dispatches_manual_send(auth_client, monkeypat
 
     assert any(
         'Reporte 2026-04 enviado: 1 destinatarios enviados y 1 omitidos.' in message
+        for category, message in flashes
+    )
+
+
+@pytest.mark.integration
+def test_monthly_report_send_route_can_send_admin_only_test(auth_client, monkeypatch):
+    captured = {}
+
+    def fake_dispatch_monthly_financial_report(reference_dt=None,
+                                               output_path=None,
+                                               allow_retry_failed=True,
+                                               period_mode='previous_month',
+                                               app_config=None,
+                                               admin_only=None,
+                                               admin_email_override=None,
+                                               respect_enabled_setting=False):
+        captured['reference_dt'] = reference_dt
+        captured['allow_retry_failed'] = allow_retry_failed
+        captured['admin_only'] = admin_only
+        captured['admin_email_override'] = admin_email_override
+        captured['period_mode'] = period_mode
+        captured['respect_enabled_setting'] = respect_enabled_setting
+        return {
+            'report_period': '2026-04',
+            'sent': ['invoicetoscana@gmail.com'],
+            'skipped': [],
+            'failed': [],
+            'status': 'processed',
+            'summary': {
+                'message': 'Reporte 2026-04 enviado: 1 destinatarios enviados y 0 omitidos.',
+                'detail': None,
+                'category': 'success',
+                'log_message': 'Reporte 2026-04 enviado: 1 destinatarios enviados y 0 omitidos.',
+            },
+        }
+
+    monkeypatch.setattr(reports_module, 'dispatch_monthly_financial_report', fake_dispatch_monthly_financial_report)
+
+    response = auth_client.post(
+        '/reportes/mensual/send',
+        data={
+            'reference_date': '2026-05-03',
+            'period_mode': 'previous_month',
+            'send_scope': 'admin',
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert 'reference_date=2026-05-03' in response.headers['Location']
+    assert 'period_mode=previous_month' in response.headers['Location']
+    assert captured['reference_dt'].strftime('%Y-%m-%d') == '2026-05-03'
+    assert captured['allow_retry_failed'] is True
+    assert captured['admin_only'] is True
+    assert captured['admin_email_override'] is None
+    assert captured['period_mode'] == 'previous_month'
+    assert captured['respect_enabled_setting'] is False
+
+    with auth_client.session_transaction() as session:
+        flashes = session.get('_flashes', [])
+
+    assert any(
+        'Reporte 2026-04 enviado: 1 destinatarios enviados y 0 omitidos.' in message
         for category, message in flashes
     )
 
@@ -749,3 +831,51 @@ def test_send_monthly_report_cli_returns_error_when_dispatch_has_failures(monkey
     exit_code = monthly_report_cli.main()
 
     assert exit_code == 1
+
+
+@pytest.mark.unit
+def test_send_email_requires_smtp_credentials_when_server_advertises_auth(monkeypatch):
+    class FakeSMTP:
+        def __init__(self, host, port):
+            self.host = host
+            self.port = port
+            self.sent = False
+            self.quit_called = False
+
+        def ehlo(self):
+            return (250, b'ok')
+
+        def starttls(self):
+            return (220, b'ready')
+
+        def has_extn(self, name):
+            return name.lower() == 'auth'
+
+        def login(self, user, password):
+            raise AssertionError('login should not be called when credentials are missing')
+
+        def send_message(self, msg):
+            self.sent = True
+
+        def quit(self):
+            self.quit_called = True
+
+    captured = {}
+
+    def fake_smtp(host, port):
+        client = FakeSMTP(host, port)
+        captured['client'] = client
+        return client
+
+    monkeypatch.setenv('SMTP_HOST', 'smtp.gmail.com')
+    monkeypatch.setenv('SMTP_PORT', '587')
+    monkeypatch.delenv('SMTP_USER', raising=False)
+    monkeypatch.delenv('SMTP_PASSWORD', raising=False)
+    monkeypatch.delenv('SMTP_FROM', raising=False)
+    monkeypatch.setattr(senders.smtplib, 'SMTP', fake_smtp)
+
+    with pytest.raises(RuntimeError, match='SMTP authentication is required'):
+        senders.send_email('invoicetoscana@gmail.com', 'Prueba', '<p>Hola</p>')
+
+    assert captured['client'].sent is False
+    assert captured['client'].quit_called is True

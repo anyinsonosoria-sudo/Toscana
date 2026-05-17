@@ -175,6 +175,7 @@ def monthly_preview():
 def monthly_send():
     """Permite al administrador disparar manualmente el envío del reporte mensual."""
     raw_reference_date = request.form.get('reference_date', '')
+    send_scope = (request.form.get('send_scope') or 'residents').strip().lower()
     reference_dt, selected_reference_date, period_mode, date_error = _resolve_preview_request(
         raw_reference_date,
         request.form.get('period_mode'),
@@ -184,10 +185,12 @@ def monthly_send():
         flash(date_error, 'warning')
 
     try:
+        admin_only = send_scope == 'admin'
         result = reports.dispatch_monthly_financial_report(
             reference_dt=reference_dt,
             allow_retry_failed=True,
             period_mode=period_mode,
+            admin_only=admin_only,
         )
         summary = result.get('summary') or reports.build_monthly_report_dispatch_summary(result)
         flash(summary['message'], summary['category'])

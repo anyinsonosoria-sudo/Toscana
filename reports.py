@@ -40,6 +40,11 @@ def _normalize_email(email: Optional[str]) -> str:
     return (email or "").strip().lower()
 
 
+def _is_placeholder_admin_email(email: Optional[str]) -> bool:
+    normalized = _normalize_email(email)
+    return normalized in {'admin@toscana.local', 'admin@building.local'}
+
+
 def _parse_bool_setting(raw_value, default: bool = False) -> bool:
     if raw_value is None:
         return default
@@ -61,14 +66,17 @@ def _resolve_monthly_report_admin_email(company_info: Optional[Dict] = None,
     company_info = company_info or {}
     candidates = [
         admin_email_override,
+        _get_customization_setting('monthly_financial_report_admin_email'),
         os.environ.get('MONTHLY_FINANCIAL_REPORT_ADMIN_EMAIL'),
-        os.environ.get('ADMIN_EMAIL'),
         company_info.get('email'),
+        os.environ.get('ADMIN_EMAIL'),
+        os.environ.get('SMTP_FROM'),
+        os.environ.get('SMTP_USER'),
     ]
 
     for candidate in candidates:
         normalized = _normalize_email(candidate)
-        if normalized:
+        if normalized and not _is_placeholder_admin_email(normalized):
             return normalized
     return ""
 

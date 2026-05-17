@@ -110,10 +110,21 @@ RD$ {{ "{:,.2f}".format(value or 0).replace(",", "X").replace(".", ",").replace(
                 </a>
                 {% if current_user.is_authenticated and current_user.is_admin() %}
                 <form method="POST" action="{{ url_for('reports.monthly_send') }}" class="d-inline"
+                      onsubmit="return confirm('Se enviará una prueba de este reporte solo al correo del administrador. ¿Deseas continuar?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="reference_date" value="{{ selected_reference_date }}">
+                    <input type="hidden" name="period_mode" value="{{ selected_period_mode }}">
+                    <input type="hidden" name="send_scope" value="admin">
+                    <button type="submit" class="btn btn-light">
+                        <i class="bi bi-shield-check"></i> Probar solo admin
+                    </button>
+                </form>
+                <form method="POST" action="{{ url_for('reports.monthly_send') }}" class="d-inline"
                       onsubmit="return confirm('Se enviará este reporte a los destinatarios pendientes del período mostrado. ¿Deseas continuar?');">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="reference_date" value="{{ selected_reference_date }}">
                     <input type="hidden" name="period_mode" value="{{ selected_period_mode }}">
+                    <input type="hidden" name="send_scope" value="residents">
                     <button type="submit" class="btn btn-warning text-dark">
                         <i class="bi bi-send"></i> Enviar a residentes
                     </button>
@@ -147,7 +158,7 @@ RD$ {{ "{:,.2f}".format(value or 0).replace(",", "X").replace(".", ",").replace(
                 </div>
                 {% if current_user.is_authenticated and current_user.is_admin() %}
                 <p class="mb-0 mt-2 text-white-50 text-lg-end">
-                    El envío manual reutiliza el mismo reporte visible y solo reintenta destinatarios fallidos o pendientes del período actual.
+                    Puedes hacer una prueba solo al administrador o enviar a residentes; ambos caminos reutilizan el mismo reporte visible y solo reintentan destinatarios fallidos o pendientes del período actual.
                 </p>
                 {% endif %}
             </div>
