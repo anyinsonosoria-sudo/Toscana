@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+{% block title %}Vista previa reporte mensual - Xpack{% endblock %}
+
+{% block extra_css %}
+<style>
+.preview-hero {
+    background: linear-gradient(135deg, #5b3a32 0%, #8f6a5b 100%);
+    border-radius: 24px;
+    color: #fff;
+    padding: 1.75rem;
+    box-shadow: 0 18px 40px rgba(91, 58, 50, 0.18);
+}
+.preview-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.75rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    font-size: 0.9rem;
+}
+.preview-kpi {
+    border: 1px solid rgba(109, 76, 65, 0.14);
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 12px 28px rgba(38, 31, 28, 0.06);
+}
+.preview-kpi .value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #5b3a32;
+}
+.preview-kpi .label {
+    color: var(--text-muted);
+    font-size: 0.92rem;
+}
+.preview-panel {
+    border: 1px solid rgba(109, 76, 65, 0.12);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 16px 36px rgba(38, 31, 28, 0.08);
+    background: #fff;
+}
+.preview-panel-header {
+    padding: 1rem 1.25rem;
+    background: #f5efec;
+    border-bottom: 1px solid rgba(109, 76, 65, 0.12);
+}
+.preview-email-frame,
+.preview-pdf-frame {
+    width: 100%;
+    border: 0;
+    background: #fff;
+}
+.preview-email-frame {
+    min-height: 760px;
+}
+.preview-pdf-frame {
+    min-height: 760px;
+}
+.preview-table td,
+.preview-table th {
+    vertical-align: middle;
+}
+.preview-note {
+    border-radius: 16px;
+    background: #fff8e8;
+    color: #805b10;
+    border: 1px solid #f3dd9a;
+    padding: 0.9rem 1rem;
+}
+.section-subtitle {
+    color: var(--text-muted);
+    margin-bottom: 0;
+}
+@media (max-width: 767px) {
+    .preview-hero {
+        padding: 1.25rem;
+    }
+
+    .preview-email-frame,
+    .preview-pdf-frame {
+        min-height: 520px;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+{% macro money(value) -%}
+RD$ {{ "{:,.2f}".format(value or 0).replace(",", "X").replace(".", ",").replace("X", ".") }}
+{%- endmacro %}
+
+<div class="d-flex flex-column gap-4">
+    <div class="preview-hero">
+        <div class="d-flex flex-column flex-lg-row justify-content-lg-between align-items-lg-start gap-3">
+            <div>
+                <div class="preview-chip mb-3"><i class="bi bi-calendar3"></i> {{ report_data.period_mode_label }}</div>
+                <h1 class="h3 mb-2">Vista previa del reporte financiero mensual</h1>
+                <p class="mb-0 opacity-75">
+                    Revisa el correo que se enviará y el PDF consolidado antes de activar el despacho automático.
+                </p>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-light" href="{{ url_for('reports.list') }}">
+                    <i class="bi bi-arrow-left"></i> Volver a reportes
+                </a>
+                <a class="btn btn-outline-light" href="{{ pdf_preview_url }}" target="_blank">
+                    <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
+                </a>
+            </div>
+        </div>
+
+        <form class="row g-3 align-items-end mt-3" method="GET" action="{{ url_for('reports.monthly_preview') }}">
+            <div class="col-12 col-md-4 col-lg-3">
+                <label class="form-label text-white" for="period_mode">Tipo de corte</label>
+                <select class="form-select" id="period_mode" name="period_mode">
+                    <option value="previous_month" {% if selected_period_mode == 'previous_month' %}selected{% endif %}>Mes anterior completo</option>
+                    <option value="current_month_to_date" {% if selected_period_mode == 'current_month_to_date' %}selected{% endif %}>Mes actual a la fecha</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-4 col-lg-3">
+                <label class="form-label text-white" for="reference_date">Fecha de referencia</label>
+                <input type="date" class="form-control" id="reference_date" name="reference_date" value="{{ selected_reference_date }}">
+            </div>
+            <div class="col-12 col-md-auto">
+                <button type="submit" class="btn btn-warning text-dark">
+                    <i class="bi bi-arrow-repeat"></i> Actualizar preview
+                </button>
+            </div>
+            <div class="col-12 col-lg">
+                <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+                    <span class="preview-chip"><i class="bi bi-building"></i> {{ company_info.name or 'Administración' }}</span>
+                    <span class="preview-chip"><i class="bi bi-envelope"></i> {{ recipients.admin_email or 'Sin correo admin' }}</span>
+                    <span class="preview-chip"><i class="bi bi-people"></i> {{ recipients.all_recipients|length }} destinatarios</span>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    {% if date_error %}
+    <div class="preview-note">
+        <i class="bi bi-exclamation-triangle"></i> {{ date_error }}
+    </div>
+    {% endif %}
+
+    <div>
+        <h2 class="h4 mb-1">Período que se enviará</h2>
+        <p class="section-subtitle">{{ report_data.period_label }} ({{ report_data.date_from }} a {{ report_data.date_to }})</p>
+        {% if report_data.is_partial_period %}
+        <p class="section-subtitle mt-1">Este corte es parcial y llega hasta la fecha elegida; no espera al cierre de mes.</p>
+        {% endif %}
+    </div>
+
+    <div class="row g-3">
+        <div class="col-6 col-xl-3">
+            <div class="preview-kpi p-3 h-100">
+                <div class="label">Saldo inicial</div>
+                <div class="value">{{ money(report_data.opening_balance) }}</div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="preview-kpi p-3 h-100">
+                <div class="label">Cobrado en el mes</div>
+                <div class="value">{{ money(report_data.total_collections) }}</div>
+                <small class="text-muted">{{ report_data.collections|length }} cobros registrados</small>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="preview-kpi p-3 h-100">
+                <div class="label">Pendiente al cierre</div>
+                <div class="value">{{ money(report_data.total_pending_receivables) }}</div>
+                <small class="text-muted">{{ report_data.pending_receivables|length }} facturas pendientes</small>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="preview-kpi p-3 h-100">
+                <div class="label">Saldo final</div>
+                <div class="value">{{ money(report_data.closing_balance) }}</div>
+                <small class="text-muted">Variación neta {{ money(report_data.net_change) }}</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h3 class="h6 text-uppercase text-muted">Cobros</h3>
+                    <div class="display-6 fw-bold text-success">{{ report_data.collections|length }}</div>
+                    <p class="mb-0 text-muted">Ingresos operativos cobrados en el período.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h3 class="h6 text-uppercase text-muted">Pendientes</h3>
+                    <div class="display-6 fw-bold text-warning">{{ report_data.pending_receivables|length }}</div>
+                    <p class="mb-0 text-muted">Facturas abiertas incluidas en el cierre del mes.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h3 class="h6 text-uppercase text-muted">Gastos</h3>
+                    <div class="display-6 fw-bold" style="color:#8a2d2d;">{{ report_data.expenses|length }}</div>
+                    <p class="mb-0 text-muted">Egresos operativos registrados en el período.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-12 col-xl-5">
+            <div class="preview-panel h-100">
+                <div class="preview-panel-header d-flex justify-content-between align-items-center gap-3">
+                    <div>
+                        <h2 class="h5 mb-1">Correo que recibirán</h2>
+                        <p class="section-subtitle">Vista renderizada del HTML del envío mensual.</p>
+                    </div>
+                    <span class="badge text-bg-light">Administrador</span>
+                </div>
+                <iframe class="preview-email-frame" title="Vista previa del correo" id="emailPreviewFrame"></iframe>
+            </div>
+        </div>
+        <div class="col-12 col-xl-7">
+            <div class="preview-panel h-100">
+                <div class="preview-panel-header d-flex justify-content-between align-items-center gap-3">
+                    <div>
+                        <h2 class="h5 mb-1">PDF consolidado</h2>
+                        <p class="section-subtitle">Documento adjunto que se enviará junto con el correo.</p>
+                    </div>
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ pdf_preview_url }}" target="_blank">
+                        <i class="bi bi-box-arrow-up-right"></i> Abrir
+                    </a>
+                </div>
+                <iframe class="preview-pdf-frame" title="Vista previa del PDF" src="{{ pdf_preview_url }}"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-12 col-lg-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-cash-coin"></i> Cobros incluidos</span>
+                    <span class="badge text-bg-success">{{ report_data.collections|length }}</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover preview-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Apto</th>
+                                    <th>Residente</th>
+                                    <th>Monto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in report_data.collections[:8] %}
+                                <tr>
+                                    <td>{{ item.apt_number or 'N/A' }}</td>
+                                    <td>{{ item.resident_name or 'N/A' }}</td>
+                                    <td class="text-end">{{ money(item.amount) }}</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted py-4">No hubo cobros en el período.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-hourglass-split"></i> Pendientes</span>
+                    <span class="badge text-bg-warning">{{ report_data.pending_receivables|length }}</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover preview-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Apto</th>
+                                    <th>Concepto</th>
+                                    <th>Pendiente</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in report_data.pending_receivables[:8] %}
+                                <tr>
+                                    <td>{{ item.apt_number or 'N/A' }}</td>
+                                    <td>{{ item.description or 'N/A' }}</td>
+                                    <td class="text-end">{{ money(item.pending) }}</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted py-4">No hay facturas pendientes.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-receipt-cutoff"></i> Gastos</span>
+                    <span class="badge text-bg-danger">{{ report_data.expenses|length }}</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover preview-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Descripción</th>
+                                    <th>Monto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in report_data.expenses[:8] %}
+                                <tr>
+                                    <td>{{ item.date or 'N/A' }}</td>
+                                    <td>{{ item.description or 'N/A' }}</td>
+                                    <td class="text-end">{{ money(item.amount) }}</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted py-4">No hubo gastos en el período.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const emailPreviewFrame = document.getElementById('emailPreviewFrame');
+if (emailPreviewFrame) {
+    emailPreviewFrame.srcdoc = {{ email_html | tojson }};
+}
+</script>
+{% endblock %}

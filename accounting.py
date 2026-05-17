@@ -219,13 +219,13 @@ def get_income_statement(date_from: Optional[str] = None, date_to: Optional[str]
                COALESCE(i.amount - COALESCE((SELECT SUM(p2.amount) FROM payments p2 WHERE p2.invoice_id = i.id), 0), i.amount) as pending,
                i.issued_date, i.due_date,
                a.number as apt_number, a.resident_name,
-               CAST(julianday('now') - julianday(i.due_date) AS INTEGER) as days_overdue
+                             MAX(CAST(julianday(?) - julianday(COALESCE(i.due_date, i.issued_date)) AS INTEGER), 0) as days_overdue
         FROM invoices i
         LEFT JOIN apartments a ON i.unit_id = a.id
         WHERE i.paid = 0
           AND DATE(i.issued_date) <= ?
         ORDER BY i.due_date ASC
-    """, (date_to,))
+        """, (date_to, date_to))
     pending_invoices = [dict(r) for r in cur.fetchall()]
 
     # ── OTROS INGRESOS (transacciones contables tipo income, excluyendo pagos de facturas) ──

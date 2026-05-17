@@ -55,6 +55,7 @@ static/uploads/*
 !static/uploads/.gitkeep
 static/invoices/*
 !static/invoices/.gitkeep
+static/reports/
 
 # Testing
 .pytest_cache/

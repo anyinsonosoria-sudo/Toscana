@@ -394,48 +394,148 @@ def generate_monthly_financial_report_html(report_data: dict, recipient_name: st
     def format_amount(val):
         return f"RD${float(val or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+    def build_highlight_items(items, empty_message, formatter):
+        if not items:
+            return f'<li style="padding: 10px 0; color: #7b6f69;">{empty_message}</li>'
+
+        rendered = []
+        for item in items[:3]:
+            rendered.append(formatter(item))
+        return ''.join(rendered)
+
     safe_company_name = escape(company_name or 'la administración')
     safe_recipient_name = escape(recipient_name or 'residente')
     safe_period = escape(report_data.get('period_label', report_data.get('report_period', '')))
+    collections = report_data.get('collections', [])
+    pending_receivables = report_data.get('pending_receivables', [])
+    expenses = report_data.get('expenses', [])
 
     if recipient_type == 'admin':
         greeting = 'Estimado Administrador'
     else:
         greeting = f'Estimado/a {safe_recipient_name}'
 
+    collections_items = build_highlight_items(
+        collections,
+        'No se registraron cobros durante el período.',
+        lambda item: (
+            f'<li style="padding: 10px 0; border-bottom: 1px solid #efe5e1;">'
+            f'<strong>{escape(item.get("apt_number", "N/A"))}</strong> - '
+            f'{escape(item.get("resident_name", "Residente"))}'
+            f'<span style="float:right; font-weight:700; color:#5b3a32;">{format_amount(item.get("amount", 0))}</span>'
+            f'</li>'
+        ),
+    )
+    pending_items = build_highlight_items(
+        pending_receivables,
+        'No hay balances pendientes al cierre.',
+        lambda item: (
+            f'<li style="padding: 10px 0; border-bottom: 1px solid #efe5e1;">'
+            f'<strong>{escape(item.get("apt_number", "N/A"))}</strong> - '
+            f'{escape(item.get("description", "Pendiente"))}'
+            f'<span style="float:right; font-weight:700; color:#8a5a00;">{format_amount(item.get("pending", 0))}</span>'
+            f'</li>'
+        ),
+    )
+    expense_items = build_highlight_items(
+        expenses,
+        'No se registraron gastos operativos.',
+        lambda item: (
+            f'<li style="padding: 10px 0; border-bottom: 1px solid #efe5e1;">'
+            f'<strong>{escape(item.get("date", "N/A"))}</strong> - '
+            f'{escape(item.get("description", "Gasto"))}'
+            f'<span style="float:right; font-weight:700; color:#7b1f1f;">{format_amount(item.get("amount", 0))}</span>'
+            f'</li>'
+        ),
+    )
+
     return f"""
     <html>
     <head>
         <meta charset="utf-8">
         <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-            .container {{ max-width: 680px; margin: 0 auto; padding: 20px; }}
-            .header {{ background: #6d4c41; color: white; padding: 24px; border-radius: 10px; }}
-            .summary {{ background: #f4eeeb; border-radius: 10px; padding: 20px; margin: 20px 0; }}
-            .row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e0d4cf; }}
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f6f1ee; margin: 0; padding: 24px 0; }}
+            .container {{ max-width: 720px; margin: 0 auto; padding: 0 16px; }}
+            .header {{ background: linear-gradient(135deg, #5b3a32, #8b685b); color: white; padding: 28px; border-radius: 18px; box-shadow: 0 16px 36px rgba(91, 58, 50, 0.18); }}
+            .eyebrow {{ text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; opacity: 0.8; margin-bottom: 10px; }}
+            .summary {{ background: #fff; border-radius: 18px; padding: 22px; margin: 20px 0; box-shadow: 0 12px 24px rgba(47, 36, 31, 0.08); }}
+            .summary-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }}
+            .summary-card {{ background: #f6f1ee; border-radius: 14px; padding: 14px; }}
+            .summary-card .label {{ color: #7a6b63; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }}
+            .summary-card .value {{ color: #5b3a32; font-size: 20px; font-weight: 700; margin-top: 6px; }}
+            .row {{ display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid #e0d4cf; }}
             .row:last-child {{ border-bottom: none; }}
-            .footer {{ color: #666; font-size: 12px; margin-top: 24px; }}
+            .highlights {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 22px 0; }}
+            .highlight-card {{ background: #fff; border-radius: 18px; padding: 18px; box-shadow: 0 12px 24px rgba(47, 36, 31, 0.08); }}
+            .highlight-card h3 {{ margin: 0 0 4px 0; font-size: 16px; color: #5b3a32; }}
+            .highlight-card p {{ margin: 0 0 12px 0; color: #7a6b63; font-size: 13px; }}
+            .highlight-card ul {{ list-style: none; padding: 0; margin: 0; }}
+            .footer {{ color: #666; font-size: 12px; margin-top: 24px; padding: 0 4px; }}
+            @media only screen and (max-width: 680px) {{
+                .summary-grid, .highlights {{ display: block; }}
+                .summary-card, .highlight-card {{ margin-bottom: 12px; }}
+            }}
         </style>
     </head>
     <body>
         <div class="container">
             <div class="header">
+                <div class="eyebrow">{safe_company_name}</div>
                 <h2 style="margin: 0 0 8px 0;">Reporte financiero mensual</h2>
                 <p style="margin: 0;">Período reportado: <strong>{safe_period}</strong></p>
             </div>
 
             <p>{greeting},</p>
-            <p>Adjunto encontrará el reporte financiero mensual consolidado de {safe_company_name}. Incluye saldo inicial, cobros, pendientes por cobrar, gastos y saldo final del período.</p>
+            <p>Adjunto encontrará el reporte financiero mensual consolidado de {safe_company_name}. Incluye el resumen del cierre, los cobros recibidos, los balances pendientes y los gastos ejecutados durante el período.</p>
 
             <div class="summary">
+                <div style="font-size: 18px; font-weight: 700; color: #5b3a32; margin-bottom: 6px;">Resumen ejecutivo</div>
+                <div style="color: #7a6b63; margin-bottom: 6px;">Esta vista resume el comportamiento operativo del mes y anticipa lo que verá en el PDF adjunto.</div>
                 <div class="row"><span>Saldo inicial</span><strong>{format_amount(report_data.get('opening_balance', 0))}</strong></div>
                 <div class="row"><span>Total cobrado</span><strong>{format_amount(report_data.get('total_collections', 0))}</strong></div>
                 <div class="row"><span>Pendiente por cobrar</span><strong>{format_amount(report_data.get('total_pending_receivables', 0))}</strong></div>
                 <div class="row"><span>Total gastado</span><strong>{format_amount(report_data.get('total_expenses', 0))}</strong></div>
                 <div class="row"><span>Saldo final</span><strong>{format_amount(report_data.get('closing_balance', 0))}</strong></div>
+
+                <div class="summary-grid">
+                    <div class="summary-card">
+                        <div class="label">Cobros registrados</div>
+                        <div class="value">{len(collections)}</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="label">Facturas pendientes</div>
+                        <div class="value">{len(pending_receivables)}</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="label">Gastos del período</div>
+                        <div class="value">{len(expenses)}</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="label">Variación neta</div>
+                        <div class="value">{format_amount(report_data.get('net_change', 0))}</div>
+                    </div>
+                </div>
             </div>
 
-            <p>El detalle completo se encuentra en el PDF adjunto.</p>
+            <div class="highlights">
+                <div class="highlight-card">
+                    <h3>Cobros destacados</h3>
+                    <p>Primeros movimientos cobrados incluidos en el reporte.</p>
+                    <ul>{collections_items}</ul>
+                </div>
+                <div class="highlight-card">
+                    <h3>Pendientes del cierre</h3>
+                    <p>Balances abiertos que siguen pendientes al finalizar el mes.</p>
+                    <ul>{pending_items}</ul>
+                </div>
+                <div class="highlight-card">
+                    <h3>Gastos registrados</h3>
+                    <p>Egresos operativos más visibles del período reportado.</p>
+                    <ul>{expense_items}</ul>
+                </div>
+            </div>
+
+            <p>El detalle completo se encuentra en el PDF adjunto, incluyendo tablas consolidadas por cobros, pendientes y gastos.</p>
 
             <div class="footer">
                 <p>Este es un mensaje automático. Por favor no responda a este correo.</p>

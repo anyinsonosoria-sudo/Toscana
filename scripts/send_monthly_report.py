@@ -7,7 +7,10 @@ Prueba directa a un correo concreto sin tocar el log mensual:
   python scripts/send_monthly_report.py --mode direct --recipient-email pinturasselecta@gmail.com --recipient-name "Prueba Residente" --recipient-type resident
 
 Despacho real del flujo mensual usando el log de envíos:
-  python scripts/send_monthly_report.py --mode dispatch --admin-only --admin-email invoicetoscana@gmail.com
+    python scripts/send_monthly_report.py --mode dispatch --admin-only --admin-email invoicetoscana@gmail.com
+
+Vista previa o envío manual del mes actual a la fecha:
+    python scripts/send_monthly_report.py --mode direct --period-mode current_month_to_date --reference-date 2026-05-17 --recipient-email admin@correo.com --dry-run
 """
 
 import argparse
@@ -69,9 +72,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default='resident',
         help='Tipo de destinatario en modo direct.',
     )
+    parser.add_argument(
+        '--period-mode',
+        choices=('previous_month', 'current_month_to_date'),
+        default='previous_month',
+        help='previous_month: mes anterior completo. current_month_to_date: mes actual hasta la fecha indicada.',
+    )
     parser.add_argument('--admin-only', action='store_true', help='En modo dispatch, limita el envío al administrador.')
     parser.add_argument('--admin-email', help='Override del correo del administrador en modo dispatch.')
-    parser.add_argument('--reference-date', type=_parse_reference_date, help='Fecha base YYYY-MM-DD para calcular el mes anterior.')
+    parser.add_argument('--reference-date', type=_parse_reference_date, help='Fecha base YYYY-MM-DD para calcular el período seleccionado.')
     parser.add_argument('--output-path', help='Ruta del PDF a generar.')
     parser.add_argument('--dry-run', action='store_true', help='Genera el reporte y muestra datos, pero no envía correo.')
     return parser
@@ -85,7 +94,10 @@ def _run_direct_mode(args: argparse.Namespace) -> dict:
     db.init_db()
 
     print('[2/4] Calculando reporte mensual...', flush=True)
-    report_data = get_monthly_financial_report_data(reference_dt=args.reference_date)
+    report_data = get_monthly_financial_report_data(
+        reference_dt=args.reference_date,
+        period_mode=args.period_mode,
+    )
     company_info = get_company_info() or {}
 
     print('[3/4] Generando PDF...', flush=True)
@@ -100,6 +112,7 @@ def _run_direct_mode(args: argparse.Namespace) -> dict:
         'recipient_email': args.recipient_email,
         'recipient_name': args.recipient_name,
         'recipient_type': args.recipient_type,
+        'period_mode': args.period_mode,
         'report_period': report_data['report_period'],
         'period_label': report_data['period_label'],
         'pdf_path': pdf_path,
@@ -137,6 +150,7 @@ def _run_dispatch_mode(args: argparse.Namespace) -> dict:
         output_path=args.output_path,
         admin_only=args.admin_only,
         admin_email_override=args.admin_email,
+        period_mode=args.period_mode,
     )
 
 

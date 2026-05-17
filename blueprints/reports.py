@@ -3,17 +3,40 @@ Blueprint para Reportes (Reports)
 Análisis financiero y cuentas por cobrar
 """
 import logging
-from flask import Blueprint, render_template, request, jsonify
+from datetime import datetime
+from pathlib import Path
+
+from flask import Blueprint, render_template, request, jsonify, send_file
 from flask_login import login_required
 
 from utils.decorators import permission_required
 from extensions import cache
 import reports
 import customization
+from company import get_company_info
+from senders import generate_monthly_financial_report_html
 
 logger = logging.getLogger(__name__)
 
 reports_bp = Blueprint('reports', __name__, url_prefix='/reportes')
+
+
+def _parse_reference_date(raw_value: str):
+    raw_value = (raw_value or '').strip()
+    if not raw_value:
+        return None
+
+    try:
+        return datetime.strptime(raw_value, '%Y-%m-%d')
+    except ValueError:
+        return None
+
+
+def _resolve_period_mode(raw_value: str) -> str:
+    period_mode = (raw_value or 'previous_month').strip().lower()
+    if period_mode not in {'previous_month', 'current_month_to_date'}:
+        return 'previous_month'
+    return period_mode
 
 
 @reports_bp.route('/')
@@ -82,7 +105,87 @@ def list():
                          overdue_30=overdue_30,
                          overdue_60=overdue_60,
                          overdue_90=overdue_90,
+                         monthly_preview_reference_date=datetime.now().strftime('%Y-%m-%d'),
                          customization=custom_settings)
+
+
+@reports_bp.route('/mensual/preview')
+@login_required
+@permission_required('reportes.view')
+def monthly_preview():
+    """Vista previa web del reporte financiero mensual."""
+    raw_reference_date = request.args.get('reference_date', '')
+    reference_dt = _parse_reference_date(raw_reference_date)
+    period_mode = _resolve_period_mode(request.args.get('period_mode'))
+
+    if raw_reference_date and reference_dt is None:
+        reference_dt = datetime.now()
+        selected_reference_date = reference_dt.strftime('%Y-%m-%d')
+        if period_mode == 'current_month_to_date':
+            date_error = 'La fecha indicada no es válida. Se mostró el mes actual a la fecha de hoy.'
+        else:
+            date_error = 'La fecha indicada no es válida. Se mostró el mes anterior a la fecha actual.'
+    else:
+        reference_dt = reference_dt or datetime.now()
+        selected_reference_date = reference_dt.strftime('%Y-%m-%d')
+        date_error = None
+
+    report_data = reports.get_monthly_financial_report_data(
+        reference_dt=reference_dt,
+        period_mode=period_mode,
+    )
+    company_info = get_company_info() or {}
+    recipients = reports.get_monthly_report_recipients()
+    email_html = generate_monthly_financial_report_html(
+        report_data,
+        recipient_name=company_info.get('name') or 'Administración',
+        recipient_type='admin',
+        company_name=company_info.get('name'),
+    )
+
+    return render_template(
+        'monthly_report_preview.html',
+        report_data=report_data,
+        company_info=company_info,
+        recipients=recipients,
+        email_html=email_html,
+        selected_reference_date=selected_reference_date,
+        selected_period_mode=period_mode,
+        date_error=date_error,
+        pdf_preview_url=(
+            f"/reportes/mensual/preview.pdf?reference_date={selected_reference_date}"
+            f"&period_mode={period_mode}"
+        ),
+    )
+
+
+@reports_bp.route('/mensual/preview.pdf')
+@login_required
+@permission_required('reportes.view')
+def monthly_preview_pdf():
+    """Genera y devuelve el PDF de vista previa del reporte financiero mensual."""
+    reference_dt = _parse_reference_date(request.args.get('reference_date')) or datetime.now()
+    period_mode = _resolve_period_mode(request.args.get('period_mode'))
+    report_data = reports.get_monthly_financial_report_data(
+        reference_dt=reference_dt,
+        period_mode=period_mode,
+    )
+    company_info = get_company_info() or {}
+
+    preview_dir = Path(reports.__file__).resolve().parent / 'static' / 'reports'
+    preview_filename = f"monthly_financial_report_preview_{report_data['report_period']}.pdf"
+    pdf_path = reports.generate_monthly_financial_report_pdf_file(
+        report_data,
+        company_info,
+        output_path=str(preview_dir / preview_filename),
+    )
+
+    return send_file(
+        pdf_path,
+        mimetype='application/pdf',
+        as_attachment=False,
+        download_name=preview_filename,
+    )
 
 
 # ========== API ENDPOINTS ==========

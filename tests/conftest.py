@@ -2,6 +2,7 @@
 Configuración de pytest para el sistema Building Maintenance
 """
 
+import os
 import pytest
 import sys
 from pathlib import Path
@@ -10,15 +11,17 @@ from pathlib import Path
 root_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
 
+TEST_DB_PATH = root_dir / 'test_data.db'
+os.environ['TESTING'] = 'True'
+os.environ['BUILDING_MAINTENANCE_DB'] = str(TEST_DB_PATH)
+
 
 @pytest.fixture(scope='session')
 def app():
     """Crear aplicación Flask para testing"""
-    # Importar aquí para evitar circular imports
-    import os
-    os.environ['TESTING'] = 'True'
-    os.environ['DATABASE_NAME'] = 'test_data.db'
-    
+    if TEST_DB_PATH.exists():
+        TEST_DB_PATH.unlink()
+
     from app import create_app
     
     app = create_app()
@@ -29,9 +32,8 @@ def app():
     yield app
     
     # Cleanup
-    test_db = Path(root_dir) / 'test_data.db'
-    if test_db.exists():
-        test_db.unlink()
+    if TEST_DB_PATH.exists():
+        TEST_DB_PATH.unlink()
 
 
 @pytest.fixture(scope='function')

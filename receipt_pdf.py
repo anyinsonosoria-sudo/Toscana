@@ -609,6 +609,27 @@ def generate_monthly_financial_report_pdf(report_data, company_info, output_path
     story.append(summary_table)
     story.append(Spacer(1, 0.2*inch))
 
+    metrics_rows = [
+        [Paragraph('Cobros registrados', td_s), Paragraph(str(len(report_data.get('collections', []))), td_r)],
+        [Paragraph('Facturas pendientes', td_s), Paragraph(str(len(report_data.get('pending_receivables', []))), td_r)],
+        [Paragraph('Gastos registrados', td_s), Paragraph(str(len(report_data.get('expenses', []))), td_r)],
+        [Paragraph('Variación neta del período', td_s), Paragraph(_fmt(report_data.get('net_change', 0)), td_r)],
+    ]
+    metrics_table = Table(metrics_rows, colWidths=[W - 1.9*inch, 1.9*inch])
+    metrics_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), WHITE),
+        ('BOX', (0,0), (-1,-1), 0.6, BROWN_LIGHT),
+        ('INNERGRID', (0,0), (-1,-1), 0.35, BROWN_BG),
+        ('TOPPADDING', (0,0), (-1,-1), 7),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 7),
+        ('LEFTPADDING', (0,0), (-1,-1), 12),
+        ('RIGHTPADDING', (0,0), (-1,-1), 12),
+        ('ROWBACKGROUNDS', (0,0), (-1,-1), [WHITE, BROWN_BG]),
+    ]))
+    story.append(Paragraph('Indicadores del período', sec_s))
+    story.append(metrics_table)
+    story.append(Spacer(1, 0.2*inch))
+
     def _append_section(title, headers, rows, widths, header_color=BROWN, empty_message='Sin movimientos registrados.'):
         story.append(Paragraph(title, sec_s))
         table_rows = [[Paragraph(_safe_text(header), th_s) for header in headers]]

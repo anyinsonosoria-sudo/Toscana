@@ -61,6 +61,13 @@ def _utcnow_sql() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _normalize_period_mode(period_mode: Optional[str]) -> str:
+    mode = (period_mode or 'previous_month').strip().lower()
+    if mode not in {'previous_month', 'current_month_to_date'}:
+        return 'previous_month'
+    return mode
+
+
 def get_previous_month_period(reference_dt: Optional[datetime] = None) -> Dict[str, str]:
     reference_dt = reference_dt or datetime.now()
     first_day_current_month = reference_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -77,10 +84,36 @@ def get_previous_month_period(reference_dt: Optional[datetime] = None) -> Dict[s
     }
 
 
-def get_monthly_financial_report_data(reference_dt: Optional[datetime] = None) -> Dict:
-    from accounting import get_cash_flow_statement, get_income_statement
+def get_report_period(reference_dt: Optional[datetime] = None, period_mode: str = 'previous_month') -> Dict[str, object]:
+    reference_dt = reference_dt or datetime.now()
+    period_mode = _normalize_period_mode(period_mode)
+
+    if period_mode == 'current_month_to_date':
+        first_day_current_month = reference_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_name = MONTH_NAMES_ES[first_day_current_month.month]
+        return {
+            'date_from': first_day_current_month.strftime('%Y-%m-%d'),
+            'date_to': reference_dt.strftime('%Y-%m-%d'),
+            'report_period': first_day_current_month.strftime('%Y-%m'),
+            'month_name': month_name,
+            'period_label': f"{month_name.title()} {first_day_current_month.year} (al {reference_dt.strftime('%d/%m/%Y')})",
+            'period_mode': period_mode,
+            'period_mode_label': 'Mes actual a la fecha',
+            'is_partial_period': True,
+        }
 
     period = get_previous_month_period(reference_dt=reference_dt)
+    period['period_mode'] = period_mode
+    period['period_mode_label'] = 'Mes anterior completo'
+    period['is_partial_period'] = False
+    return period
+
+
+def get_monthly_financial_report_data(reference_dt: Optional[datetime] = None,
+                                      period_mode: str = 'previous_month') -> Dict:
+    from accounting import get_cash_flow_statement, get_income_statement
+
+    period = get_report_period(reference_dt=reference_dt, period_mode=period_mode)
     income_statement = get_income_statement(period['date_from'], period['date_to'])
     cash_flow_statement = get_cash_flow_statement(period['date_from'], period['date_to'])
 
@@ -91,6 +124,9 @@ def get_monthly_financial_report_data(reference_dt: Optional[datetime] = None) -
         'report_period': period['report_period'],
         'month_name': period['month_name'],
         'period_label': period['period_label'],
+        'period_mode': period['period_mode'],
+        'period_mode_label': period['period_mode_label'],
+        'is_partial_period': period['is_partial_period'],
         'generated_at': _utcnow_sql(),
         'opening_balance': cash_flow_statement.get('opening_balance', 0),
         'closing_balance': cash_flow_statement.get('closing_balance', 0),
@@ -310,16 +346,21 @@ def send_previous_month_financial_report(reference_dt: Optional[datetime] = None
                                          output_path: Optional[str] = None,
                                          allow_retry_failed: bool = True,
                                          admin_only: bool = False,
-                                         admin_email_override: Optional[str] = None) -> Dict:
+                                         admin_email_override: Optional[str] = None,
+                                         period_mode: str = 'previous_month') -> Dict:
     from company import get_company_info
     from senders import send_monthly_financial_report_email
 
-    report_data = get_monthly_financial_report_data(reference_dt=reference_dt)
+    report_data = get_monthly_financial_report_data(
+        reference_dt=reference_dt,
+        period_mode=period_mode,
+    )
     recipients = get_monthly_report_recipients(admin_email_override=admin_email_override)
     company_info = get_company_info() or {}
 
     result = {
         'report_period': report_data['report_period'],
+        'period_mode': report_data.get('period_mode', 'previous_month'),
         'pdf_path': None,
         'admin_only': admin_only,
         'resolved_admin_email': recipients.get('admin_email', ''),

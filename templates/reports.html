@@ -3,7 +3,12 @@
 
 {% block content %}
 <div class="page-header">
-    <h1 class="page-title"><i class="bi bi-graph-up"></i> Reportes y Análisis</h1>
+    <div class="d-flex flex-column flex-md-row justify-content-md-between align-items-md-center gap-3">
+        <h1 class="page-title mb-0"><i class="bi bi-graph-up"></i> Reportes y Análisis</h1>
+        <a class="btn btn-primary" href="{{ url_for('reports.monthly_preview', reference_date=monthly_preview_reference_date) }}">
+            <i class="bi bi-envelope-paper"></i> Vista previa reporte mensual
+        </a>
+    </div>
 </div>
 
 <!-- Financial Summary Cards -->
