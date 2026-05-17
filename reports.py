@@ -40,6 +40,22 @@ def _normalize_email(email: Optional[str]) -> str:
     return (email or "").strip().lower()
 
 
+def _parse_bool_setting(raw_value, default: bool = False) -> bool:
+    if raw_value is None:
+        return default
+    if isinstance(raw_value, bool):
+        return raw_value
+    return str(raw_value).strip().lower() in {'1', 'true', 'yes', 'on', 'si', 'sí'}
+
+
+def _get_customization_setting(key: str):
+    try:
+        import customization
+        return customization.get_setting(key)
+    except Exception:
+        return None
+
+
 def _resolve_monthly_report_admin_email(company_info: Optional[Dict] = None,
                                         admin_email_override: Optional[str] = None) -> str:
     company_info = company_info or {}
@@ -66,6 +82,43 @@ def _normalize_period_mode(period_mode: Optional[str]) -> str:
     if mode not in {'previous_month', 'current_month_to_date'}:
         return 'previous_month'
     return mode
+
+
+def get_monthly_report_settings(app_config: Optional[Dict] = None) -> Dict[str, object]:
+    app_config = app_config or {}
+
+    enabled_default = bool(app_config.get('MONTHLY_FINANCIAL_REPORT_ENABLED', True))
+    admin_only_default = bool(app_config.get('MONTHLY_FINANCIAL_REPORT_ADMIN_ONLY', False))
+    admin_email_default = (app_config.get('MONTHLY_FINANCIAL_REPORT_ADMIN_EMAIL') or '').strip()
+    hour = int(app_config.get('MONTHLY_FINANCIAL_REPORT_HOUR', 6) or 6)
+    minute = int(app_config.get('MONTHLY_FINANCIAL_REPORT_MINUTE', 0) or 0)
+
+    enabled = _parse_bool_setting(
+        _get_customization_setting('monthly_financial_report_enabled'),
+        enabled_default,
+    )
+    admin_only = _parse_bool_setting(
+        _get_customization_setting('monthly_financial_report_admin_only'),
+        admin_only_default,
+    )
+
+    admin_email_value = _get_customization_setting('monthly_financial_report_admin_email')
+    if admin_email_value is None:
+        admin_email = _normalize_email(admin_email_default)
+    else:
+        admin_email = _normalize_email(admin_email_value)
+
+    return {
+        'enabled': enabled,
+        'admin_only': admin_only,
+        'admin_email': admin_email,
+        'schedule_day': 1,
+        'schedule_hour': hour,
+        'schedule_minute': minute,
+        'schedule_time': f'{hour:02d}:{minute:02d}',
+        'schedule_label': f'Cada día 1 a las {hour:02d}:{minute:02d}',
+        'period_basis': 'Mes anterior completo',
+    }
 
 
 def get_previous_month_period(reference_dt: Optional[datetime] = None) -> Dict[str, str]:

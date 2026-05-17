@@ -12,6 +12,7 @@ from werkzeug.utils import secure_filename
 import db
 import company
 import customization
+import reports
 from extensions import cache
 from utils.decorators import admin_required, audit_log
 
@@ -34,6 +35,20 @@ def _get_database_tools_context():
         'upload_limit_mb': round(max_content_length / (1024 * 1024), 2) if max_content_length else None,
         'environment': current_app.config.get('ENV') or 'production' if current_app.config.get('SESSION_COOKIE_SECURE') else 'development',
     }
+
+
+def _get_monthly_report_settings_context(company_info: dict | None = None):
+    if not current_user.is_authenticated or not current_user.is_admin():
+        return None
+
+    company_info = company_info or {}
+    monthly_report_settings = reports.get_monthly_report_settings(current_app.config)
+    company_email = (company_info.get('email') or '').strip().lower()
+    monthly_report_settings['fallback_admin_email'] = company_email
+    monthly_report_settings['resolved_admin_email'] = (
+        monthly_report_settings.get('admin_email') or company_email
+    )
+    return monthly_report_settings
 
 @settings_bp.route('/', endpoint='view')
 @login_required
@@ -150,11 +165,14 @@ def configuracion_view():
     except Exception:
         custom_settings = {}
     db_tools = _get_database_tools_context()
+    monthly_report_settings = _get_monthly_report_settings_context(company_info)
     return render_template(
         'configuracion.html',
         company=company_info,
         customization=custom_settings,
         db_tools=db_tools,
+        monthly_report_settings=monthly_report_settings,
+        monthly_report_preview_reference_date=datetime.now().strftime('%Y-%m-%d'),
     )
 
 
@@ -183,6 +201,28 @@ def update_sidebar_order():
     # Limpiar cache después de actualizar
     cache.clear()
     flash('Orden del menú lateral actualizado.', 'success')
+    return redirect(url_for('settings.view'))
+
+
+@settings_bp.route('/monthly-report/update', methods=['POST'])
+@login_required
+@admin_required
+@audit_log('monthly_report.settings.update', 'Actualizar configuración del reporte mensual automático')
+def update_monthly_report_settings():
+    monthly_report_enabled = '1' if request.form.get('monthly_report_enabled') == '1' else '0'
+    monthly_report_admin_only = '1' if request.form.get('monthly_report_admin_only') == '1' else '0'
+    monthly_report_admin_email = (request.form.get('monthly_report_admin_email') or '').strip().lower()
+
+    if monthly_report_admin_email and '@' not in monthly_report_admin_email:
+        flash('El correo del administrador para el reporte mensual no es válido.', 'error')
+        return redirect(url_for('settings.view'))
+
+    customization.set_setting('monthly_financial_report_enabled', monthly_report_enabled)
+    customization.set_setting('monthly_financial_report_admin_only', monthly_report_admin_only)
+    customization.set_setting('monthly_financial_report_admin_email', monthly_report_admin_email)
+    cache.clear()
+
+    flash('Configuración del reporte mensual automático actualizada.', 'success')
     return redirect(url_for('settings.view'))
 
 # Endpoint para limpiar cache manualmente

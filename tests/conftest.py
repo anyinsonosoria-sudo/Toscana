@@ -32,8 +32,18 @@ def app():
     yield app
     
     # Cleanup
+    try:
+        from extensions import scheduler
+        if getattr(scheduler, 'running', False):
+            scheduler.shutdown(wait=False)
+    except Exception:
+        pass
+
     if TEST_DB_PATH.exists():
-        TEST_DB_PATH.unlink()
+        try:
+            TEST_DB_PATH.unlink()
+        except PermissionError:
+            pass
 
 
 @pytest.fixture(scope='function')

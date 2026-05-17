@@ -20,6 +20,13 @@
             <i class="bi bi-palette"></i> Personalización
         </button>
     </li>
+    {% if monthly_report_settings %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="automation-tab" data-bs-toggle="tab" data-bs-target="#automation" type="button" role="tab">
+            <i class="bi bi-calendar-check"></i> Automatización
+        </button>
+    </li>
+    {% endif %}
     {% if db_tools and db_tools.enabled %}
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="database-tab" data-bs-toggle="tab" data-bs-target="#database" type="button" role="tab">
@@ -213,6 +220,90 @@
             </div>
         </div>
     </div>
+
+    {% if monthly_report_settings %}
+    <div class="tab-pane fade" id="automation" role="tabpanel">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-calendar-check"></i> Reporte Financiero Automático</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    El scheduler evalúa este envío automáticamente el <strong>día 1 de cada mes</strong> y usa como contenido el <strong>mes anterior completo</strong>.
+                </div>
+
+                <dl class="row small mb-4">
+                    <dt class="col-sm-3">Frecuencia</dt>
+                    <dd class="col-sm-9">{{ monthly_report_settings.schedule_label }}</dd>
+                    <dt class="col-sm-3">Contenido enviado</dt>
+                    <dd class="col-sm-9">{{ monthly_report_settings.period_basis }}</dd>
+                    <dt class="col-sm-3">Correo admin resuelto</dt>
+                    <dd class="col-sm-9">
+                        {{ monthly_report_settings.resolved_admin_email or 'No configurado' }}
+                        {% if not monthly_report_settings.admin_email and monthly_report_settings.fallback_admin_email %}
+                        <span class="text-muted">(tomado del email de empresa)</span>
+                        {% endif %}
+                    </dd>
+                </dl>
+
+                <form method="POST" action="{{ url_for('settings.update_monthly_report_settings') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+                    <div class="form-check form-switch mb-3">
+                        <input
+                            class="form-check-input"
+                            type="checkbox"
+                            id="monthly_report_enabled"
+                            name="monthly_report_enabled"
+                            value="1"
+                            {% if monthly_report_settings.enabled %}checked{% endif %}
+                        >
+                        <label class="form-check-label" for="monthly_report_enabled">
+                            Activar envío automático del reporte financiero mensual
+                        </label>
+                    </div>
+
+                    <div class="form-check form-switch mb-3">
+                        <input
+                            class="form-check-input"
+                            type="checkbox"
+                            id="monthly_report_admin_only"
+                            name="monthly_report_admin_only"
+                            value="1"
+                            {% if monthly_report_settings.admin_only %}checked{% endif %}
+                        >
+                        <label class="form-check-label" for="monthly_report_admin_only">
+                            Enviar solo al administrador
+                        </label>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Correo del administrador para el reporte mensual</label>
+                        <input
+                            type="email"
+                            class="form-control"
+                            name="monthly_report_admin_email"
+                            value="{{ monthly_report_settings.admin_email }}"
+                            placeholder="{{ company.get('email', '') if company else '' }}"
+                        >
+                        <small class="text-muted">
+                            Si lo dejas vacío, el sistema usará primero el email configurado en la empresa.
+                        </small>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2 justify-content-end">
+                        <a class="btn btn-outline-secondary" href="{{ url_for('reports.monthly_preview', reference_date=monthly_report_preview_reference_date) }}">
+                            <i class="bi bi-eye"></i> Ver Vista Previa
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Guardar Automatización
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     {% if db_tools and db_tools.enabled %}
     <div class="tab-pane fade" id="database" role="tabpanel">

@@ -56,6 +56,10 @@ def create_app(config_object: Optional[str] = None) -> Flask:
     app.config.setdefault('PERMANENT_SESSION_LIFETIME', timedelta(hours=8))
     app.config.setdefault('MAX_CONTENT_LENGTH', 16 * 1024 * 1024)  # 16MB max upload
     app.config.setdefault('SCHEDULER_TIMEZONE', 'America/Santo_Domingo')
+    app.config.setdefault(
+        'MONTHLY_FINANCIAL_REPORT_ENABLED',
+        os.environ.get('MONTHLY_FINANCIAL_REPORT_ENABLED', '1').strip().lower() in {'1', 'true', 'yes', 'on'},
+    )
     app.config.setdefault('MONTHLY_FINANCIAL_REPORT_HOUR', 6)
     app.config.setdefault('MONTHLY_FINANCIAL_REPORT_MINUTE', 0)
     app.config.setdefault(
@@ -198,12 +202,18 @@ def _register_scheduler_jobs(app: Flask) -> None:
             """Envía el reporte financiero consolidado del mes anterior."""
             with app.app_context():
                 try:
-                    from reports import send_previous_month_financial_report
+                    from reports import get_monthly_report_settings, send_previous_month_financial_report
 
-                    admin_only = app.config.get('MONTHLY_FINANCIAL_REPORT_ADMIN_ONLY', False)
+                    monthly_report_settings = get_monthly_report_settings(app.config)
+                    if not monthly_report_settings.get('enabled', True):
+                        app.logger.info('[Scheduler] Reporte financiero mensual deshabilitado por configuración.')
+                        return
+
+                    admin_only = bool(monthly_report_settings.get('admin_only', False))
+                    admin_email_override = str(monthly_report_settings.get('admin_email') or '').strip() or None
                     result = send_previous_month_financial_report(
                         admin_only=admin_only,
-                        admin_email_override=app.config.get('MONTHLY_FINANCIAL_REPORT_ADMIN_EMAIL') or None,
+                        admin_email_override=admin_email_override,
                     )
                     app.logger.info(
                         "[Scheduler] Reporte financiero mensual %s (solo admin=%s, admin=%s): %s enviados, %s omitidos, %s errores",

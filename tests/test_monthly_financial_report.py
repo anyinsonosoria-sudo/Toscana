@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 
+import customization
 import senders
 from company import get_company_info
 from db import get_conn
@@ -10,6 +11,7 @@ from receipt_pdf import generate_monthly_financial_report_pdf
 from reports import (
     claim_monthly_report_dispatch,
     get_monthly_financial_report_data,
+    get_monthly_report_settings,
     get_monthly_report_recipients,
     mark_monthly_report_dispatch_sent,
     send_previous_month_financial_report,
@@ -125,6 +127,24 @@ def _seed_monthly_report_data():
         conn.close()
 
 
+def _clear_monthly_report_settings():
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            DELETE FROM customization_settings
+            WHERE setting_key IN (
+                'monthly_financial_report_enabled',
+                'monthly_financial_report_admin_only',
+                'monthly_financial_report_admin_email'
+            )
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 @pytest.fixture(scope='module')
 def preview_auth_client(app):
     client = app.test_client()
@@ -231,6 +251,24 @@ def test_get_monthly_financial_report_data_supports_current_month_to_date(app):
     assert report['total_pending_receivables'] == pytest.approx(225.0)
     assert report['total_expenses'] == pytest.approx(30.0)
     assert report['closing_balance'] == pytest.approx(75.0)
+
+
+@pytest.mark.unit
+def test_get_monthly_report_settings_supports_customization_overrides(app):
+    with app.app_context():
+        _clear_monthly_report_settings()
+        customization.set_setting('monthly_financial_report_enabled', '0')
+        customization.set_setting('monthly_financial_report_admin_only', '1')
+        customization.set_setting('monthly_financial_report_admin_email', 'REPORTES@TOSCANA.COM')
+
+        settings = get_monthly_report_settings(app.config)
+
+        _clear_monthly_report_settings()
+
+    assert settings['enabled'] is False
+    assert settings['admin_only'] is True
+    assert settings['admin_email'] == 'reportes@toscana.com'
+    assert settings['schedule_day'] == 1
 
 
 @pytest.mark.unit
@@ -400,6 +438,31 @@ def test_monthly_report_preview_pdf_route_supports_current_month_to_date(preview
     assert response.status_code == 200
     assert response.mimetype == 'application/pdf'
     assert len(response.data) > 0
+
+
+@pytest.mark.integration
+def test_update_monthly_report_settings_route_persists_configuration(auth_client, app):
+    with app.app_context():
+        _clear_monthly_report_settings()
+
+    response = auth_client.post(
+        '/configuracion/monthly-report/update',
+        data={
+            'monthly_report_enabled': '1',
+            'monthly_report_admin_only': '1',
+            'monthly_report_admin_email': 'automatico@toscana.com',
+        },
+        follow_redirects=False,
+    )
+
+    with app.app_context():
+        settings = get_monthly_report_settings(app.config)
+        _clear_monthly_report_settings()
+
+    assert response.status_code == 302
+    assert settings['enabled'] is True
+    assert settings['admin_only'] is True
+    assert settings['admin_email'] == 'automatico@toscana.com'
 
 
 @pytest.mark.integration
