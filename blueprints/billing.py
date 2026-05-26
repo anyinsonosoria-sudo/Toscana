@@ -189,6 +189,51 @@ def _get_admin_email():
     return os.environ.get('SMTP_FROM') or os.environ.get('SMTP_USER')
 
 
+def _send_invoice_email(invoice, client_email=None, attach_pdf=False, admin_email=None):
+    """Envía una factura existente por email reutilizando la notificación estándar."""
+    if not invoice:
+        raise ValueError("Factura no encontrada")
+
+    if not HAS_SENDERS:
+        raise RuntimeError("El modulo de envio no esta disponible")
+
+    apt = apartments.get_apartment(invoice.get('unit_id'))
+    unit_dict = {
+        'id': apt.get('id') if apt else None,
+        'number': apt.get('number', 'N/A') if apt else 'N/A',
+        'resident_name': apt.get('resident_name', 'Cliente') if apt else 'Cliente',
+    }
+
+    invoice_payload = dict(invoice)
+    if apt and not invoice_payload.get('resident_name'):
+        invoice_payload['resident_name'] = apt.get('resident_name') or 'Cliente'
+
+    pdf_path = None
+    if attach_pdf:
+        pdf_file = Path(__file__).parent.parent / "static" / "invoices" / f"invoice_{invoice_payload['id']}.pdf"
+        if pdf_file.exists():
+            pdf_path = str(pdf_file)
+
+    import senders
+    senders.send_invoice_notification(
+        invoice_payload,
+        unit_dict,
+        client_email=client_email,
+        admin_email=admin_email,
+        attach_pdf=bool(pdf_path),
+        pdf_path=pdf_path,
+    )
+
+    return {
+        'invoice': invoice_payload,
+        'unit': unit_dict,
+        'client_email': client_email,
+        'admin_email': admin_email,
+        'attach_pdf': bool(pdf_path),
+        'pdf_path': pdf_path,
+    }
+
+
 def _notify_admin_payment_change(action, payment, invoice, unit, previous_payment=None):
     """Envía una notificación interna al administrador cuando cambia un pago."""
     admin_email = _get_admin_email()
@@ -1195,6 +1240,62 @@ def process_due_recurring():
     return redirect(url_for('billing.recurring_sales'))
 
 
+@billing_bp.route('/facturas/recurring/resend-latest', methods=['POST'])
+@login_required
+@permission_required('facturacion.view')
+@audit_log('facturacion.reenviar_recurrentes', 'Reenviar correos de facturas recurrentes')
+def resend_latest_recurring_invoices():
+    """Reenvía la última factura generada para cada venta recurrente activa."""
+    try:
+        admin_email = _get_admin_email()
+        recurring_sales = [sale for sale in models.list_recurring_sales() if sale.get('active')]
+        sent = []
+        skipped = []
+        errors = []
+
+        for sale in recurring_sales:
+            sale_id = sale['id']
+            client_email = (sale.get('resident_email') or '').strip()
+
+            if not client_email:
+                skipped.append(f"venta #{sale_id} sin email")
+                continue
+
+            invoice_id = models.get_last_invoice_from_recurring(sale_id)
+            if not invoice_id:
+                skipped.append(f"venta #{sale_id} sin factura generada")
+                continue
+
+            invoice = models.get_invoice_by_id(invoice_id)
+            if not invoice:
+                errors.append(f"venta #{sale_id}: factura #{invoice_id} no encontrada")
+                continue
+
+            try:
+                _send_invoice_email(
+                    invoice,
+                    client_email=client_email,
+                    attach_pdf=True,
+                    admin_email=admin_email,
+                )
+                sent.append(f"factura #{invoice_id} a {client_email}")
+            except Exception as exc:
+                logger.error(f"Error reenviando factura recurrente #{invoice_id}: {exc}")
+                errors.append(f"factura #{invoice_id}: {exc}")
+
+        msg = f"Reenvío completado: {len(sent)} correo(s) enviado(s), {len(skipped)} omitido(s)"
+        if errors:
+            msg += f", {len(errors)} error(es): {'; '.join(errors[:3])}"
+            flash(msg, "warning")
+        else:
+            flash(msg, "success")
+    except Exception as e:
+        logger.error(f"Error reenviando facturas recurrentes: {e}")
+        flash(f"Error al reenviar facturas recurrentes: {e}", "error")
+
+    return redirect(url_for('billing.recurring_sales'))
+
+
 @billing_bp.route('/facturas/api/invoice/<int:invoice_id>', methods=['GET'])
 @login_required
 @permission_required('facturacion.view')
@@ -1367,21 +1468,12 @@ def resend_invoice(invoice_id):
         
         # Intentar enviar
         try:
-            if HAS_SENDERS:
-                apt = apartments.get_apartment(invoice.get('unit_id'))
-                unit_dict = {'id': apt.get('id') if apt else None, 'number': apt.get('number', 'N/A') if apt else 'N/A'}
-                
-                pdf_path = None
-                if attach_pdf:
-                    pdf_file = Path(__file__).parent.parent / "static" / "invoices" / f"invoice_{invoice_id}.pdf"
-                    if pdf_file.exists():
-                        pdf_path = str(pdf_file)
-                
-                import senders
-                senders.send_invoice_notification(invoice, unit_dict, email, pdf_path=pdf_path)
-                flash(f"Factura #{invoice_id} enviada a {email}", "success")
-            else:
-                flash("El modulo de envio no esta disponible", "warning")
+            _send_invoice_email(
+                invoice,
+                client_email=email,
+                attach_pdf=attach_pdf,
+            )
+            flash(f"Factura #{invoice_id} enviada a {email}", "success")
                 
         except Exception as e:
             logger.error(f"Error enviando factura: {e}")

@@ -32,13 +32,27 @@ except Exception:
     HAS_CONFIG = False
 
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, UTC
 
 LOG_PATH = Path(__file__).parent / "run.log"
+NOTIFICATIONS_LOG_PATH = Path(__file__).parent / "notifications.log"
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+
+
 def _log(msg: str):
     try:
         with open(LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(f"{datetime.utcnow().isoformat()}Z - {msg}\n")
+            f.write(f"{_utc_timestamp()} - {msg}\n")
+    except Exception:
+        pass
+
+def _log_notification(msg: str):
+    try:
+        with open(NOTIFICATIONS_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"{_utc_timestamp()} - {msg}\n")
     except Exception:
         pass
 
@@ -1071,6 +1085,115 @@ def process_due_recurring_invoices() -> dict:
     return result
 
 
+def _notify_recurring_invoice(invoice_id: int,
+                              sale: Dict,
+                              apartment: Dict,
+                              service_name: str,
+                              issued_date: str,
+                              due_date: str) -> None:
+    """Enviar notificacion de factura recurrente sin depender del PDF."""
+    company_info: Dict = {}
+    try:
+        from company import get_company_info
+        company_info = get_company_info() or {}
+    except Exception as exc:
+        _log(f"Recurring invoice {invoice_id} company info lookup failed: {exc}")
+
+    service_code = 'N/A'
+    additional_notes = ''
+    if sale.get('service_id'):
+        try:
+            import products_services
+            service = products_services.get_product_service(sale['service_id'])
+            if service:
+                service_code = service.get('code', 'N/A')
+                additional_notes = service.get('additional_notes', '')
+        except Exception as exc:
+            _log(f"Error obteniendo detalles del producto/servicio {sale['service_id']}: {exc}")
+
+    pdf_path = None
+    if HAS_INVOICE_PDF:
+        try:
+            pdf_dir = Path(__file__).parent / "static" / "invoices"
+            pdf_dir.mkdir(parents=True, exist_ok=True)
+            pdf_path = str(pdf_dir / f"invoice_{invoice_id}.pdf")
+
+            invoice_data = {
+                'id': invoice_id,
+                'description': service_name,
+                'amount': sale['amount'],
+                'issued_date': issued_date,
+                'due_date': due_date,
+                'apartment_number': apartment.get('number', ''),
+                'resident_name': apartment.get('resident_name', ''),
+                'resident_email': apartment.get('resident_email', ''),
+                'resident_phone': apartment.get('resident_phone', ''),
+                'service_code': service_code,
+                'notes': additional_notes,
+            }
+            invoice_pdf.generate_invoice_pdf(invoice_data, company_info, pdf_path)
+        except Exception as exc:
+            pdf_path = None
+            _log(f"Recurring invoice {invoice_id} PDF generation failed: {exc}")
+            _log_notification(f"Recurring invoice {invoice_id} PDF generation failed: {exc}")
+
+    notify_email = apartment.get('resident_email')
+    notify_phone = apartment.get('resident_phone')
+    admin_email = company_info.get('email') if company_info else None
+    if not admin_email:
+        admin_email = os.environ.get('SMTP_FROM') or os.environ.get('SMTP_USER')
+
+    if not (notify_email or admin_email or notify_phone):
+        _log(
+            f"Recurring invoice {invoice_id} notification skipped: no client/admin email or phone configured"
+        )
+        return
+
+    if not HAS_SENDERS:
+        message = f"Recurring invoice {invoice_id} notification skipped: senders module not available"
+        _log(message)
+        _log_notification(message)
+        return
+
+    invoice_dict = {
+        'id': invoice_id,
+        'amount': sale['amount'],
+        'description': service_name,
+        'issued_date': issued_date,
+        'due_date': due_date,
+        'resident_name': apartment.get('resident_name', ''),
+    }
+    unit_dict = {
+        'id': apartment.get('id'),
+        'number': apartment.get('number', ''),
+        'resident_name': apartment.get('resident_name', ''),
+    }
+
+    try:
+        senders.send_invoice_notification(
+            invoice_dict,
+            unit_dict,
+            client_email=notify_email,
+            admin_email=admin_email,
+            attach_pdf=bool(pdf_path),
+            pdf_path=pdf_path,
+            client_phone=notify_phone,
+        )
+        recipients = []
+        if notify_email:
+            recipients.append(notify_email)
+        if admin_email:
+            recipients.append(admin_email)
+        if recipients:
+            _log(
+                f"Recurring invoice {invoice_id} notification sent to: {', '.join(recipients)}"
+            )
+    except Exception as exc:
+        message = f"Recurring invoice {invoice_id} notification failed: {exc}"
+        _log(message)
+        _log_notification(message)
+
+
 def generate_invoice_from_recurring(sale_id: int) -> int:
     """Generar una factura desde una venta recurrente"""
     conn = get_conn()
@@ -1161,78 +1284,13 @@ def generate_invoice_from_recurring(sale_id: int) -> int:
     conn.commit()
     conn.close()
 
-    # Generar PDF y enviar notificación
-    try:
-        from company import get_company_info
-        company_info = get_company_info()
-        
-        # Obtener información del producto/servicio para el PDF
-        service_code = 'N/A'
-        additional_notes = ''
-        
-        if sale.get('service_id'):
-            try:
-                import products_services
-                service = products_services.get_product_service(sale['service_id'])
-                if service:
-                    service_code = service.get('code', 'N/A')
-                    additional_notes = service.get('additional_notes', '')
-            except Exception as e:
-                _log(f"Error obteniendo detalles del producto/servicio {sale['service_id']}: {e}")
-        
-        # Generar PDF
-        import invoice_pdf
-        from pathlib import Path
-        pdf_dir = Path(__file__).parent / "static" / "invoices"
-        pdf_dir.mkdir(parents=True, exist_ok=True)
-        pdf_filename = f"invoice_{invoice_id}.pdf"
-        pdf_path = str(pdf_dir / pdf_filename)
-        
-        invoice_data = {
-            'id': invoice_id,
-            'description': service_name,  # Usar el nombre del servicio obtenido arriba
-            'amount': sale['amount'],
-            'issued_date': issued_date,  # Formato YYYY-MM-DD para que invoice_pdf lo formatee
-            'due_date': due_date,  # Formato YYYY-MM-DD para que invoice_pdf lo formatee
-            'apartment_number': apartment.get('number', ''),
-            'resident_name': apartment.get('resident_name', ''),
-            'resident_email': apartment.get('resident_email', ''),
-            'resident_phone': apartment.get('resident_phone', ''),
-            'service_code': service_code,  # Código del producto/servicio
-            'notes': additional_notes  # Notas adicionales del producto
-        }
-        invoice_pdf.generate_invoice_pdf(invoice_data, company_info, pdf_path)
-        
-        # Enviar email con PDF adjunto
-        notify_email = apartment.get('resident_email')
-        admin_email = company_info.get('email') if company_info else None
-        if not admin_email:
-            admin_email = os.environ.get('SMTP_FROM') or os.environ.get('SMTP_USER')
-        
-        if notify_email or admin_email:
-            import senders
-            unit_dict = {'id': unit_id, 'number': apartment.get('number', '')}
-            invoice_dict = {
-                'id': invoice_id,
-                'amount': sale['amount'],
-                'description': service_name,
-                'issued_date': issued_date,
-                'due_date': due_date
-            }
-            
-            senders.send_invoice_notification(
-                invoice_dict,
-                unit_dict,
-                client_email=notify_email,
-                admin_email=admin_email,
-                attach_pdf=True,
-                pdf_path=pdf_path
-            )
-            if notify_email:
-                print(f"✓ Factura #{invoice_id} enviada a {notify_email}")
-            if admin_email:
-                print(f"✓ Copia enviada al admin: {admin_email}")
-    except Exception as e:
-        print(f"Error generando PDF o enviando email: {e}")
+    _notify_recurring_invoice(
+        invoice_id=invoice_id,
+        sale=sale,
+        apartment=apartment,
+        service_name=service_name,
+        issued_date=issued_date,
+        due_date=due_date,
+    )
 
     return invoice_id
