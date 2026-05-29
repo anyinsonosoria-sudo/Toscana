@@ -1,6 +1,6 @@
 {
-  "name": "Xpack - Gestión de Edificios",
-  "short_name": "Xpack",
+  "name": "AO.sys - Gestión de Edificios",
+  "short_name": "AO.sys",
   "description": "Sistema completo de gestión de edificios: facturación, pagos, gastos, contabilidad y reportes.",
   "start_url": "/",
   "scope": "/",
