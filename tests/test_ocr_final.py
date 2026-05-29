@@ -68,62 +68,64 @@ def test_upload_receipt_uses_test_client_and_returns_json():
         json_data = resp.get_json()
         assert json_data and json_data.get('success') is True
         assert abs(float(json_data.get('amount', 0)) - 62.53) < 0.01
-#!/usr/bin/env python3
-"""Test OCR endpoint with current implementation"""
-import requests
-import json
-from PIL import Image, ImageDraw
-import io
-import time
-import sys
 
-# Wait for server
-time.sleep(2)
 
-# Create test image
-img = Image.new('RGB', (400, 600), color='white')
-d = ImageDraw.Draw(img)
+if __name__ == '__main__':
+    """Test OCR endpoint with current implementation"""
+    import requests
+    import json
+    from PIL import Image, ImageDraw
+    import io
+    import time
+    import sys
 
-text_lines = [
-    'TIENDALOSAMIGOS',
-    'RNC: 123456789',
-    '',
-    'FECHA: 16 DE ENERO DEL 2025',
-    '',
-    'ARTICULOS VENDIDOS:',
-    'Leche 1L          2.50',
-    'Frijoles          8.75',
-    'Aceite           12.99',
-    'Pan               3.50',
-    'Pollo por kg     15.00',
-    '',
-    'SUBTOTAL:        52.99',
-    'DESCUENTO:        0.00',
-    'IMPUESTO (18%):   9.54',
-    '',
-    'TOTAL A PAGAR:   62.53'
-]
+    # Wait for server
+    time.sleep(2)
 
-y_pos = 20
-for line in text_lines:
-    d.text((20, y_pos), line, fill='black')
-    y_pos += 25
+    # Create test image
+    img = Image.new('RGB', (400, 600), color='white')
+    d = ImageDraw.Draw(img)
 
-img_bytes = io.BytesIO()
-img.save(img_bytes, format='PNG')
-img_bytes.seek(0)
+    text_lines = [
+        'TIENDALOSAMIGOS',
+        'RNC: 123456789',
+        '',
+        'FECHA: 16 DE ENERO DEL 2025',
+        '',
+        'ARTICULOS VENDIDOS:',
+        'Leche 1L          2.50',
+        'Frijoles          8.75',
+        'Aceite           12.99',
+        'Pan               3.50',
+        'Pollo por kg     15.00',
+        '',
+        'SUBTOTAL:        52.99',
+        'DESCUENTO:        0.00',
+        'IMPUESTO (18%):   9.54',
+        '',
+        'TOTAL A PAGAR:   62.53'
+    ]
 
-url = 'http://localhost:5000/gastos/upload-recibo'
-files = {'file': ('receipt.png', img_bytes, 'image/png')}
+    y_pos = 20
+    for line in text_lines:
+        d.text((20, y_pos), line, fill='black')
+        y_pos += 25
 
-try:
-    response = requests.post(url, files=files, timeout=10)
-    print(f'Status: {response.status_code}')
-    if response.status_code == 200:
-        data = response.json()
-        print(json.dumps(data, indent=2, ensure_ascii=False))
-    else:
-        print(f'Response: {response.text}')
-except Exception as e:
-    print(f'Error: {type(e).__name__}: {e}')
-    sys.exit(1)
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+
+    url = 'http://localhost:5000/gastos/upload-recibo'
+    files = {'file': ('receipt.png', img_bytes, 'image/png')}
+
+    try:
+        response = requests.post(url, files=files, timeout=10)
+        print(f'Status: {response.status_code}')
+        if response.status_code == 200:
+            data = response.json()
+            print(json.dumps(data, indent=2, ensure_ascii=False))
+        else:
+            print(f'Response: {response.text}')
+    except Exception as e:
+        print(f'Error: {type(e).__name__}: {e}')
+        sys.exit(1)

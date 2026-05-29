@@ -99,6 +99,9 @@ def init_extensions(app):
     
     # Inicializar Rate Limiting
     try:
+        import os
+        if app.config.get('TESTING') or os.environ.get('TESTING') == 'True':
+            app.config['RATELIMIT_ENABLED'] = False
         limiter.init_app(app)
         print("[OK] Rate limiting configurado: 200/dia, 50/hora")
     except Exception as e:

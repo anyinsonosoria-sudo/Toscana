@@ -169,3 +169,105 @@ def delete(id):
         flash(f"Error al eliminar apartamento: {e}", "error")
     
     return redirect(url_for("apartments.list"))
+
+
+@apartments_bp.route("/archive/<int:id>", methods=["POST"])
+@login_required
+@permission_required('apartamentos.edit')
+@audit_log('UPDATE', 'Archivar apartamento')
+def archive(id):
+    """Archiva un apartamento: respalda su historial y lo reinicia a cero"""
+    import json
+    import os
+    from datetime import datetime
+    import db
+
+    try:
+        # 1. Obtener datos actuales del apartamento
+        apt = apartments.get_apartment(id)
+        if not apt:
+            flash("Apartamento no encontrado.", "error")
+            return redirect(url_for("apartments.list"))
+
+        # Obtener residentes adicionales
+        conn = db.get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT name, email, phone, role FROM residents WHERE unit_id = ?", (id,))
+        extra_residents = [dict(r) for r in cur.fetchall()]
+
+        # Obtener todas las facturas
+        cur.execute("SELECT id, description, amount, issued_date, due_date, paid, pending_amount, notes FROM invoices WHERE unit_id = ?", (id,))
+        invoices = [dict(r) for r in cur.fetchall()]
+
+        # Obtener todos los pagos correspondientes
+        payments = []
+        if invoices:
+            invoice_ids = [inv['id'] for inv in invoices]
+            placeholders = ",".join("?" for _ in invoice_ids)
+            cur.execute(f"SELECT id, invoice_id, amount, paid_date, method, notes FROM payments WHERE invoice_id IN ({placeholders})", tuple(invoice_ids))
+            payments = [dict(r) for r in cur.fetchall()]
+
+        # 2. Generar el backup JSON
+        backup_data = {
+            "archive_timestamp": datetime.now().isoformat(),
+            "apartment": {
+                "id": apt.get('id'),
+                "number": apt.get('number'),
+                "floor": apt.get('floor'),
+                "notes": apt.get('notes'),
+                "resident_name": apt.get('resident_name'),
+                "resident_role": apt.get('resident_role'),
+                "resident_email": apt.get('resident_email'),
+                "resident_phone": apt.get('resident_phone'),
+                "payment_terms": apt.get('payment_terms')
+            },
+            "extra_residents": extra_residents,
+            "invoices": invoices,
+            "payments": payments
+        }
+
+        # Asegurar directorio de backup
+        backup_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backups", "apartments")
+        os.makedirs(backup_dir, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_filename = f"apartment_{apt.get('number')}_{timestamp}.json"
+        backup_filepath = os.path.join(backup_dir, backup_filename)
+
+        with open(backup_filepath, "w", encoding="utf-8") as f:
+            json.dump(backup_data, f, ensure_ascii=False, indent=4)
+
+        # 3. Limpiar base de datos para empezar en cero
+        # Eliminar residentes adicionales en 'residents'
+        cur.execute("DELETE FROM residents WHERE unit_id = ?", (id,))
+
+        # Eliminar pagos y luego facturas (o cascada si está activa, pero explícito por seguridad)
+        if invoices:
+            invoice_ids = [inv['id'] for inv in invoices]
+            placeholders = ",".join("?" for _ in invoice_ids)
+            cur.execute(f"DELETE FROM payments WHERE invoice_id IN ({placeholders})", tuple(invoice_ids))
+            cur.execute("DELETE FROM invoices WHERE unit_id = ?", (id,))
+
+        # Reiniciar campos de residente en 'apartments'
+        cur.execute("""
+            UPDATE apartments
+            SET resident_name = NULL,
+                resident_role = 'tenant',
+                resident_email = NULL,
+                resident_phone = NULL,
+                notes = NULL
+            WHERE id = ?
+        """, (id,))
+
+        conn.commit()
+        conn.close()
+
+        # Limpiar cache
+        cache.clear()
+        
+        flash(f"Apartamento {apt.get('number')} archivado correctamente. Historial respaldado y reiniciado a cero.", "success")
+    except Exception as e:
+        logger.error(f"Error al archivar apartamento: {e}")
+        flash(f"Error al archivar apartamento: {str(e)}", "error")
+
+    return redirect(url_for("apartments.list"))

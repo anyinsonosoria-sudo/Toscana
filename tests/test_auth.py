@@ -10,7 +10,7 @@ def test_login_page_loads(client):
     """Test que la página de login carga correctamente"""
     response = client.get('/auth/login')
     assert response.status_code == 200
-    assert b'Building Maintenance' in response.data
+    assert b'Residencial Toscana' in response.data or b'Toscana' in response.data
 
 
 @pytest.mark.unit
@@ -34,7 +34,7 @@ def test_login_required_redirects(client):
         '/apartamentos/',
         '/gastos/',
         '/productos/',
-        '/facturacion',
+        '/ventas/facturas',
         '/reportes/',
         '/contabilidad/',
         '/empresa/'

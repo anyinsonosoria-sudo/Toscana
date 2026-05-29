@@ -279,6 +279,10 @@ def _register_context_processors(app: Flask) -> None:
     def inject_sidebar_menu():
         """Inyecta el menú del sidebar en todos los templates."""
         def get_sidebar_menu():
+            # Residentes solo ven el ítem de Dashboard principal (que está fijo en el HTML)
+            if current_user.is_authenticated and current_user.role == 'resident':
+                return []
+                
             default_menus = [
                 {
                     "key": "gestion",
@@ -424,10 +428,125 @@ def _register_routes(app: Flask) -> None:
         else:
             return redirect(url_for("auth.login"))
     
+    def resident_dashboard():
+        """Dashboard exclusivo e informativo para residentes."""
+        from datetime import datetime
+        import company
+        
+        my_apts = []
+        pending_invoices = []
+        paid_invoices = []
+        payments_history = []
+        total_pending = 0
+        total_paid_by_me = 0
+        
+        try:
+            conn = db.get_conn()
+            cur = conn.cursor()
+            
+            # Obtener apartamentos por email directo o desde la tabla residents
+            user_email = current_user.email
+            cur.execute("""
+                SELECT DISTINCT id, number, resident_name, resident_email, resident_phone, notes, floor
+                FROM (
+                    SELECT id, number, resident_name, resident_email, resident_phone, notes, floor
+                    FROM apartments 
+                    WHERE resident_email = ?
+                    UNION ALL
+                    SELECT a.id, a.number, r.name as resident_name, r.email as resident_email, r.phone as resident_phone, a.notes, a.floor
+                    FROM residents r
+                    JOIN apartments a ON r.unit_id = a.id
+                    WHERE r.email = ?
+                )
+            """, (user_email, user_email))
+            my_apts = [dict(r) for r in cur.fetchall()]
+            
+            unit_ids = [apt['id'] for apt in my_apts]
+            
+            if unit_ids:
+                placeholders = ",".join("?" for _ in unit_ids)
+                
+                # Facturas pendientes
+                cur.execute(f"""
+                    SELECT i.*, 
+                           COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) as total_paid
+                    FROM invoices i
+                    WHERE i.unit_id IN ({placeholders}) AND i.paid = 0
+                    ORDER BY i.issued_date DESC
+                """, tuple(unit_ids))
+                pending_raw = [dict(r) for r in cur.fetchall()]
+                for pi in pending_raw:
+                    pi['remaining'] = max(pi['amount'] - pi['total_paid'], 0)
+                    total_pending += pi['remaining']
+                    pending_invoices.append(pi)
+                    
+                # Facturas pagadas (histórico)
+                cur.execute(f"""
+                    SELECT i.*, 
+                           COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) as total_paid
+                    FROM invoices i
+                    WHERE i.unit_id IN ({placeholders}) AND i.paid = 1
+                    ORDER BY i.issued_date DESC
+                """, tuple(unit_ids))
+                paid_invoices = [dict(r) for r in cur.fetchall()]
+                
+                # Histórico de pagos (recibos)
+                cur.execute(f"""
+                    SELECT p.*, i.description as invoice_desc, a.number as apt_number, i.amount as invoice_total
+                    FROM payments p
+                    JOIN invoices i ON p.invoice_id = i.id
+                    JOIN apartments a ON i.unit_id = a.id
+                    WHERE i.unit_id IN ({placeholders})
+                    ORDER BY p.paid_date DESC
+                """, tuple(unit_ids))
+                payments_history = [dict(r) for r in cur.fetchall()]
+                total_paid_by_me = sum(p['amount'] for p in payments_history)
+            
+            conn.close()
+        except Exception as e:
+            app.logger.error(f"Error loading resident dashboard: {e}")
+            
+        # Generar últimos 6 meses para descarga de reportes
+        months = []
+        now = datetime.now()
+        spanish_months = {
+            1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
+            7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+        }
+        
+        for i in range(6):
+            m = now.month - i
+            y = now.year
+            while m <= 0:
+                m += 12
+                y -= 1
+            month_name = spanish_months[m]
+            ref_date = f"{y}-{m:02d}-01"
+            months.append({
+                'label': f"{month_name} {y}",
+                'ref_date': ref_date
+            })
+            
+        company_info = company.get_company_info() or {}
+        
+        return render_template(
+            "resident_dashboard.html",
+            apartments=my_apts,
+            pending_invoices=pending_invoices,
+            paid_invoices=paid_invoices,
+            payments_history=payments_history,
+            total_pending=total_pending,
+            total_paid=total_paid_by_me,
+            months=months,
+            company_info=company_info
+        )
+
     @app.route("/dashboard")
     @login_required
     def dashboard():
         """Dashboard principal con acciones rápidas y resumen."""
+        if current_user.role == 'resident':
+            return resident_dashboard()
         from datetime import datetime, timedelta
         import models
         import apartments

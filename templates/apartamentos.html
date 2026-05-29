@@ -52,16 +52,25 @@
                             </small>
                         </td>
                         <td data-label="Acciones">
-                            <button class="btn-action edit" onclick='editApt({{ apt | tojson }})' title="Editar">
-                                <i class="bi bi-pencil"></i>
-                            </button>
-                            <form method="POST" action="{{ url_for('apartments.delete', id=apt.id) }}" style="display:inline;" 
-                                  onsubmit="return confirm('¿Eliminar apartamento {{ apt.number }}?')">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="btn-action delete" title="Eliminar">
-                                    <i class="bi bi-trash"></i>
+                            <div style="display:flex; gap:0.25rem; align-items:center;">
+                                <button class="btn-action edit" onclick='editApt({{ apt | tojson }})' title="Editar">
+                                    <i class="bi bi-pencil"></i>
                                 </button>
-                            </form>
+                                <form method="POST" action="{{ url_for('apartments.archive', id=apt.id) }}" style="display:inline;" 
+                                      onsubmit="return confirm('¿Archivar apartamento {{ apt.number }}? Se guardará un respaldo del historial y se reiniciará a cero.')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-action archive" title="Archivar">
+                                        <i class="bi bi-archive-fill"></i>
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ url_for('apartments.delete', id=apt.id) }}" style="display:inline;" 
+                                      onsubmit="return confirm('¿Eliminar apartamento {{ apt.number }}?')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-action delete" title="Eliminar">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}

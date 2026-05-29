@@ -72,12 +72,12 @@ class TestBillingBlueprint:
     
     def test_list_invoices(self, auth_client):
         """Test listar facturas"""
-        response = auth_client.get('/facturacion')
+        response = auth_client.get('/ventas/facturas')
         assert response.status_code == 200
     
     def test_billing_requires_auth(self, client):
         """Test que requiere autenticación"""
-        response = client.get('/facturacion')
+        response = client.get('/ventas/facturas')
         assert response.status_code == 302
 
 

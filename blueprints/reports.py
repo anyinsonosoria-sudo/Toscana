@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from flask import Blueprint, render_template, request, jsonify, send_file, flash, redirect, url_for
-from flask_login import login_required
+from flask_login import login_required, current_user
 
 from utils.decorators import permission_required, admin_required, audit_log
 from extensions import cache
@@ -211,9 +211,15 @@ def monthly_send():
 
 @reports_bp.route('/mensual/preview.pdf')
 @login_required
-@permission_required('reportes.view')
 def monthly_preview_pdf():
     """Genera y devuelve el PDF de vista previa del reporte financiero mensual."""
+    # Permitir a residentes o usuarios con el permiso correspondiente
+    if current_user.role != 'resident':
+        from utils.permissions import check_permission
+        if not check_permission(current_user.id, 'reportes.view', current_user.role):
+            flash("No tienes permiso para ver este reporte", "warning")
+            abort(403)
+
     reference_dt = _parse_reference_date(request.args.get('reference_date')) or datetime.now()
     period_mode = _resolve_period_mode(request.args.get('period_mode'))
     report_data = reports.get_monthly_financial_report_data(

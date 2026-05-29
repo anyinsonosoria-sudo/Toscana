@@ -76,3 +76,4 @@ celerybeat.pid
 *.bak
 *.backup
 *_backup.py
+backups/

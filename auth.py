@@ -100,12 +100,19 @@ def register():
     """
     Registro de nuevos usuarios (solo admins) con rate limiting
     """
+    import apartments
     
     # Solo administradores pueden registrar usuarios
     if not current_user.is_admin():
         flash('No tienes permisos para registrar usuarios', 'error')
         return redirect(url_for('index'))
     
+    try:
+        apts = apartments.list_apartments()
+    except Exception as e:
+        logger.error(f"Error listing apartments on registration: {e}")
+        apts = []
+
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip()
@@ -113,6 +120,7 @@ def register():
         password_confirm = request.form.get('password_confirm', '')
         full_name = request.form.get('full_name', '').strip()
         role = request.form.get('role', 'operator')
+        apartment_id = request.form.get('apartment_id', '').strip()
         
         # Validaciones
         errors = []
@@ -135,7 +143,7 @@ def register():
         if errors:
             for error in errors:
                 flash(error, 'error')
-            return render_template('register.html')
+            return render_template('register.html', apartments=apts)
         
         # Intentar crear usuario
         try:
@@ -147,18 +155,30 @@ def register():
                 role=role
             )
             
+            # Asociar apartamento si el rol es 'resident' y apartment_id está seleccionado
+            if role == 'resident' and apartment_id:
+                try:
+                    apartments.update_apartment(
+                        int(apartment_id), 
+                        resident_email=email, 
+                        resident_name=full_name or username
+                    )
+                except Exception as ex:
+                    logger.error(f"Error associating apartment on registration: {ex}")
+                    flash(f"Usuario creado, pero hubo un error asociando el apartamento: {ex}", "warning")
+
             flash(f'Usuario {username} creado exitosamente', 'success')
             return redirect(url_for('auth.list_users'))
             
         except ValueError as e:
             flash(str(e), 'error')
-            return render_template('register.html')
+            return render_template('register.html', apartments=apts)
         except Exception as e:
             flash(f'Error al crear usuario: {str(e)}', 'error')
-            return render_template('register.html')
+            return render_template('register.html', apartments=apts)
     
     # GET request
-    return render_template('register.html')
+    return render_template('register.html', apartments=apts)
 
 
 @auth_bp.route('/users')
@@ -170,8 +190,14 @@ def list_users():
         flash('No tienes permisos para ver usuarios', 'error')
         return redirect(url_for('index'))
     
+    import apartments
+    try:
+        apts = apartments.list_apartments()
+    except Exception as e:
+        apts = []
+        
     users = user_model.list_users()
-    return render_template('users.html', users=users)
+    return render_template('users.html', users=users, apartments=apts)
 
 
 @auth_bp.route('/users/deactivate/<int:user_id>', methods=['POST'])
@@ -255,6 +281,8 @@ def change_password():
 def edit_user(user_id):
     """Editar usuario y asignar rol"""
     from utils.decorators import admin_required
+    import db
+    import apartments
     
     # Solo admin puede editar usuarios
     if current_user.role != 'admin':
@@ -266,20 +294,39 @@ def edit_user(user_id):
         flash('Usuario no encontrado', 'error')
         return redirect(url_for('auth.list_users'))
     
+    try:
+        apts = apartments.list_apartments()
+    except Exception as e:
+        logger.error(f"Error listing apartments in edit_user: {e}")
+        apts = []
+    
     if request.method == 'POST':
         full_name = request.form.get('full_name', '').strip()
         email = request.form.get('email', '').strip()
         role = request.form.get('role', 'operator')
+        apartment_id = request.form.get('apartment_id', '').strip()
         
         # Validar rol
         if role not in ['admin', 'operator', 'resident']:
             flash('Rol inválido', 'error')
-            return render_template('edit_user.html', user=user)
+            conn_db = db.get_conn()
+            cur_db = conn_db.cursor()
+            cur_db.execute("SELECT id FROM apartments WHERE resident_email = ? LIMIT 1", (user.email,))
+            linked_apt_row = cur_db.fetchone()
+            linked_apartment_id = linked_apt_row['id'] if linked_apt_row else None
+            conn_db.close()
+            return render_template('edit_user.html', user=user, apartments=apts, linked_apartment_id=linked_apartment_id)
         
         # No permitir cambiar rol del usuario actual
         if user_id == current_user.id:
             flash('No puedes cambiar tu propio rol', 'error')
-            return render_template('edit_user.html', user=user)
+            conn_db = db.get_conn()
+            cur_db = conn_db.cursor()
+            cur_db.execute("SELECT id FROM apartments WHERE resident_email = ? LIMIT 1", (user.email,))
+            linked_apt_row = cur_db.fetchone()
+            linked_apartment_id = linked_apt_row['id'] if linked_apt_row else None
+            conn_db.close()
+            return render_template('edit_user.html', user=user, apartments=apts, linked_apartment_id=linked_apartment_id)
         
         try:
             # Actualizar usuario
@@ -293,12 +340,41 @@ def edit_user(user_id):
             conn.commit()
             conn.close()
             
+            # Desasociar apartments vinculados anteriormente con el email viejo/nuevo para re-vincular
+            conn_db = db.get_conn()
+            cur_db = conn_db.cursor()
+            cur_db.execute("UPDATE apartments SET resident_email = NULL WHERE resident_email = ?", (email,))
+            if user.email != email:
+                cur_db.execute("UPDATE apartments SET resident_email = NULL WHERE resident_email = ?", (user.email,))
+            conn_db.commit()
+            conn_db.close()
+            
+            # Asociar apartamento si el rol es 'resident' y apartment_id está seleccionado
+            if role == 'resident' and apartment_id:
+                try:
+                    apartments.update_apartment(
+                        int(apartment_id), 
+                        resident_email=email, 
+                        resident_name=full_name or user.username
+                    )
+                except Exception as ex:
+                    logger.error(f"Error associating apartment on update: {ex}")
+                    flash(f"Usuario actualizado, pero hubo un error asociando el apartamento: {ex}", "warning")
+            
             flash(f'Usuario {user.username} actualizado correctamente', 'success')
             return redirect(url_for('auth.list_users'))
         except Exception as e:
             flash(f'Error al actualizar usuario: {str(e)}', 'error')
     
-    return render_template('edit_user.html', user=user)
+    # GET request
+    conn_db = db.get_conn()
+    cur_db = conn_db.cursor()
+    cur_db.execute("SELECT id FROM apartments WHERE resident_email = ? LIMIT 1", (user.email,))
+    linked_apt_row = cur_db.fetchone()
+    linked_apartment_id = linked_apt_row['id'] if linked_apt_row else None
+    conn_db.close()
+    
+    return render_template('edit_user.html', user=user, apartments=apts, linked_apartment_id=linked_apartment_id)
 
 
 @auth_bp.route('/users/<int:user_id>/delete', methods=['POST'])

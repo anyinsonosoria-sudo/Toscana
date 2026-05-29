@@ -14,6 +14,11 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
     <style>:root { --primary: {{ get_accent_color() }}; --primary-color: {{ get_accent_color() }}; }</style>
+    <script>
+        // Aplicar el tema configurado de inmediato para evitar destellos (FOUC)
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -108,6 +113,9 @@
                 </div>
             </div>
             <div class="sidebar-user-actions">
+                <button onclick="toggleTheme()" class="btn btn-sm btn-outline-light" title="Cambiar Tema" id="theme-toggle-btn">
+                    <i class="bi bi-moon-stars"></i>
+                </button>
                 <a href="{{ url_for('auth.change_password') }}" class="btn btn-sm btn-outline-light" title="Contraseña">
                     <i class="bi bi-key"></i>
                 </a>
@@ -145,6 +153,33 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/es.js"></script>
     <script src="{{ url_for('static', filename='js/wizard.js') }}"></script>
+    <script>
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeBtnIcon(newTheme);
+        }
+
+        function updateThemeBtnIcon(theme) {
+            const btn = document.getElementById('theme-toggle-btn');
+            if (btn) {
+                const icon = btn.querySelector('i');
+                if (theme === 'dark') {
+                    icon.className = 'bi bi-sun';
+                } else {
+                    icon.className = 'bi bi-moon-stars';
+                }
+            }
+        }
+
+        // Ejecutar al cargar la página
+        document.addEventListener('DOMContentLoaded', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+            updateThemeBtnIcon(currentTheme);
+        });
+    </script>
     {% block extra_js %}{% endblock %}
     <script>
     if ('serviceWorker' in navigator) {

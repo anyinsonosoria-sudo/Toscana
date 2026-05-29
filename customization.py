@@ -26,7 +26,15 @@ from typing import Dict, Optional
 from db import get_conn
 
 def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
-    """Get a customization setting by key"""
+    """Get a customization setting by key with request-level caching"""
+    try:
+        from flask import has_app_context, g
+        if has_app_context():
+            if 'customization_settings' not in g:
+                g.customization_settings = get_all_settings()
+            return g.customization_settings.get(key, default)
+    except Exception:
+        pass
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("SELECT setting_value FROM customization_settings WHERE setting_key=?", (key,))
@@ -46,15 +54,34 @@ def set_setting(key: str, value: str) -> None:
                 (key, value))
     conn.commit()
     conn.close()
+    try:
+        from flask import has_app_context, g
+        if has_app_context() and 'customization_settings' in g:
+            g.customization_settings[key] = value
+    except Exception:
+        pass
 
 def get_all_settings() -> Dict[str, str]:
-    """Get all customization settings as a dictionary"""
+    """Get all customization settings as a dictionary with request-level caching"""
+    try:
+        from flask import has_app_context, g
+        if has_app_context() and 'customization_settings' in g:
+            return g.customization_settings
+    except Exception:
+        pass
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("SELECT setting_key, setting_value FROM customization_settings")
     rows = cur.fetchall()
     conn.close()
-    return {row["setting_key"]: row["setting_value"] for row in rows}
+    result = {row["setting_key"]: row["setting_value"] for row in rows}
+    try:
+        from flask import has_app_context, g
+        if has_app_context():
+            g.customization_settings = result
+    except Exception:
+        pass
+    return result
 
 def get_settings_with_defaults() -> Dict[str, str]:
     """Get all settings with default values"""

@@ -1320,7 +1320,6 @@ def get_invoice_api(invoice_id):
 
 @billing_bp.route('/facturas/pdf/<int:invoice_id>', endpoint='view_invoice_pdf')
 @login_required
-@permission_required('facturacion.view')
 def view_invoice_pdf(invoice_id):
     """Ver/descargar PDF de una factura"""
     try:
@@ -1328,7 +1327,35 @@ def view_invoice_pdf(invoice_id):
         invoice = models.get_invoice_by_id(invoice_id)
         if not invoice:
             flash("Factura no encontrada", "error")
+            if current_user.role == 'resident':
+                return redirect(url_for('dashboard'))
             return redirect(url_for('billing.invoices'))
+        
+        # Validación de propiedad para residentes o permisos para operadores/admins
+        if current_user.role == 'resident':
+            from db import get_conn
+            allowed_unit_ids = set()
+            try:
+                conn = get_conn()
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT id FROM apartments WHERE resident_email = ?
+                    UNION
+                    SELECT unit_id FROM residents WHERE email = ?
+                """, (current_user.email, current_user.email))
+                allowed_unit_ids = {row[0] for row in cur.fetchall() if row[0] is not None}
+                conn.close()
+            except Exception as e:
+                logger.error(f"Error checking resident apartments ownership: {e}")
+            
+            if invoice.get('unit_id') not in allowed_unit_ids:
+                flash("Acceso denegado: esta factura no pertenece a su apartamento", "error")
+                return redirect(url_for('dashboard'))
+        else:
+            from utils.permissions import check_permission
+            if not check_permission(current_user.id, 'facturacion.view', current_user.role):
+                flash("No tienes permiso para ver esta factura", "warning")
+                abort(403)
         
         # Construir la ruta al PDF
         pdf_filename = f"invoice_{invoice_id}.pdf"
@@ -1369,6 +1396,8 @@ def view_invoice_pdf(invoice_id):
             except Exception as e:
                 logger.error(f"Error generando PDF: {e}")
                 flash("No se pudo generar el PDF de la factura", "error")
+                if current_user.role == 'resident':
+                    return redirect(url_for('dashboard'))
                 return redirect(url_for('billing.invoices'))
         
         # Servir el archivo PDF
@@ -1382,6 +1411,8 @@ def view_invoice_pdf(invoice_id):
     except Exception as e:
         logger.error(f"Error en view_invoice_pdf: {e}")
         flash("Error al cargar el PDF", "error")
+        if current_user.role == 'resident':
+            return redirect(url_for('dashboard'))
         return redirect(url_for('billing.invoices'))
 
 

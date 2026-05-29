@@ -1,10 +1,52 @@
 import os
+import socket
 import tempfile
 import subprocess
+from contextlib import contextmanager
 from email.message import EmailMessage
 from html import escape
 import smtplib
 from pathlib import Path
+
+
+@contextmanager
+def _prefer_ipv4_resolution(enabled: bool = False):
+    """Reordena la resolucion DNS para intentar IPv4 antes que IPv6 cuando sea necesario."""
+    if not enabled:
+        yield
+        return
+
+    original_getaddrinfo = socket.getaddrinfo
+
+    def _ipv4_first_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+        results = original_getaddrinfo(host, port, family, type, proto, flags)
+        ipv4_results = [result for result in results if result[0] == socket.AF_INET]
+        other_results = [result for result in results if result[0] != socket.AF_INET]
+        return ipv4_results + other_results
+
+    socket.getaddrinfo = _ipv4_first_getaddrinfo
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = original_getaddrinfo
+
+
+def _should_retry_with_ipv4(exc: OSError) -> bool:
+    message = str(exc).lower()
+    return getattr(exc, 'errno', None) == 101 or 'network is unreachable' in message
+
+
+def _open_smtp_connection(host: str, port: int, prefer_ipv4: bool = False):
+    with _prefer_ipv4_resolution(prefer_ipv4):
+        if port == 465:
+            smtp = smtplib.SMTP_SSL(host, port)
+            smtp.ehlo()
+        else:
+            smtp = smtplib.SMTP(host, port)
+            smtp.ehlo()
+            smtp.starttls()
+            smtp.ehlo()
+    return smtp
 
 def generate_invoice_html(invoice: dict, unit: dict) -> str:
     # Formatear montos con separadores correctos
@@ -108,14 +150,13 @@ def send_email(to_email, subject: str, html: str, attach_pdf=None, attachments=N
     if (user and not passwd) or (passwd and not user):
         raise RuntimeError("SMTP_USER and SMTP_PASSWORD must be configured together")
 
-    if port == 465:
-        smtp = smtplib.SMTP_SSL(host, port)
-        smtp.ehlo()
-    else:
-        smtp = smtplib.SMTP(host, port)
-        smtp.ehlo()
-        smtp.starttls()
-        smtp.ehlo()
+    try:
+        smtp = _open_smtp_connection(host, port)
+    except OSError as exc:
+        if not _should_retry_with_ipv4(exc):
+            raise
+        smtp = _open_smtp_connection(host, port, prefer_ipv4=True)
+
     try:
         if not (user and passwd) and smtp.has_extn("auth"):
             raise RuntimeError(

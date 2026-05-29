@@ -879,3 +879,60 @@ def test_send_email_requires_smtp_credentials_when_server_advertises_auth(monkey
 
     assert captured['client'].sent is False
     assert captured['client'].quit_called is True
+
+
+def test_send_email_retries_with_ipv4_when_default_route_is_unreachable(monkeypatch):
+    class FakeSMTP:
+        def __init__(self, host, port):
+            self.host = host
+            self.port = port
+            self.starttls_called = False
+            self.login_called = False
+            self.sent = False
+            self.quit_called = False
+
+        def ehlo(self):
+            return 250, b'OK'
+
+        def starttls(self):
+            self.starttls_called = True
+
+        def has_extn(self, name):
+            return False
+
+        def login(self, user, password):
+            self.login_called = True
+
+        def send_message(self, msg):
+            self.sent = True
+
+        def quit(self):
+            self.quit_called = True
+
+    original_getaddrinfo = senders.socket.getaddrinfo
+    attempts = []
+    captured = {}
+
+    def fake_smtp(host, port):
+        attempts.append(senders.socket.getaddrinfo is original_getaddrinfo)
+        if senders.socket.getaddrinfo is original_getaddrinfo:
+            raise OSError(101, 'Network is unreachable')
+        client = FakeSMTP(host, port)
+        captured['client'] = client
+        return client
+
+    monkeypatch.setenv('SMTP_HOST', 'smtp.gmail.com')
+    monkeypatch.setenv('SMTP_PORT', '587')
+    monkeypatch.setenv('SMTP_USER', 'user@example.com')
+    monkeypatch.setenv('SMTP_PASSWORD', 'secret')
+    monkeypatch.setenv('SMTP_FROM', 'user@example.com')
+    monkeypatch.setattr(senders.smtplib, 'SMTP', fake_smtp)
+
+    senders.send_email('cliente@example.com', 'Prueba', '<p>Hola</p>')
+
+    assert attempts == [True, False]
+    assert captured['client'].starttls_called is True
+    assert captured['client'].login_called is True
+    assert captured['client'].sent is True
+    assert captured['client'].quit_called is True
+    assert senders.socket.getaddrinfo is original_getaddrinfo

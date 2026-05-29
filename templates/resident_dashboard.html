@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+{% block title %}Dashboard del Residente - Toscana{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4" style="max-width: 1400px; margin: 0 auto;">
+    
+    <!-- Welcome Header / Modern Hero -->
+    <div class="row align-items-center mb-4 g-3">
+        <div class="col-md-8">
+            <div class="d-flex align-items-center gap-3">
+                <div class="resident-avatar-glow">
+                    <i class="bi bi-shield-check" style="font-size: 2rem; color: #4F46E5;"></i>
+                </div>
+                <div>
+                    <h2 class="mb-1" style="font-weight: 800; letter-spacing: -0.5px;">¡Hola, {{ current_user.full_name or current_user.username }}!</h2>
+                    <p class="mb-0 text-muted" style="font-size: 0.95rem;">Bienvenido a tu portal informativo residencial. Aquí tienes el estado en tiempo real de tu cuenta.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 text-md-end">
+            <span class="badge bg-secondary-glow px-3 py-2 text-primary" style="font-weight: 600; border-radius: 30px;">
+                <i class="bi bi-clock-history me-1"></i> Actualizado: Hace un momento
+            </span>
+        </div>
+    </div>
+
+    <!-- Quick Status Cards -->
+    <div class="row g-3 mb-4">
+        <!-- Card 1: Balance Pendiente -->
+        <div class="col-md-4">
+            <div class="card resident-card-shadow border-0 {% if total_pending > 0 %}resident-card-alert{% else %}resident-card-success{% endif %}" style="border-radius: var(--radius); height: 100%; transition: transform 0.2s;">
+                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <span class="text-muted text-uppercase" style="font-size: 0.75rem; font-weight: 700; letter-spacing: 1px;">Estado de Balance</span>
+                            {% if total_pending > 0 %}
+                            <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill px-2.5 py-1" style="font-size: 0.75rem; font-weight: 600;">
+                                <i class="bi bi-exclamation-circle me-1"></i> Pendiente de Pago
+                            </span>
+                            {% else %}
+                            <span class="badge bg-success bg-opacity-10 text-success rounded-pill px-2.5 py-1" style="font-size: 0.75rem; font-weight: 600;">
+                                <i class="bi bi-check-circle me-1"></i> Al día
+                            </span>
+                            {% endif %}
+                        </div>
+                        <h1 class="mb-2" style="font-weight: 900; letter-spacing: -1px; font-size: 2.2rem; color: {% if total_pending > 0 %}var(--danger){% else %}var(--success){% endif %};">
+                            RD$ {{ "{:,.2f}".format(total_pending) }}
+                        </h1>
+                        <p class="text-muted small mb-0">Total acumulado a pagar para todos tus apartamentos vinculados.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 2: Total Aportado / Histórico -->
+        <div class="col-md-4">
+            <div class="card resident-card-shadow border-0" style="border-radius: var(--radius); height: 100%; min-height: 140px; background: var(--card-bg, #fff);">
+                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <span class="text-muted text-uppercase" style="font-size: 0.75rem; font-weight: 700; letter-spacing: 1px;">Total Aportado</span>
+                            <span class="badge bg-primary bg-opacity-10 text-primary rounded-pill px-2.5 py-1" style="font-size: 0.75rem; font-weight: 600;">
+                                <i class="bi bi-bar-chart me-1"></i> Histórico
+                            </span>
+                        </div>
+                        <h1 class="mb-2" style="font-weight: 800; letter-spacing: -1px; font-size: 2.2rem; color: var(--primary);">
+                            RD$ {{ "{:,.2f}".format(total_paid) }}
+                        </h1>
+                        <p class="text-muted small mb-0">Monto total pagado reportado en el sistema.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 3: Apartamentos Vinculados -->
+        <div class="col-md-4">
+            <div class="card resident-card-shadow border-0" style="border-radius: var(--radius); height: 100%; min-height: 140px; background: var(--card-bg, #fff);">
+                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <span class="text-muted text-uppercase" style="font-size: 0.75rem; font-weight: 700; letter-spacing: 1px;">Apartamentos</span>
+                            <span class="badge bg-info bg-opacity-10 text-info rounded-pill px-2.5 py-1" style="font-size: 0.75rem; font-weight: 600;">
+                                <i class="bi bi-house me-1"></i> Vinculados
+                            </span>
+                        </div>
+                        <h1 class="mb-2" style="font-weight: 800; letter-spacing: -1.5px; font-size: 2.2rem; color: var(--info);">
+                            {{ apartments|length }}
+                        </h1>
+                        <p class="text-muted small mb-0">
+                            Unidades: {% for apt in apartments %}<strong style="color: var(--text-color);">Apto {{ apt.number }}</strong>{% if not loop.last %}, {% endif %}{% else %}Ninguna unidad vinculada todavía.{% endfor %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="row g-4">
+        
+        <!-- Left Side: Invoices and Payments -->
+        <div class="col-lg-8">
+            <!-- PENDING INVOICES -->
+            <div class="card border-0 mb-4 resident-card-shadow" style="border-radius: var(--radius); background: var(--card-bg, #fff);">
+                <div class="card-header bg-transparent border-0 pt-4 px-4 pb-2 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0" style="font-weight: 700; letter-spacing: -0.2px;">
+                        <i class="bi bi-receipt-cutoff text-warning me-2"></i>Facturas Pendientes
+                    </h5>
+                    <span class="badge bg-warning bg-opacity-10 text-warning" style="font-weight: 600;">{{ pending_invoices|length }} pendientes</span>
+                </div>
+                <div class="card-body px-4 pb-4">
+                    {% if pending_invoices %}
+                    <div class="table-responsive">
+                        <table class="table align-middle border-0 mb-0 table-hover">
+                            <thead>
+                                <tr style="border-bottom: 2px solid var(--gray-200); font-weight: 600; font-size: 0.85rem; color: var(--gray-500);">
+                                    <th scope="col" class="pb-3 border-0">Concepto / Descripción</th>
+                                    <th scope="col" class="pb-3 border-0 text-end">Monto Original</th>
+                                    <th scope="col" class="pb-3 border-0 text-end">Pendiente</th>
+                                    <th scope="col" class="pb-3 border-0 text-center">Fecha Emisión</th>
+                                    <th scope="col" class="pb-3 border-0 text-center">Vencimiento</th>
+                                    <th scope="col" class="pb-3 border-0 text-end">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for inv in pending_invoices %}
+                                <tr class="invoice-item-row" style="border-bottom: 1px solid var(--gray-100);">
+                                    <td class="py-3 border-0">
+                                        <div style="font-weight: 600; color: var(--text-color);">{{ inv.description }}</div>
+                                        <div class="text-mono small mt-0.5" style="color: var(--gray-500); font-size: 0.75rem;">
+                                            <i class="bi bi-building me-1"></i> Unidad Asociada
+                                        </div>
+                                    </td>
+                                    <td class="py-3 border-0 text-end" style="font-weight: 500; font-size: 0.95rem;">
+                                        RD$ {{ "{:,.2f}".format(inv.amount) }}
+                                    </td>
+                                    <td class="py-3 border-0 text-end" style="font-weight: 700; font-size: 0.95rem; color: var(--danger);">
+                                        RD$ {{ "{:,.2f}".format(inv.remaining) }}
+                                    </td>
+                                    <td class="py-3 border-0 text-center text-muted" style="font-size: 0.85rem;">
+                                        {{ inv.issued_date }}
+                                    </td>
+                                    <td class="py-3 border-0 text-center" style="font-size: 0.85rem;">
+                                        {% if inv.due_date %}
+                                        <span class="text-danger" style="font-weight: 500;">
+                                            <i class="bi bi-calendar-event me-1"></i> {{ inv.due_date }}
+                                        </span>
+                                        {% else %}
+                                        <span class="text-muted">N/A</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="py-3 border-0 text-end">
+                                        <a href="{{ url_for('billing.view_invoice_pdf', invoice_id=inv.id) }}" target="_blank" class="btn btn-sm btn-action-download" title="Ver / Descargar PDF">
+                                            <i class="bi bi-file-pdf me-1"></i> Ver PDF
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <div class="mb-3">
+                            <span class="d-inline-block p-3 rounded-circle bg-success bg-opacity-10 text-success">
+                                <i class="bi bi-check-circle" style="font-size: 2.2rem;"></i>
+                            </span>
+                        </div>
+                        <h5 class="mb-1" style="font-weight: 700;">¡No tienes facturas pendientes!</h5>
+                        <p class="text-muted small">Tu cuenta se encuentra totalmente libre de saldos a pagar.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- PAYMENT HISTORY -->
+            <div class="card border-0 resident-card-shadow" style="border-radius: var(--radius); background: var(--card-bg, #fff);">
+                <div class="card-header bg-transparent border-0 pt-4 px-4 pb-2">
+                    <h5 class="mb-0" style="font-weight: 700; letter-spacing: -0.2px;">
+                        <i class="bi bi-clock-history text-success me-2"></i>Historial de Pagos
+                    </h5>
+                    <p class="text-muted small mb-0 mt-1">Lista completa de aportes y pagos registrados para tus unidades.</p>
+                </div>
+                <div class="card-body px-4 pb-4">
+                    {% if payments_history %}
+                    <div class="table-responsive">
+                        <table class="table align-middle border-0 mb-0 table-hover">
+                            <thead>
+                                <tr style="border-bottom: 2px solid var(--gray-200); font-weight: 600; font-size: 0.85rem; color: var(--gray-500);">
+                                    <th scope="col" class="pb-3 border-0">Concepto de Factura</th>
+                                    <th scope="col" class="pb-3 border-0">Método de Pago</th>
+                                    <th scope="col" class="pb-3 border-0 text-center">Unidad</th>
+                                    <th scope="col" class="pb-3 border-0 text-center">Fecha Pago</th>
+                                    <th scope="col" class="pb-3 border-0 text-end">Monto Recibido</th>
+                                    <th scope="col" class="pb-3 border-0 text-end">Recibo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for pay in payments_history %}
+                                <tr style="border-bottom: 1px solid var(--gray-100);">
+                                    <td class="py-3 border-0">
+                                        <div style="font-weight: 600; color: var(--text-color);">{{ pay.invoice_desc }}</div>
+                                        {% if pay.notes %}
+                                        <div class="text-muted small mt-0.5" style="font-size: 0.78rem;">
+                                            <i class="bi bi-chat-text me-1"></i> {{ pay.notes }}
+                                        </div>
+                                        {% endif %}
+                                    </td>
+                                    <td class="py-3 border-0">
+                                        <span class="badge bg-secondary-glow text-capitalize" style="font-size: 0.78rem; font-weight: 600; border-radius: 8px;">
+                                            {{ pay.method }}
+                                        </span>
+                                    </td>
+                                    <td class="py-3 border-0 text-center" style="font-weight: 500;">
+                                        Apto {{ pay.apt_number }}
+                                    </td>
+                                    <td class="py-3 border-0 text-center text-muted" style="font-size: 0.85rem;">
+                                        {{ pay.paid_date }}
+                                    </td>
+                                    <td class="py-3 border-0 text-end font-mono" style="font-weight: 700; color: var(--success); font-size: 0.95rem;">
+                                        + RD$ {{ "{:,.2f}".format(pay.amount) }}
+                                    </td>
+                                    <td class="py-3 border-0 text-end">
+                                        <a href="{{ url_for('billing.view_invoice_pdf', invoice_id=pay.invoice_id) }}" target="_blank" class="btn btn-sm btn-outline-secondary" style="border-radius: 8px;" title="Ver factura / Recibo original">
+                                            <i class="bi bi-receipt"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <div class="mb-3">
+                            <span class="d-inline-block p-3 rounded-circle bg-light text-muted">
+                                <i class="bi bi-wallet2" style="font-size: 2.2rem;"></i>
+                            </span>
+                        </div>
+                        <h6 class="mb-1">No hay pagos registrados.</h6>
+                        <p class="text-muted small mb-0">Cuando realices pagos, aparecerán reflejados aquí de inmediato.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side: Monthly Community Reports & Help -->
+        <div class="col-lg-4">
+            
+            <!-- MONTHLY FINANCIAL REPORT SECTION -->
+            <div class="card border-0 mb-4 resident-card-shadow" style="border-radius: var(--radius); background: var(--card-bg, #fff);">
+                <div class="card-header bg-transparent border-0 pt-4 px-4 pb-2">
+                    <h5 class="mb-0" style="font-weight: 700; letter-spacing: -0.2px;">
+                        <i class="bi bi-graph-up-arrow text-primary me-2"></i>Reporte Económico
+                    </h5>
+                    <p class="text-muted small mb-0 mt-1">Descarga o visualiza la situación económica y de gastos general del residencial.</p>
+                </div>
+                <div class="card-body px-4 pb-4">
+                    <div class="report-box-glow mb-4 text-center p-4" style="background: rgba(79, 70, 229, 0.04); border: 1px dashed rgba(79, 70, 229, 0.15); border-radius: 16px;">
+                        <div class="mb-3">
+                            <i class="bi bi-file-earmark-bar-graph" style="font-size: 2.8rem; color: var(--primary);"></i>
+                        </div>
+                        <h6 class="mb-2" style="font-weight: 700;">Reporte del Último Mes</h6>
+                        <p class="text-muted small mb-3">La administración publica mensualmente el reporte financiero consolidado del residencial.</p>
+                        
+                        <a href="{{ url_for('reports.monthly_preview_pdf') }}" target="_blank" class="btn btn-primary w-100 py-2.5" style="border-radius: 12px; font-weight: 600;">
+                            <i class="bi bi-cloud-arrow-down-fill me-1"></i> Descargar Reporte Actual
+                        </a>
+                    </div>
+
+                    <!-- PREVIOUS MONTHS SELECTOR -->
+                    <h6 class="mb-3" style="font-weight: 600; font-size: 0.85rem; color: var(--gray-500); text-uppercase: true; letter-spacing: 0.5px;">Histórico de Meses</h6>
+                    <ul class="list-group list-group-flush mb-0 border-0">
+                        {% for month in months %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-3 bg-transparent border-0" style="border-bottom: 1px solid var(--gray-100) !important;">
+                            <div class="d-flex align-items-center gap-2.5">
+                                <span class="d-inline-flex align-items-center justify-content-center bg-light text-primary rounded-circle" style="width: 32px; height: 32px;">
+                                    <i class="bi bi-calendar3" style="font-size: 0.85rem;"></i>
+                                </span>
+                                <span style="font-weight: 600; color: var(--text-color); font-size: 0.95rem;">{{ month.label }}</span>
+                            </div>
+                            <a href="{{ url_for('reports.monthly_preview_pdf') }}?reference_date={{ month.ref_date }}" target="_blank" class="btn btn-sm btn-outline-primary px-3 rounded-pill" style="font-size: 0.8rem; font-weight: 600;">
+                                <i class="bi bi-file-pdf"></i> PDF
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <!-- CONTACT AND FEEDBACK -->
+            <div class="card border-0 resident-card-shadow" style="border-radius: var(--radius); background: linear-gradient(135deg, #1E1B4B 0%, #312E81 100%); color: #fff;">
+                <div class="card-body p-4 text-center">
+                    <div class="mb-3 text-warning">
+                        <i class="bi bi-info-circle-fill" style="font-size: 2.2rem;"></i>
+                    </div>
+                    <h5 class="mb-2" style="font-weight: 700; color: #fff;">¿Preguntas o reportar pago?</h5>
+                    <p class="text-blue-100 small mb-4" style="color: rgba(224, 242, 254, 0.85); font-size: 0.85rem;">
+                        Si has realizado una transferencia, o tienes dudas sobre tus facturas, envíanos un correo o contacta a la administración.
+                    </p>
+                    
+                    {% if company_info %}
+                    <div class="mb-3 text-start bg-white bg-opacity-10 p-3" style="border-radius: 12px; font-size: 0.85rem;">
+                        {% if company_info.name %}
+                        <div class="mb-1.5"><i class="bi bi-building text-warning me-1.5"></i> <strong>{{ company_info.name }}</strong></div>
+                        {% endif %}
+                        {% if company_info.phone %}
+                        <div class="mb-1.5"><i class="bi bi-telephone text-warning me-1.5"></i> {{ company_info.phone }}</div>
+                        {% endif %}
+                        {% if company_info.email %}
+                        <div><i class="bi bi-envelope text-warning me-1.5"></i> {{ company_info.email }}</div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    
+                    <span class="badge bg-warning bg-opacity-20 text-warning px-3 py-2 text-wrap w-100" style="font-size: 0.8rem; border-radius: 10px;">
+                        <i class="bi bi-check-lg me-1"></i> Toscana: Portal Informativo Residente v2.0
+                    </span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<style>
+/* Modern visual enhancements for Resident Dashboard */
+.resident-avatar-glow {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: rgba(79, 70, 229, 0.1);
+    border: 1px solid rgba(79, 70, 229, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 10px rgba(79, 70, 229, 0.05);
+}
+
+.resident-card-shadow {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+}
+
+.resident-card-alert {
+    background: linear-gradient(to bottom right, var(--card-bg, #fff), var(--card-bg, #fff));
+    border-left: 5px solid var(--danger) !important;
+}
+
+.resident-card-success {
+    background: linear-gradient(to bottom right, var(--card-bg, #fff), var(--card-bg, #fff));
+    border-left: 5px solid var(--success) !important;
+}
+
+.bg-secondary-glow {
+    background: rgba(79, 70, 229, 0.06);
+}
+
+/* Custom button styles */
+.btn-action-download {
+    background: rgba(79, 70, 229, 0.08);
+    color: var(--primary);
+    border: none;
+    font-weight: 600;
+    font-size: 0.8rem;
+    padding: 0.45rem 1rem;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.btn-action-download:hover {
+    background: var(--primary);
+    color: white;
+}
+
+.invoice-item-row:hover {
+    background-color: rgba(79, 70, 229, 0.015);
+}
+
+/* Theme variables overrides */
+[data-theme="dark"] .resident-card-shadow {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+[data-theme="dark"] .resident-avatar-glow {
+    background: rgba(129, 140, 248, 0.15);
+}
+[data-theme="dark"] .invoice-item-row:hover {
+    background-color: rgba(255, 255, 255, 0.02) !important;
+}
+[data-theme="dark"] .bg-light {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+}
+</style>
+{% endblock %}

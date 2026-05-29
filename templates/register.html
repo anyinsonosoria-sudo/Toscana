@@ -32,10 +32,20 @@
 
             <div style="margin-bottom:1.25rem;">
                 <label class="wizard-step-label">Rol</label>
-                <select name="role" class="wizard-select" required>
+                <select name="role" id="role_select" class="wizard-select" required onchange="toggleApartmentSelect()">
                     <option value="operator" selected>Operador</option>
                     <option value="admin">Administrador</option>
                     <option value="resident">Residente</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom:1.25rem; display:none;" id="apartment_group">
+                <label class="wizard-step-label">Asociar Apartamento</label>
+                <select name="apartment_id" class="wizard-select">
+                    <option value="">-- No asociar / Seleccionar apartamento --</option>
+                    {% for apt in apartments %}
+                    <option value="{{ apt.id }}">{{ apt.number }} ({{ apt.resident_name or 'Sin residente asignado' }})</option>
+                    {% endfor %}
                 </select>
             </div>
 
@@ -62,5 +72,19 @@ document.getElementById('reg_confirm').addEventListener('input', function() {
     const pw = document.getElementById('reg_password').value;
     this.setCustomValidity(pw !== this.value ? 'Las contraseñas no coinciden' : '');
 });
+
+function toggleApartmentSelect() {
+    const roleSelect = document.getElementById('role_select');
+    const aptGroup = document.getElementById('apartment_group');
+    if (roleSelect && aptGroup) {
+        if (roleSelect.value === 'resident') {
+            aptGroup.style.display = 'block';
+        } else {
+            aptGroup.style.display = 'none';
+        }
+    }
+}
+// Run on page load
+toggleApartmentSelect();
 </script>
 {% endblock %}
