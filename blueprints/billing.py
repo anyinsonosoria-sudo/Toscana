@@ -5,7 +5,7 @@ Gestión completa de facturas, pagos, cuentas por cobrar y ventas recurrentes
 import logging
 import os
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
-from flask_login import login_required
+from flask_login import login_required, current_user
 from datetime import datetime
 from pathlib import Path
 

@@ -506,7 +506,7 @@ def _register_routes(app: Flask) -> None:
         except Exception as e:
             app.logger.error(f"Error loading resident dashboard: {e}")
             
-        # Generar últimos 6 meses para descarga de reportes
+        # Generar últimos 6 meses para descarga de reportes, filtrando antes del inicio de operaciones
         months = []
         now = datetime.now()
         spanish_months = {
@@ -514,12 +514,37 @@ def _register_routes(app: Flask) -> None:
             7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
         }
         
+        oldest_date_str = None
+        try:
+            conn = db.get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT MIN(issued_date) FROM invoices")
+            min_inv = cur.fetchone()[0]
+            cur.execute("SELECT MIN(paid_date) FROM payments")
+            min_pay = cur.fetchone()[0]
+            conn.close()
+            
+            dates = []
+            if min_inv:
+                dates.append(min_inv[:7])
+            if min_pay:
+                dates.append(min_pay[:7])
+            if dates:
+                oldest_date_str = min(dates)
+        except Exception as e:
+            app.logger.error(f"Error finding start of operations for reports list: {e}")
+        
         for i in range(6):
             m = now.month - i
             y = now.year
             while m <= 0:
                 m += 12
                 y -= 1
+            
+            month_key = f"{y}-{m:02d}"
+            if oldest_date_str and month_key < oldest_date_str:
+                continue
+                
             month_name = spanish_months[m]
             ref_date = f"{y}-{m:02d}-01"
             months.append({

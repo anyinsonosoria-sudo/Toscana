@@ -18,7 +18,7 @@ class User(UserMixin):
     Modelo de Usuario compatible con Flask-Login
     """
     
-    def __init__(self, id, username, email, password_hash, full_name, role, is_active, created_at, last_login):
+    def __init__(self, id, username, email, password_hash, full_name, role, is_active, created_at, last_login, photo_url=None, phone=None):
         self.id = id
         self.username = username
         self.email = email
@@ -28,6 +28,8 @@ class User(UserMixin):
         self._is_active = bool(is_active)  # Usar atributo privado
         self.created_at = created_at
         self.last_login = last_login
+        self.photo_url = photo_url
+        self.phone = phone
     
     def check_password(self, password):
         """Verifica la contraseña"""
@@ -107,7 +109,7 @@ def get_user_by_id(user_id):
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT id, username, email, password_hash, full_name, role, is_active, created_at, last_login
+            SELECT id, username, email, password_hash, full_name, role, is_active, created_at, last_login, photo_url, phone
             FROM users 
             WHERE id = ?
         """, (user_id,))
@@ -123,7 +125,9 @@ def get_user_by_id(user_id):
                 role=row['role'],
                 is_active=row['is_active'],
                 created_at=row['created_at'],
-                last_login=row['last_login']
+                last_login=row['last_login'],
+                photo_url=row['photo_url'] if 'photo_url' in row.keys() else None,
+                phone=row['phone'] if 'phone' in row.keys() else None
             )
         return None
     finally:
@@ -144,7 +148,7 @@ def get_user_by_username(username):
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT id, username, email, password_hash, full_name, role, is_active, created_at, last_login
+            SELECT id, username, email, password_hash, full_name, role, is_active, created_at, last_login, photo_url, phone
             FROM users 
             WHERE username = ?
         """, (username,))
@@ -160,7 +164,9 @@ def get_user_by_username(username):
                 role=row['role'],
                 is_active=row['is_active'],
                 created_at=row['created_at'],
-                last_login=row['last_login']
+                last_login=row['last_login'],
+                photo_url=row['photo_url'] if 'photo_url' in row.keys() else None,
+                phone=row['phone'] if 'phone' in row.keys() else None
             )
         return None
     finally:
@@ -181,7 +187,7 @@ def get_user_by_email(email):
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT id, username, email, password_hash, full_name, role, is_active, created_at, last_login
+            SELECT id, username, email, password_hash, full_name, role, is_active, created_at, last_login, photo_url, phone
             FROM users 
             WHERE email = ?
         """, (email,))
@@ -197,7 +203,9 @@ def get_user_by_email(email):
                 role=row['role'],
                 is_active=row['is_active'],
                 created_at=row['created_at'],
-                last_login=row['last_login']
+                last_login=row['last_login'],
+                photo_url=row['photo_url'] if 'photo_url' in row.keys() else None,
+                phone=row['phone'] if 'phone' in row.keys() else None
             )
         return None
     finally:

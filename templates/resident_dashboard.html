@@ -207,7 +207,7 @@
                                         {% endif %}
                                     </td>
                                     <td class="py-3 border-0">
-                                        <span class="badge bg-secondary-glow text-capitalize" style="font-size: 0.78rem; font-weight: 600; border-radius: 8px;">
+                                        <span class="badge payment-badge payment-badge-{{ pay.method | lower | replace(' ', '_') }} text-capitalize" style="font-size: 0.78rem; font-weight: 600; border-radius: 8px;">
                                             {{ pay.method }}
                                         </span>
                                     </td>
@@ -375,6 +375,46 @@
 
 .invoice-item-row:hover {
     background-color: rgba(79, 70, 229, 0.015);
+}
+
+/* Payment Badges legibility & contrast */
+.payment-badge {
+    background-color: rgba(107, 114, 128, 0.1) !important;
+    color: #4b5563 !important;
+    padding: 0.35rem 0.75rem !important;
+}
+
+[data-theme="dark"] .payment-badge {
+    background-color: rgba(156, 163, 175, 0.15) !important;
+    color: #cbd5e1 !important;
+}
+
+.payment-badge-transferencia,
+.payment-badge-transfer,
+.payment-badge-transfer_bank {
+    background-color: rgba(79, 70, 229, 0.12) !important;
+    color: #4f46e5 !important;
+}
+
+[data-theme="dark"] .payment-badge-transferencia,
+[data-theme="dark"] .payment-badge-transfer,
+[data-theme="dark"] .payment-badge-transfer_bank {
+    background-color: rgba(129, 140, 248, 0.2) !important;
+    color: #a5b4fc !important;
+}
+
+.payment-badge-efectivo,
+.payment-badge-cash,
+.payment-badge-cash_usd {
+    background-color: rgba(16, 185, 129, 0.12) !important;
+    color: #10b981 !important;
+}
+
+[data-theme="dark"] .payment-badge-efectivo,
+[data-theme="dark"] .payment-badge-cash,
+[data-theme="dark"] .payment-badge-cash_usd {
+    background-color: rgba(52, 211, 153, 0.2) !important;
+    color: #6ee7b7 !important;
 }
 
 /* Theme variables overrides */

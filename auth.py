@@ -276,6 +276,78 @@ def change_password():
     # GET request
     return render_template('change_password.html')
 
+
+@auth_bp.route('/profile', methods=['GET', 'POST'])
+@login_required
+def edit_profile():
+    """Permite a cualquier usuario actualizar su información personal y foto de perfil"""
+    import os
+    from datetime import datetime
+    from pathlib import Path
+    from werkzeug.utils import secure_filename
+    import db
+    
+    if request.method == 'POST':
+        full_name = request.form.get('full_name', '').strip()
+        phone = request.form.get('phone', '').strip()
+        
+        photo_file = request.files.get('profile_photo')
+        photo_url = current_user.photo_url
+        
+        if photo_file and photo_file.filename:
+            # Validar extensión
+            allowed_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+            file_ext = Path(photo_file.filename).suffix.lower()
+            if file_ext not in allowed_extensions:
+                flash('Extensión de imagen no permitida. Use PNG, JPG, JPEG, GIF o WEBP.', 'error')
+                return render_template('profile.html', user=current_user)
+            
+            # Crear directorio de subida
+            uploads_dir = Path(__file__).parent / 'static' / 'uploads' / 'profiles'
+            uploads_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Nombre de archivo seguro
+            filename = secure_filename(f"user_{current_user.id}_{int(datetime.now().timestamp())}{file_ext}")
+            file_path = uploads_dir / filename
+            photo_file.save(file_path)
+            
+            # Borrar foto vieja si existe para liberar espacio
+            if current_user.photo_url:
+                try:
+                    old_path = Path(__file__).parent / current_user.photo_url.lstrip('/')
+                    if old_path.exists() and old_path.is_file():
+                        old_path.unlink()
+                except Exception as e:
+                    logger.warning(f"No se pudo eliminar la foto de perfil vieja: {e}")
+            
+            photo_url = f"/static/uploads/profiles/{filename}"
+            
+        try:
+            # Actualizar base de datos
+            conn = db.get_conn()
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE users
+                SET full_name = ?, phone = ?, photo_url = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (full_name, phone, photo_url, current_user.id))
+            conn.commit()
+            conn.close()
+            
+            # Actualizar el objeto current_user en memoria
+            current_user.full_name = full_name
+            current_user.phone = phone
+            current_user.photo_url = photo_url
+            
+            flash('Perfil actualizado con éxito', 'success')
+            return redirect(url_for('auth.edit_profile'))
+        except Exception as e:
+            flash(f'Error al guardar perfil: {str(e)}', 'error')
+            return render_template('profile.html', user=current_user)
+            
+    return render_template('profile.html', user=current_user)
+
+
 @auth_bp.route('/users/<int:user_id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_user(user_id):

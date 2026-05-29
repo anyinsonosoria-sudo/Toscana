@@ -106,6 +106,16 @@ def _create_schema(cur):
     )
     """)
     
+    # Asegurar columnas photo_url y phone en tabla users
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN photo_url TEXT")
+    except Exception:
+        pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN phone TEXT")
+    except Exception:
+        pass
+    
     # Apartments
     cur.execute("""
     CREATE TABLE IF NOT EXISTS apartments (
