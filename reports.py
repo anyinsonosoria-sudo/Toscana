@@ -338,6 +338,26 @@ def get_monthly_financial_report_data(reference_dt: Optional[datetime] = None,
     }
 
 
+def add_current_balance_context(report_data: Dict, as_of: Optional[datetime] = None) -> Dict:
+    from accounting import get_balance_summary
+
+    balance_summary = get_balance_summary()
+    as_of_dt = as_of or datetime.now()
+    period_label = report_data.get('period_label', report_data.get('report_period', 'este periodo'))
+
+    enriched_report_data = dict(report_data)
+    enriched_report_data.update({
+        'current_balance_as_of': as_of_dt.strftime('%d-%m-%Y'),
+        'current_balance_amount': balance_summary.get('balance', 0),
+        'current_balance_title': f"Saldo actualizado al {as_of_dt.strftime('%d-%m-%Y')}",
+        'current_balance_note': (
+            f"El cierre del reporte para {period_label} permanece sin cambios; "
+            "este saldo actualizado es informativo y se recalcula al descargar o enviar el reporte."
+        ),
+    })
+    return enriched_report_data
+
+
 def get_monthly_report_recipients(admin_email_override: Optional[str] = None) -> Dict[str, object]:
     from company import get_company_info
 
@@ -542,6 +562,7 @@ def send_previous_month_financial_report(reference_dt: Optional[datetime] = None
         reference_dt=reference_dt,
         period_mode=period_mode,
     )
+    report_data = add_current_balance_context(report_data)
     recipients = get_monthly_report_recipients(admin_email_override=admin_email_override)
     company_info = get_company_info() or {}
 

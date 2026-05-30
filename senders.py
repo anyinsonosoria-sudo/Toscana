@@ -460,11 +460,23 @@ def generate_monthly_financial_report_html(report_data: dict, recipient_name: st
     collections = report_data.get('collections', [])
     pending_receivables = report_data.get('pending_receivables', [])
     expenses = report_data.get('expenses', [])
+    current_balance_html = ''
 
     if recipient_type == 'admin':
         greeting = 'Estimado Administrador'
     else:
         greeting = f'Estimado/a {safe_recipient_name}'
+
+    if report_data.get('current_balance_title'):
+        current_balance_html = f"""
+            <div style="background:#fff8e8; border:1px solid #f3dd9a; border-radius:18px; padding:20px; margin:20px 0; box-shadow:0 10px 22px rgba(128, 91, 16, 0.08);">
+                <div style="color:#805b10; font-size:12px; text-transform:uppercase; letter-spacing:0.06em;">Actualizado al enviar este reporte</div>
+                <div style="font-size:18px; font-weight:700; color:#5b3a32; margin-top:8px;">{escape(report_data.get('current_balance_title'))}</div>
+                <div style="font-size:32px; line-height:1.1; font-weight:800; color:#5b3a32; margin:8px 0 12px 0;">{format_amount(report_data.get('current_balance_amount', 0))}</div>
+                <div style="color:#7a6b63; font-size:13px; margin-bottom:8px;">{escape(report_data.get('current_balance_note', ''))}</div>
+                <div style="color:#805b10; font-size:13px; font-weight:700;">Cierre del reporte: {format_amount(report_data.get('closing_balance', 0))}</div>
+            </div>
+        """
 
     collections_items = build_highlight_items(
         collections,
@@ -538,6 +550,8 @@ def generate_monthly_financial_report_html(report_data: dict, recipient_name: st
 
             <p>{greeting},</p>
             <p>Adjunto encontrará el reporte financiero mensual consolidado de {safe_company_name}. Incluye el resumen del cierre, los cobros recibidos, los balances pendientes y los gastos ejecutados durante el período.</p>
+
+            {current_balance_html}
 
             <div class="summary">
                 <div style="font-size: 18px; font-weight: 700; color: #5b3a32; margin-bottom: 6px;">Resumen ejecutivo</div>

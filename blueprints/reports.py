@@ -143,6 +143,7 @@ def monthly_preview():
         reference_dt=reference_dt,
         period_mode=period_mode,
     )
+    report_data = reports.add_current_balance_context(report_data)
     company_info = get_company_info() or {}
     recipients = reports.get_monthly_report_recipients()
     email_html = generate_monthly_financial_report_html(
@@ -226,6 +227,7 @@ def monthly_preview_pdf():
         reference_dt=reference_dt,
         period_mode=period_mode,
     )
+    report_data = reports.add_current_balance_context(report_data)
     company_info = get_company_info() or {}
 
     preview_dir = Path(reports.__file__).resolve().parent / 'static' / 'reports'

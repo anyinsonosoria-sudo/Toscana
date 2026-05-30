@@ -3,6 +3,7 @@ import sys
 
 import pytest
 
+import accounting
 import customization
 import reports as reports_module
 import senders
@@ -314,6 +315,36 @@ def test_get_monthly_financial_report_data_supports_current_month_to_date(app):
 
 
 @pytest.mark.unit
+def test_add_current_balance_context_keeps_historical_values(monkeypatch):
+    monkeypatch.setattr(
+        accounting,
+        'get_balance_summary',
+        lambda: {'total_income': 500.0, 'total_expenses': 150.0, 'balance': 350.0},
+    )
+    base_report = {
+        'period_label': 'Abril 2026',
+        'report_period': '2026-04',
+        'closing_balance': 75.0,
+    }
+
+    enriched_report = reports_module.add_current_balance_context(
+        base_report,
+        as_of=datetime(2026, 5, 29, 10, 30, 0),
+    )
+
+    assert base_report == {
+        'period_label': 'Abril 2026',
+        'report_period': '2026-04',
+        'closing_balance': 75.0,
+    }
+    assert enriched_report['closing_balance'] == pytest.approx(75.0)
+    assert enriched_report['current_balance_as_of'] == '29-05-2026'
+    assert enriched_report['current_balance_amount'] == pytest.approx(350.0)
+    assert enriched_report['current_balance_title'] == 'Saldo actualizado al 29-05-2026'
+    assert 'Abril 2026' in enriched_report['current_balance_note']
+
+
+@pytest.mark.unit
 def test_get_monthly_report_settings_supports_customization_overrides(app):
     with app.app_context():
         _clear_monthly_report_settings()
@@ -405,10 +436,18 @@ def test_monthly_report_dispatch_log_blocks_duplicate_send(app):
 
 
 @pytest.mark.integration
-def test_generate_monthly_financial_report_pdf_creates_file(app, tmp_path):
+def test_generate_monthly_financial_report_pdf_creates_file(app, tmp_path, monkeypatch):
     with app.app_context():
         _seed_monthly_report_data()
-        report = get_monthly_financial_report_data(reference_dt=datetime(2026, 5, 3, 8, 0, 0))
+        monkeypatch.setattr(
+            accounting,
+            'get_balance_summary',
+            lambda: {'total_income': 500.0, 'total_expenses': 150.0, 'balance': 350.0},
+        )
+        report = reports_module.add_current_balance_context(
+            get_monthly_financial_report_data(reference_dt=datetime(2026, 5, 3, 8, 0, 0)),
+            as_of=datetime(2026, 5, 29, 10, 30, 0),
+        )
         company_info = get_company_info()
         pdf_path = tmp_path / 'monthly_financial_report_2026-04.pdf'
 
@@ -419,10 +458,18 @@ def test_generate_monthly_financial_report_pdf_creates_file(app, tmp_path):
 
 
 @pytest.mark.unit
-def test_generate_monthly_financial_report_html_includes_highlights(app):
+def test_generate_monthly_financial_report_html_includes_highlights(app, monkeypatch):
     with app.app_context():
         _seed_monthly_report_data()
-        report = get_monthly_financial_report_data(reference_dt=datetime(2026, 5, 3, 8, 0, 0))
+        monkeypatch.setattr(
+            accounting,
+            'get_balance_summary',
+            lambda: {'total_income': 500.0, 'total_expenses': 150.0, 'balance': 350.0},
+        )
+        report = reports_module.add_current_balance_context(
+            get_monthly_financial_report_data(reference_dt=datetime(2026, 5, 3, 8, 0, 0)),
+            as_of=datetime(2026, 5, 29, 10, 30, 0),
+        )
         html = generate_monthly_financial_report_html(
             report,
             recipient_name='Administrador',
@@ -434,6 +481,8 @@ def test_generate_monthly_financial_report_html_includes_highlights(app):
     assert 'Cobros destacados' in html
     assert 'Pendientes del cierre' in html
     assert 'Variación neta' in html
+    assert 'Saldo actualizado al 29-05-2026' in html
+    assert 'El cierre del reporte para Abril 2026 permanece sin cambios' in html
 
 
 @pytest.mark.integration
@@ -469,6 +518,8 @@ def test_send_previous_month_financial_report_sends_once_per_unique_recipient(ap
         'bruno@example.com',
         'carla@example.com',
     ]
+    assert all('Saldo actualizado al' in message['html'] for message in sent_messages)
+    assert all('El cierre del reporte' in message['html'] for message in sent_messages)
     assert all(not isinstance(message['to_email'], list) for message in sent_messages)
     assert all(message['attachments'][0][0] == str(pdf_path) for message in sent_messages)
     assert first_result['failed'] == []
@@ -501,6 +552,8 @@ def test_monthly_report_preview_route_renders(preview_auth_client, app):
     assert b'Cobros incluidos' in response.data
     assert b'Probar solo admin' in response.data
     assert b'Enviar a residentes' in response.data
+    assert b'Saldo actualizado al' in response.data
+    assert b'El cierre del reporte' in response.data
 
 
 @pytest.mark.integration
@@ -528,6 +581,36 @@ def test_monthly_report_preview_pdf_route_returns_pdf(preview_auth_client, app):
     assert response.status_code == 200
     assert response.mimetype == 'application/pdf'
     assert len(response.data) > 0
+
+
+@pytest.mark.integration
+def test_monthly_report_preview_pdf_route_passes_current_balance_context(preview_auth_client, app, monkeypatch, tmp_path):
+    captured = {}
+    fake_pdf = tmp_path / 'monthly_financial_report_preview.pdf'
+    fake_pdf.write_bytes(b'%PDF-1.4\n%fake preview\n')
+
+    def fake_generate_monthly_financial_report_pdf_file(report_data, company_info, output_path=None):
+        captured['report_data'] = report_data
+        captured['company_info'] = company_info
+        captured['output_path'] = output_path
+        return str(fake_pdf)
+
+    monkeypatch.setattr(
+        reports_module,
+        'generate_monthly_financial_report_pdf_file',
+        fake_generate_monthly_financial_report_pdf_file,
+    )
+
+    with app.app_context():
+        _seed_monthly_report_data()
+
+    response = preview_auth_client.get('/reportes/mensual/preview.pdf?reference_date=2026-05-03')
+
+    assert response.status_code == 200
+    assert response.mimetype == 'application/pdf'
+    assert captured['report_data']['current_balance_title'].startswith('Saldo actualizado al ')
+    assert 'El cierre del reporte' in captured['report_data']['current_balance_note']
+    assert captured['company_info']['name'] == 'Condominio Toscana'
 
 
 @pytest.mark.integration

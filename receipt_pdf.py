@@ -24,6 +24,9 @@ TEXT_MID    = colors.HexColor('#6D4C41')
 TEXT_LIGHT  = colors.HexColor('#8D6E63')
 GREEN_OK    = colors.HexColor('#2E7D32')
 RED_DANGER  = colors.HexColor('#C62828')
+NOTICE_BG   = colors.HexColor('#FFF4DD')
+NOTICE_LINE = colors.HexColor('#E6C97A')
+NOTICE_TEXT = colors.HexColor('#7A5B18')
 
 
 def _fmt(amount):
@@ -549,6 +552,16 @@ def generate_monthly_financial_report_pdf(report_data, company_info, output_path
                           textColor=TEXT_DARK, alignment=TA_CENTER, leading=11)
     empty_s = ParagraphStyle('MR_EMPTY', parent=styles['Normal'], fontSize=8,
                              textColor=TEXT_MID, alignment=TA_CENTER, leading=11)
+    callout_kicker_s = ParagraphStyle('MR_CB_K', parent=styles['Normal'], fontSize=8,
+                                      fontName='Helvetica-Bold', textColor=NOTICE_TEXT, leading=10)
+    callout_title_s = ParagraphStyle('MR_CB_T', parent=styles['Normal'], fontSize=12,
+                                     fontName='Helvetica-Bold', textColor=BROWN_DARK, leading=15)
+    callout_amount_s = ParagraphStyle('MR_CB_A', parent=styles['Normal'], fontSize=20,
+                                      fontName='Helvetica-Bold', textColor=BROWN, leading=24)
+    callout_note_s = ParagraphStyle('MR_CB_N', parent=styles['Normal'], fontSize=8,
+                                    textColor=TEXT_MID, leading=11)
+    callout_compare_s = ParagraphStyle('MR_CB_C', parent=styles['Normal'], fontSize=8,
+                                       fontName='Helvetica-Bold', textColor=NOTICE_TEXT, leading=10)
 
     logo = _get_logo(company_info)
     co_text = f"<b><font size='13'>{_safe_text(co_name)}</font></b>"
@@ -588,6 +601,34 @@ def generate_monthly_financial_report_pdf(report_data, company_info, output_path
     summary_header.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP')]))
     story.append(summary_header)
     story.append(Spacer(1, 0.18*inch))
+
+    if report_data.get('current_balance_title'):
+        current_balance_table = Table([[
+            [
+                Paragraph('ACTUALIZADO AL DESCARGAR ESTE REPORTE', callout_kicker_s),
+                Spacer(1, 0.05*inch),
+                Paragraph(_safe_text(report_data.get('current_balance_title', '')), callout_title_s),
+                Spacer(1, 0.04*inch),
+                Paragraph(_fmt(report_data.get('current_balance_amount', 0)), callout_amount_s),
+                Spacer(1, 0.05*inch),
+                Paragraph(_safe_text(report_data.get('current_balance_note', '')), callout_note_s),
+                Spacer(1, 0.04*inch),
+                Paragraph(
+                    f"Cierre del reporte: {_safe_text(_fmt(report_data.get('closing_balance', 0)))}",
+                    callout_compare_s,
+                ),
+            ]
+        ]], colWidths=[W])
+        current_balance_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), NOTICE_BG),
+            ('BOX', (0,0), (-1,-1), 0.9, NOTICE_LINE),
+            ('TOPPADDING', (0,0), (-1,-1), 10),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+            ('LEFTPADDING', (0,0), (-1,-1), 14),
+            ('RIGHTPADDING', (0,0), (-1,-1), 14),
+        ]))
+        story.append(current_balance_table)
+        story.append(Spacer(1, 0.18*inch))
 
     summary_rows = [
         [Paragraph('Saldo inicial', td_s), Paragraph(_fmt(report_data.get('opening_balance', 0)), td_r)],

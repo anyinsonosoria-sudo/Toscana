@@ -69,6 +69,46 @@
     border: 1px solid #f3dd9a;
     padding: 0.9rem 1rem;
 }
+.current-balance-callout {
+    border-radius: 24px;
+    background: linear-gradient(135deg, #fff8e8 0%, #fff2cf 100%);
+    border: 1px solid #f3dd9a;
+    box-shadow: 0 18px 38px rgba(128, 91, 16, 0.12);
+}
+.current-balance-callout .eyebrow {
+    color: #805b10;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.current-balance-callout .amount {
+    font-size: clamp(2.3rem, 5vw, 3.4rem);
+    line-height: 1;
+    font-weight: 800;
+    color: #5b3a32;
+}
+.current-balance-callout .note {
+    color: #6d4c41;
+    max-width: 52rem;
+}
+.current-balance-compare {
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(128, 91, 16, 0.16);
+    padding: 1rem;
+}
+.current-balance-compare .label {
+    color: #805b10;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.current-balance-compare .value {
+    color: #5b3a32;
+    font-size: 1.5rem;
+    font-weight: 700;
+}
 .section-subtitle {
     color: var(--text-muted);
     margin-bottom: 0;
@@ -178,6 +218,26 @@ RD$ {{ "{:,.2f}".format(value or 0).replace(",", "X").replace(".", ",").replace(
         <p class="section-subtitle mt-1">Este corte es parcial y llega hasta la fecha elegida; no espera al cierre de mes.</p>
         {% endif %}
     </div>
+
+    {% if report_data.current_balance_title %}
+    <div class="current-balance-callout p-4 p-lg-4">
+        <div class="row g-4 align-items-center">
+            <div class="col-12 col-lg-8">
+                <div class="eyebrow mb-2">Actualizado al abrir esta vista</div>
+                <h2 class="h4 mb-2">{{ report_data.current_balance_title }}</h2>
+                <div class="amount mb-3">{{ money(report_data.current_balance_amount) }}</div>
+                <p class="note mb-0">{{ report_data.current_balance_note }}</p>
+            </div>
+            <div class="col-12 col-lg-4">
+                <div class="current-balance-compare">
+                    <div class="label mb-2">Cierre del reporte</div>
+                    <div class="value mb-1">{{ money(report_data.closing_balance) }}</div>
+                    <small class="text-muted">Este valor historico se mantiene intacto dentro del informe.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <div class="row g-3">
         <div class="col-6 col-xl-3">
