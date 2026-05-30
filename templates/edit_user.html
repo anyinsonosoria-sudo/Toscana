@@ -50,6 +50,30 @@
                 </select>
             </div>
 
+            <div style="margin-bottom:1.5rem; display:none;" id="resident_link_group">
+                <label class="wizard-step-label">Estado del vínculo</label>
+                <select name="resident_link_status" class="wizard-select">
+                    <option value="active" {% if resident_link_status != 'invited' %}selected{% endif %}>Activo inmediato</option>
+                    <option value="invited" {% if resident_link_status == 'invited' %}selected{% endif %}>Invitado con código</option>
+                </select>
+                <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.35rem;">
+                    Si el vínculo está en invitación, el residente no ve el apartamento hasta activar su código.
+                </div>
+            </div>
+
+            {% if pending_invitation %}
+            <div style="margin-bottom:1.5rem;padding:1rem 1.1rem;border-radius:14px;background:#fff7ed;border:1px solid #fdba74;color:#9a3412;">
+                <div style="display:flex;align-items:center;gap:0.55rem;font-weight:700;margin-bottom:0.4rem;">
+                    <i class="bi bi-key"></i>
+                    Codigo de invitacion activo
+                </div>
+                <div style="font-size:1.15rem;letter-spacing:0.08em;font-weight:800;">{{ pending_invitation.invitation_code }}</div>
+                <div style="font-size:0.82rem;margin-top:0.4rem;">
+                    Apartamento {{ pending_invitation.apartment_number }}{% if pending_invitation.invited_at %} · Generado {{ pending_invitation.invited_at }}{% endif %}
+                </div>
+            </div>
+            {% endif %}
+
             <div style="display:flex;gap:0.75rem;">
                 <button type="submit" class="btn btn-primary" style="flex:1;">
                     <i class="bi bi-check-lg"></i> Guardar
@@ -68,11 +92,14 @@
 function toggleApartmentSelect() {
     const roleSelect = document.getElementById('role_select');
     const aptGroup = document.getElementById('apartment_group');
-    if (roleSelect && aptGroup) {
+    const linkGroup = document.getElementById('resident_link_group');
+    if (roleSelect && aptGroup && linkGroup) {
         if (roleSelect.value === 'resident') {
             aptGroup.style.display = 'block';
+            linkGroup.style.display = 'block';
         } else {
             aptGroup.style.display = 'none';
+            linkGroup.style.display = 'none';
         }
     }
 }

@@ -44,9 +44,20 @@
                 <select name="apartment_id" class="wizard-select">
                     <option value="">-- No asociar / Seleccionar apartamento --</option>
                     {% for apt in apartments %}
-                    <option value="{{ apt.id }}">{{ apt.number }} ({{ apt.resident_name or 'Sin residente asignado' }})</option>
+                    <option value="{{ apt.id }}" {% if request.form.get('apartment_id') == (apt.id|string) %}selected{% endif %}>{{ apt.number }} ({{ apt.resident_name or 'Sin residente asignado' }})</option>
                     {% endfor %}
                 </select>
+            </div>
+
+            <div style="margin-bottom:1.25rem; display:none;" id="resident_link_group">
+                <label class="wizard-step-label">Estado del vínculo</label>
+                <select name="resident_link_status" class="wizard-select">
+                    <option value="active" {% if request.form.get('resident_link_status', 'active') == 'active' %}selected{% endif %}>Activo inmediato</option>
+                    <option value="invited" {% if request.form.get('resident_link_status') == 'invited' %}selected{% endif %}>Invitado con código</option>
+                </select>
+                <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.35rem;">
+                    Use invitación para que el residente active su acceso más tarde desde la app o API.
+                </div>
             </div>
 
             <div style="display:flex;gap:1rem;margin-bottom:1.25rem;">
@@ -76,11 +87,14 @@ document.getElementById('reg_confirm').addEventListener('input', function() {
 function toggleApartmentSelect() {
     const roleSelect = document.getElementById('role_select');
     const aptGroup = document.getElementById('apartment_group');
-    if (roleSelect && aptGroup) {
+    const linkGroup = document.getElementById('resident_link_group');
+    if (roleSelect && aptGroup && linkGroup) {
         if (roleSelect.value === 'resident') {
             aptGroup.style.display = 'block';
+            linkGroup.style.display = 'block';
         } else {
             aptGroup.style.display = 'none';
+            linkGroup.style.display = 'none';
         }
     }
 }

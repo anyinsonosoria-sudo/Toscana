@@ -1,0 +1,221 @@
+import pytest
+
+import apartments
+import db
+import receipt_pdf
+import residents
+import user_model
+
+
+def _reset_resident_link_state():
+    conn = db.get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM resident_user_units")
+        cur.execute("DELETE FROM payments")
+        cur.execute("DELETE FROM invoices")
+        cur.execute("DELETE FROM residents")
+        cur.execute("DELETE FROM apartments")
+        cur.execute("DELETE FROM users WHERE username != 'admin'")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.unit
+def test_link_user_to_apartment_creates_bridge_and_legacy_assignment(app):
+    with app.app_context():
+        _reset_resident_link_state()
+        unit_id = apartments.add_apartment(number='A-101', resident_email='')
+        user_id = user_model.create_user(
+            username='resident_linked',
+            email='resident_linked@example.com',
+            password='password123',
+            full_name='Resident Linked',
+            role='resident',
+        )
+
+        residents.link_user_to_apartment(
+            user_id,
+            unit_id,
+            resident_email='resident_linked@example.com',
+            resident_name='Resident Linked',
+            created_by=1,
+        )
+
+        conn = db.get_conn()
+        try:
+            row = conn.execute(
+                """
+                SELECT user_id, unit_id, status, is_primary
+                FROM resident_user_units
+                WHERE user_id = ? AND unit_id = ?
+                """,
+                (user_id, unit_id),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        apartment = apartments.get_apartment(unit_id)
+
+    assert row is not None
+    assert row['status'] == 'active'
+    assert row['is_primary'] == 1
+    assert apartment['resident_email'] == 'resident_linked@example.com'
+    assert apartment['resident_name'] == 'Resident Linked'
+    assert residents.get_allowed_unit_ids_for_user(user_id) == {unit_id}
+
+
+@pytest.mark.unit
+def test_list_linked_apartments_for_user_falls_back_to_legacy_email(app):
+    with app.app_context():
+        _reset_resident_link_state()
+        unit_id = apartments.add_apartment(
+            number='B-202',
+            resident_name='Legacy Resident',
+            resident_email='legacy@example.com',
+        )
+        user_id = user_model.create_user(
+            username='legacy_resident',
+            email='legacy@example.com',
+            password='password123',
+            full_name='Legacy Resident',
+            role='resident',
+        )
+
+        linked_apartments = residents.list_linked_apartments_for_user(
+            user_id,
+            fallback_email='legacy@example.com',
+        )
+
+    assert len(linked_apartments) == 1
+    assert linked_apartments[0]['id'] == unit_id
+    assert linked_apartments[0]['resident_email'] == 'legacy@example.com'
+
+
+@pytest.mark.unit
+def test_issue_and_activate_resident_invitation_code(app):
+    with app.app_context():
+        _reset_resident_link_state()
+        unit_id = apartments.add_apartment(number='I-505', resident_name='Invited Resident', resident_email='')
+        user_id = user_model.create_user(
+            username='invited_resident',
+            email='invited_resident@example.com',
+            password='password123',
+            full_name='Invited Resident',
+            role='resident',
+        )
+
+        invitation = residents.issue_resident_invitation(
+            user_id,
+            unit_id,
+            resident_email='invited_resident@example.com',
+            resident_name='Invited Resident',
+            created_by=1,
+        )
+        pending_invitations = residents.list_pending_invitations_for_user(user_id)
+        allowed_before_activation = residents.get_allowed_unit_ids_for_user(user_id)
+
+        activated_apartment = residents.activate_resident_invitation(
+            user_id,
+            invitation['invitation_code'],
+            resident_email='invited_resident@example.com',
+            resident_name='Invited Resident',
+        )
+        allowed_after_activation = residents.get_allowed_unit_ids_for_user(user_id)
+
+        conn = db.get_conn()
+        try:
+            row = conn.execute(
+                "SELECT status, invitation_code, activated_at FROM resident_user_units WHERE user_id = ? AND unit_id = ?",
+                (user_id, unit_id),
+            ).fetchone()
+        finally:
+            conn.close()
+
+    assert invitation['status'] == 'invited'
+    assert invitation['invitation_code']
+    assert len(pending_invitations) == 1
+    assert allowed_before_activation == set()
+    assert activated_apartment['status'] == 'active'
+    assert allowed_after_activation == {unit_id}
+    assert row['status'] == 'active'
+    assert row['invitation_code'] is None
+    assert row['activated_at']
+
+
+
+@pytest.mark.integration
+def test_resident_dashboard_uses_bridge_assignment_without_legacy_email(client, app):
+    with app.app_context():
+        _reset_resident_link_state()
+        unit_id = apartments.add_apartment(number='C-303', resident_name='Bridge Resident', resident_email='')
+        conn = db.get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO invoices (unit_id, description, amount, issued_date, paid) VALUES (?, ?, ?, ?, ?)",
+                (unit_id, 'Mantenimiento junio', 150.0, '2026-06-01', 0),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        user_id = user_model.create_user(
+            username='bridge_dashboard',
+            email='bridge_dashboard@example.com',
+            password='password123',
+            full_name='Bridge Resident',
+            role='resident',
+        )
+        residents.link_user_to_apartment(
+            user_id,
+            unit_id,
+            resident_name='Bridge Resident',
+            created_by=1,
+        )
+
+    with client.session_transaction() as session:
+        session['_user_id'] = str(user_id)
+        session['_fresh'] = True
+
+    response = client.get('/dashboard')
+
+    assert response.status_code == 200
+    assert b'C-303' in response.data
+    assert b'Mantenimiento junio' in response.data
+
+
+@pytest.mark.integration
+def test_download_statement_pdf_allows_bridge_linked_resident(client, app, monkeypatch, tmp_path):
+    with app.app_context():
+        _reset_resident_link_state()
+        unit_id = apartments.add_apartment(number='D-404', resident_name='PDF Resident', resident_email='')
+        user_id = user_model.create_user(
+            username='bridge_pdf',
+            email='bridge_pdf@example.com',
+            password='password123',
+            full_name='PDF Resident',
+            role='resident',
+        )
+        residents.link_user_to_apartment(
+            user_id,
+            unit_id,
+            resident_name='PDF Resident',
+            created_by=1,
+        )
+
+    def fake_generate_account_statement_pdf(apt, invoices, payments, company_info, output_path=None):
+        target_path = output_path or tmp_path / 'statement.pdf'
+        with open(target_path, 'wb') as handle:
+            handle.write(b'%PDF-1.4\n%bridge\n')
+
+    monkeypatch.setattr(receipt_pdf, 'generate_account_statement_pdf', fake_generate_account_statement_pdf)
+
+    with client.session_transaction() as session:
+        session['_user_id'] = str(user_id)
+        session['_fresh'] = True
+
+    response = client.get(f'/ventas/apartamentos/estado-cuenta/{unit_id}')
+
+    assert response.status_code == 200
+    assert response.mimetype == 'application/pdf'

@@ -313,7 +313,11 @@ def _apply_migrations():
                     except Exception as stmt_err:
                         msg = str(stmt_err).lower()
                         # Ignorar errores de columna/índice ya existente
-                        if 'already has a column' in msg or 'already exists' in msg:
+                        if (
+                            'already has a column' in msg
+                            or 'duplicate column name' in msg
+                            or 'already exists' in msg
+                        ):
                             print(f"[MIGRATION] SKIP (ya existe): {stmt[:60]}...")
                         else:
                             raise stmt_err

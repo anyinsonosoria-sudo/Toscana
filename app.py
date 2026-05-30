@@ -18,6 +18,7 @@ from flask_login import current_user, login_required
 import db
 import company
 import customization
+import residents
 from extensions import init_extensions, scheduler
 from auth import auth_bp
 from blueprints.settings import settings_bp
@@ -28,6 +29,7 @@ from blueprints.accounting import accounting_bp
 from blueprints.expenses import expenses_bp
 from blueprints.products import products_bp
 from blueprints.reports import reports_bp
+from blueprints.resident_api import resident_api_bp
 from blueprints.suppliers import suppliers_bp
 
 
@@ -56,6 +58,22 @@ def create_app(config_object: Optional[str] = None) -> Flask:
     app.config.setdefault('PERMANENT_SESSION_LIFETIME', timedelta(hours=8))
     app.config.setdefault('MAX_CONTENT_LENGTH', 16 * 1024 * 1024)  # 16MB max upload
     app.config.setdefault('SCHEDULER_TIMEZONE', 'America/Santo_Domingo')
+    app.config.setdefault(
+        'RESIDENT_API_JWT_SECRET',
+        os.environ.get('RESIDENT_API_JWT_SECRET', '').strip() or app.config['SECRET_KEY'],
+    )
+    app.config.setdefault(
+        'RESIDENT_API_JWT_ISSUER',
+        os.environ.get('RESIDENT_API_JWT_ISSUER', 'toscana-resident-api').strip() or 'toscana-resident-api',
+    )
+    app.config.setdefault(
+        'RESIDENT_API_ACCESS_TOKEN_MINUTES',
+        int(os.environ.get('RESIDENT_API_ACCESS_TOKEN_MINUTES', '15')),
+    )
+    app.config.setdefault(
+        'RESIDENT_API_REFRESH_TOKEN_DAYS',
+        int(os.environ.get('RESIDENT_API_REFRESH_TOKEN_DAYS', '30')),
+    )
     app.config.setdefault(
         'MONTHLY_FINANCIAL_REPORT_ENABLED',
         os.environ.get('MONTHLY_FINANCIAL_REPORT_ENABLED', '1').strip().lower() in {'1', 'true', 'yes', 'on'},
@@ -241,6 +259,7 @@ def _register_blueprints(app: Flask) -> None:
         expenses_bp,
         products_bp,
         reports_bp,
+        resident_api_bp,
         suppliers_bp,
     ]
     
@@ -441,29 +460,16 @@ def _register_routes(app: Flask) -> None:
         total_paid_by_me = 0
         
         try:
-            conn = db.get_conn()
-            cur = conn.cursor()
-            
-            # Obtener apartamentos por email directo o desde la tabla residents
-            user_email = current_user.email
-            cur.execute("""
-                SELECT DISTINCT id, number, resident_name, resident_email, resident_phone, notes, floor
-                FROM (
-                    SELECT id, number, resident_name, resident_email, resident_phone, notes, floor
-                    FROM apartments 
-                    WHERE resident_email = ?
-                    UNION ALL
-                    SELECT a.id, a.number, r.name as resident_name, r.email as resident_email, r.phone as resident_phone, a.notes, a.floor
-                    FROM residents r
-                    JOIN apartments a ON r.unit_id = a.id
-                    WHERE r.email = ?
-                )
-            """, (user_email, user_email))
-            my_apts = [dict(r) for r in cur.fetchall()]
+            my_apts = residents.list_linked_apartments_for_user(
+                current_user.id,
+                fallback_email=current_user.email,
+            )
             
             unit_ids = [apt['id'] for apt in my_apts]
             
             if unit_ids:
+                conn = db.get_conn()
+                cur = conn.cursor()
                 placeholders = ",".join("?" for _ in unit_ids)
                 
                 # Facturas pendientes
@@ -501,8 +507,8 @@ def _register_routes(app: Flask) -> None:
                 """, tuple(unit_ids))
                 payments_history = [dict(r) for r in cur.fetchall()]
                 total_paid_by_me = sum(p['amount'] for p in payments_history)
-            
-            conn.close()
+
+                conn.close()
         except Exception as e:
             app.logger.error(f"Error loading resident dashboard: {e}")
             

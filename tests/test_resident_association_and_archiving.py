@@ -10,6 +10,7 @@ def test_user_apartment_association_workflow(auth_client, app):
         # Clean / setup test state
         conn = db.get_conn()
         cur = conn.cursor()
+        cur.execute("DELETE FROM resident_user_units")
         cur.execute("DELETE FROM residents")
         cur.execute("DELETE FROM apartments")
         # Ensure we do not delete our acting admin user
@@ -40,10 +41,20 @@ def test_user_apartment_association_workflow(auth_client, app):
     
     assert response.status_code == 200
     
+    conn = db.get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM users WHERE username = 'resident_test'")
+    user_row = cur.fetchone()
+    user_id = user_row['id']
+    cur.execute("SELECT unit_id FROM resident_user_units WHERE user_id = ?", (user_id,))
+    first_link_rows = cur.fetchall()
+    conn.close()
+
     # Verificar que el apartamento ahora está asociado al email del nuevo residente
     apt = apartments.get_apartment(apt_id)
     assert apt['resident_email'] == 'resident_test@test.com'
     assert apt['resident_name'] == 'Resident Test Name'
+    assert [row['unit_id'] for row in first_link_rows] == [apt_id]
 
     # 3. Editar usuario residente para asociar a otro nuevo apartamento
     apt_id2 = apartments.add_apartment(
@@ -54,14 +65,6 @@ def test_user_apartment_association_workflow(auth_client, app):
         resident_email="",
         resident_phone="444-4444"
     )
-    
-    # Obtener el ID del usuario recién creado
-    conn = db.get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM users WHERE username = 'resident_test'")
-    user_row = cur.fetchone()
-    user_id = user_row['id']
-    conn.close()
     
     response_edit = auth_client.post(f'/auth/users/{user_id}/edit', data={
         'full_name': 'Resident Updated',
@@ -75,10 +78,17 @@ def test_user_apartment_association_workflow(auth_client, app):
     # Verificar que se desvinculó del primero y se vinculó al segundo
     apt1 = apartments.get_apartment(apt_id)
     apt2 = apartments.get_apartment(apt_id2)
+
+    conn = db.get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT unit_id FROM resident_user_units WHERE user_id = ? ORDER BY unit_id", (user_id,))
+    current_link_rows = cur.fetchall()
+    conn.close()
     
     assert apt1['resident_email'] is None or apt1['resident_email'] == ""
     assert apt2['resident_email'] == 'resident_test@test.com'
     assert apt2['resident_name'] == 'Resident Updated'
+    assert [row['unit_id'] for row in current_link_rows] == [apt_id2]
 
 
 def test_apartment_archiving_workflow(auth_client, app):
@@ -86,6 +96,7 @@ def test_apartment_archiving_workflow(auth_client, app):
         # Clean / setup test state
         conn = db.get_conn()
         cur = conn.cursor()
+        cur.execute("DELETE FROM resident_user_units")
         cur.execute("DELETE FROM residents")
         cur.execute("DELETE FROM apartments")
         conn.commit()

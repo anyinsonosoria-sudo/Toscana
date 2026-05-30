@@ -4,7 +4,7 @@ Gestión completa de facturas, pagos, cuentas por cobrar y ventas recurrentes
 """
 import logging
 import os
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, g
 from flask_login import login_required, current_user
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +23,25 @@ import billing
 logger = logging.getLogger(__name__)
 
 billing_bp = Blueprint('billing', __name__, url_prefix='/ventas')
+
+
+def _get_request_user():
+    api_user = getattr(g, 'resident_api_user', None)
+    if api_user is not None:
+        return api_user
+    return current_user
+
+
+def _get_resident_allowed_unit_ids():
+    request_user = _get_request_user()
+    try:
+        return residents.get_allowed_unit_ids_for_user(
+            request_user.id,
+            fallback_email=request_user.email,
+        )
+    except Exception as exc:
+        logger.error(f"Error resolving resident linked apartments: {exc}")
+        return set()
 
 
 def _get_safe_next_url(next_url=None):
@@ -1323,37 +1342,24 @@ def get_invoice_api(invoice_id):
 def view_invoice_pdf(invoice_id):
     """Ver/descargar PDF de una factura"""
     try:
+        request_user = _get_request_user()
         # Verificar que la factura existe
         invoice = models.get_invoice_by_id(invoice_id)
         if not invoice:
             flash("Factura no encontrada", "error")
-            if current_user.role == 'resident':
+            if request_user.role == 'resident':
                 return redirect(url_for('dashboard'))
             return redirect(url_for('billing.invoices'))
         
         # Validación de propiedad para residentes o permisos para operadores/admins
-        if current_user.role == 'resident':
-            from db import get_conn
-            allowed_unit_ids = set()
-            try:
-                conn = get_conn()
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT id FROM apartments WHERE resident_email = ?
-                    UNION
-                    SELECT unit_id FROM residents WHERE email = ?
-                """, (current_user.email, current_user.email))
-                allowed_unit_ids = {row[0] for row in cur.fetchall() if row[0] is not None}
-                conn.close()
-            except Exception as e:
-                logger.error(f"Error checking resident apartments ownership: {e}")
-            
+        if request_user.role == 'resident':
+            allowed_unit_ids = _get_resident_allowed_unit_ids()
             if invoice.get('unit_id') not in allowed_unit_ids:
                 flash("Acceso denegado: esta factura no pertenece a su apartamento", "error")
                 return redirect(url_for('dashboard'))
         else:
             from utils.permissions import check_permission
-            if not check_permission(current_user.id, 'facturacion.view', current_user.role):
+            if not check_permission(request_user.id, 'facturacion.view', request_user.role):
                 flash("No tienes permiso para ver esta factura", "warning")
                 abort(403)
         
@@ -1396,7 +1402,7 @@ def view_invoice_pdf(invoice_id):
             except Exception as e:
                 logger.error(f"Error generando PDF: {e}")
                 flash("No se pudo generar el PDF de la factura", "error")
-                if current_user.role == 'resident':
+                if request_user.role == 'resident':
                     return redirect(url_for('dashboard'))
                 return redirect(url_for('billing.invoices'))
         
@@ -1411,7 +1417,7 @@ def view_invoice_pdf(invoice_id):
     except Exception as e:
         logger.error(f"Error en view_invoice_pdf: {e}")
         flash("Error al cargar el PDF", "error")
-        if current_user.role == 'resident':
+        if request_user.role == 'resident':
             return redirect(url_for('dashboard'))
         return redirect(url_for('billing.invoices'))
 
@@ -1635,20 +1641,7 @@ def view_receipt_pdf(payment_id):
             
         # 2. Validación de pertenencia si es residente
         if current_user.role == 'resident':
-            allowed_unit_ids = set()
-            try:
-                conn = get_conn()
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT id FROM apartments WHERE resident_email = ?
-                    UNION
-                    SELECT unit_id FROM residents WHERE email = ?
-                """, (current_user.email, current_user.email))
-                allowed_unit_ids = {row[0] for row in cur.fetchall() if row[0] is not None}
-                conn.close()
-            except Exception as e:
-                logger.error(f"Error checking resident payment ownership: {e}")
-                
+            allowed_unit_ids = _get_resident_allowed_unit_ids()
             if payment['unit_id'] not in allowed_unit_ids:
                 flash("Acceso denegado: este recibo no pertenece a su apartamento", "error")
                 return redirect(url_for('dashboard'))
@@ -1736,6 +1729,7 @@ def view_receipt_pdf(payment_id):
 def download_statement_pdf(unit_id):
     """Ver o descargar el estado de cuenta actualizado de un apartamento en PDF"""
     try:
+        request_user = _get_request_user()
         import apartments
         import company
         from db import get_conn
@@ -1748,27 +1742,14 @@ def download_statement_pdf(unit_id):
             return redirect(url_for('dashboard'))
             
         # 2. Validación de pertenencia si es residente
-        if current_user.role == 'resident':
-            allowed_unit_ids = set()
-            try:
-                conn = get_conn()
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT id FROM apartments WHERE resident_email = ?
-                    UNION
-                    SELECT unit_id FROM residents WHERE email = ?
-                """, (current_user.email, current_user.email))
-                allowed_unit_ids = {row[0] for row in cur.fetchall() if row[0] is not None}
-                conn.close()
-            except Exception as e:
-                logger.error(f"Error checking resident statement ownership: {e}")
-                
+        if request_user.role == 'resident':
+            allowed_unit_ids = _get_resident_allowed_unit_ids()
             if unit_id not in allowed_unit_ids:
                 flash("Acceso denegado: este apartamento no le pertenece", "error")
                 return redirect(url_for('dashboard'))
         else:
             from utils.permissions import check_permission
-            if not check_permission(current_user.id, 'apartamentos.view', current_user.role):
+            if not check_permission(request_user.id, 'apartamentos.view', request_user.role):
                 flash("No tienes permiso para ver el estado de cuenta de este apartamento", "warning")
                 abort(403)
                 

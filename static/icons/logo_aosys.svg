@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 320" width="900" height="320">
+
+  <!-- Fondo -->
+  <rect width="900" height="320" fill="#060A12"/>
+
+  <defs>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Contenedor del ícono -->
+  <rect x="40" y="50" width="200" height="200" rx="44" fill="#0D1F3C"/>
+  <rect x="40" y="50" width="200" height="200" rx="44" fill="none" stroke="#1E3A70" stroke-width="1.5"/>
+
+  <!-- A: trazo izquierdo -->
+  <line x1="78"  y1="218" x2="140" y2="68"  stroke="url(#blueGrad)" stroke-width="18" stroke-linecap="round"/>
+  <!-- A: trazo derecho (también punto de fusión con la O) -->
+  <line x1="140" y1="68"  x2="190" y2="218" stroke="url(#blueGrad)" stroke-width="18" stroke-linecap="round"/>
+  <!-- A: travesaño -->
+  <line x1="96"  y1="170" x2="172" y2="170" stroke="url(#blueGrad)" stroke-width="13" stroke-linecap="round"/>
+
+  <!-- O: círculo que nace del vértice derecho de la A -->
+  <circle cx="190" cy="148" r="54" fill="none" stroke="#60A5FA" stroke-width="18"/>
+  <!-- Tapa el arco izquierdo de la O donde se funde con la A -->
+  <line x1="190" y1="94" x2="190" y2="202" stroke="#0D1F3C" stroke-width="22"/>
+
+  <!-- Texto AO.sys -->
+  <text
+    x="275"
+    y="190"
+    font-family="'Arial Black', Arial, sans-serif"
+    font-size="90"
+    font-weight="900"
+    fill="#FFFFFF"
+    letter-spacing="-3">AO</text>
+
+  <text
+    x="455"
+    y="190"
+    font-family="'Arial Black', Arial, sans-serif"
+    font-size="90"
+    font-weight="900"
+    fill="url(#blueGrad)"
+    letter-spacing="-3">.sys</text>
+
+  <!-- Línea separadora -->
+  <rect x="275" y="202" width="582" height="2" rx="1" fill="#1E3A70"/>
+
+  <!-- Subtítulo -->
+  <text
+    x="275"
+    y="230"
+    font-family="Arial, sans-serif"
+    font-size="18"
+    font-weight="400"
+    fill="#3A5A90"
+    letter-spacing="6">SOFTWARE  &amp;  APPS  STUDIO</text>
+
+</svg>

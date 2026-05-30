@@ -84,6 +84,14 @@ body {
     padding: 4px;
 }
 
+.sidebar-brand-logo--resident {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: transparent;
+    padding: 0;
+}
+
 .sidebar-brand-icon {
     width: 40px;
     height: 40px;
@@ -987,6 +995,26 @@ body {
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1;
+}
+
+.mobile-header-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.mobile-brand-logo {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    object-fit: contain;
+}
+
+.mobile-brand-logo--resident {
+    width: 36px;
+    height: 36px;
 }
 
 .hamburger-btn {

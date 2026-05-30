@@ -1,10 +1,18 @@
-const CACHE_NAME = 'xpack-v1';
+const CACHE_NAME = 'aosys-pwa-v4';
 const STATIC_ASSETS = [
   '/static/css/app.css',
   '/static/js/wizard.js',
   '/static/manifest.json',
-  '/static/icons/icon-192x192.png',
-  '/static/icons/icon-512x512.png',
+  '/static/icons/aosys-icon-72.png',
+  '/static/icons/aosys-icon-96.png',
+  '/static/icons/aosys-icon-128.png',
+  '/static/icons/aosys-icon-144.png',
+  '/static/icons/aosys-icon-180.png',
+  '/static/icons/aosys-icon-192.png',
+  '/static/icons/aosys-icon-512.png',
+  '/static/icons/resident-toscana-logo.png',
+  '/static/icons/logo_aosys.svg',
+  '/static/icons/logo_toscana.svg',
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css',
   'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css',
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js'

@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
+
+  <!-- Fondo -->
+  <rect width="800" height="600" fill="#3D1A0A"/>
+
+  <!-- Columnas del edificio (skyline) -->
+  <!-- Col 1 -->
+  <rect x="160" y="200" width="44" height="230" rx="2" fill="#6B3010"/>
+  <rect x="160" y="196" width="44" height="8" rx="2" fill="#8B4513"/>
+  <!-- Col 2 -->
+  <rect x="216" y="155" width="44" height="275" rx="2" fill="#6B3010"/>
+  <rect x="216" y="151" width="44" height="8" rx="2" fill="#8B4513"/>
+  <!-- Col 3 (más alta, centro-izquierda) -->
+  <rect x="272" y="115" width="48" height="315" rx="2" fill="#7A3812"/>
+  <rect x="272" y="111" width="48" height="8" rx="2" fill="#9B5020"/>
+  <!-- Col 4 (la más alta, centro) -->
+  <rect x="333" y="80" width="50" height="350" rx="2" fill="#7A3812"/>
+  <rect x="333" y="76" width="50" height="8" rx="2" fill="#9B5020"/>
+  <!-- Col 5 -->
+  <rect x="396" y="110" width="48" height="320" rx="2" fill="#7A3812"/>
+  <rect x="396" y="106" width="48" height="8" rx="2" fill="#9B5020"/>
+  <!-- Col 6 -->
+  <rect x="457" y="148" width="44" height="282" rx="2" fill="#6B3010"/>
+  <rect x="457" y="144" width="44" height="8" rx="2" fill="#8B4513"/>
+  <!-- Col 7 -->
+  <rect x="513" y="192" width="44" height="238" rx="2" fill="#6B3010"/>
+  <rect x="513" y="188" width="44" height="8" rx="2" fill="#8B4513"/>
+  <!-- Col 8 (pequeña izquierda) -->
+  <rect x="136" y="240" width="28" height="190" rx="2" fill="#5A2808"/>
+  <rect x="136" y="236" width="28" height="7" rx="2" fill="#7A3810"/>
+  <!-- Col 9 (pequeña derecha) -->
+  <rect x="553" y="235" width="28" height="195" rx="2" fill="#5A2808"/>
+  <rect x="553" y="231" width="28" height="7" rx="2" fill="#7A3810"/>
+
+  <!-- Base / plataforma -->
+  <rect x="120" y="428" width="468" height="12" rx="3" fill="#8B4513"/>
+  <rect x="108" y="438" width="492" height="8" rx="2" fill="#6B3010"/>
+
+  <!-- Letras R y T con contorno blanco -->
+  <!-- R -->
+  <text
+    x="256"
+    y="420"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="160"
+    font-weight="700"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="2.5"
+    letter-spacing="0"
+    opacity="0.95">R</text>
+
+  <!-- T -->
+  <text
+    x="368"
+    y="420"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="160"
+    font-weight="700"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="2.5"
+    opacity="0.95">T</text>
+
+  <!-- Nombre TOSCANA -->
+  <text
+    x="400"
+    y="510"
+    text-anchor="middle"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="28"
+    font-weight="400"
+    fill="#C8A882"
+    letter-spacing="10">TOSCANA</text>
+
+</svg>

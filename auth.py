@@ -4,12 +4,14 @@ Maneja autenticación de usuarios
 """
 
 import logging
+from typing import Optional
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
 import user_model
 import customization
 import company
+import residents
 from utils import permissions as perm_module
 from extensions import limiter, csrf
 
@@ -23,6 +25,35 @@ def _login_context():
     except Exception:
         co = {}
     return dict(customization=custom, accent_color=accent, company_info=co)
+
+
+def _get_linked_apartment_id(user) -> Optional[int]:
+    linked_apartments = residents.list_linked_apartments_for_user(
+        user.id,
+        fallback_email=user.email,
+        include_invited=True,
+    )
+    return linked_apartments[0]['id'] if linked_apartments else None
+
+
+def _get_resident_link_context(user) -> dict:
+    linked_apartments = residents.list_linked_apartments_for_user(
+        user.id,
+        fallback_email=user.email,
+        include_invited=True,
+    )
+    pending_invitations = residents.list_pending_invitations_for_user(user.id)
+    primary_link = linked_apartments[0] if linked_apartments else None
+    pending_invitation = pending_invitations[0] if pending_invitations else None
+    resident_link_status = 'active'
+    if primary_link and primary_link.get('status') in {'active', 'invited'}:
+        resident_link_status = primary_link['status']
+
+    return {
+        'linked_apartment_id': primary_link['id'] if primary_link else None,
+        'resident_link_status': resident_link_status,
+        'pending_invitation': pending_invitation,
+    }
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +152,7 @@ def register():
         full_name = request.form.get('full_name', '').strip()
         role = request.form.get('role', 'operator')
         apartment_id = request.form.get('apartment_id', '').strip()
+        resident_link_status = request.form.get('resident_link_status', 'active').strip().lower() or 'active'
         
         # Validaciones
         errors = []
@@ -139,6 +171,9 @@ def register():
         
         if role not in ['admin', 'operator', 'resident']:
             errors.append('Rol inválido')
+
+        if resident_link_status not in ['active', 'invited']:
+            errors.append('Estado de vinculo inválido')
         
         if errors:
             for error in errors:
@@ -158,11 +193,28 @@ def register():
             # Asociar apartamento si el rol es 'resident' y apartment_id está seleccionado
             if role == 'resident' and apartment_id:
                 try:
-                    apartments.update_apartment(
-                        int(apartment_id), 
-                        resident_email=email, 
-                        resident_name=full_name or username
-                    )
+                    residents.clear_user_apartment_links(user_id, clear_emails=[email])
+                    if resident_link_status == 'invited':
+                        invitation = residents.issue_resident_invitation(
+                            user_id,
+                            int(apartment_id),
+                            resident_email=email,
+                            resident_name=full_name or username,
+                            created_by=current_user.id if current_user.is_authenticated else None,
+                        )
+                        flash(
+                            f"Codigo de invitacion generado para {username}: {invitation['invitation_code']}",
+                            'info',
+                        )
+                        return redirect(url_for('auth.edit_user', user_id=user_id))
+                    else:
+                        residents.link_user_to_apartment(
+                            user_id,
+                            int(apartment_id),
+                            resident_email=email,
+                            resident_name=full_name or username,
+                            created_by=current_user.id if current_user.is_authenticated else None,
+                        )
                 except Exception as ex:
                     logger.error(f"Error associating apartment on registration: {ex}")
                     flash(f"Usuario creado, pero hubo un error asociando el apartamento: {ex}", "warning")
@@ -377,28 +429,24 @@ def edit_user(user_id):
         email = request.form.get('email', '').strip()
         role = request.form.get('role', 'operator')
         apartment_id = request.form.get('apartment_id', '').strip()
+        resident_link_status = request.form.get('resident_link_status', 'active').strip().lower() or 'active'
         
         # Validar rol
         if role not in ['admin', 'operator', 'resident']:
             flash('Rol inválido', 'error')
-            conn_db = db.get_conn()
-            cur_db = conn_db.cursor()
-            cur_db.execute("SELECT id FROM apartments WHERE resident_email = ? LIMIT 1", (user.email,))
-            linked_apt_row = cur_db.fetchone()
-            linked_apartment_id = linked_apt_row['id'] if linked_apt_row else None
-            conn_db.close()
-            return render_template('edit_user.html', user=user, apartments=apts, linked_apartment_id=linked_apartment_id)
+            link_context = _get_resident_link_context(user)
+            return render_template('edit_user.html', user=user, apartments=apts, **link_context)
+
+        if resident_link_status not in ['active', 'invited']:
+            flash('Estado de vinculo inválido', 'error')
+            link_context = _get_resident_link_context(user)
+            return render_template('edit_user.html', user=user, apartments=apts, **link_context)
         
         # No permitir cambiar rol del usuario actual
         if user_id == current_user.id:
             flash('No puedes cambiar tu propio rol', 'error')
-            conn_db = db.get_conn()
-            cur_db = conn_db.cursor()
-            cur_db.execute("SELECT id FROM apartments WHERE resident_email = ? LIMIT 1", (user.email,))
-            linked_apt_row = cur_db.fetchone()
-            linked_apartment_id = linked_apt_row['id'] if linked_apt_row else None
-            conn_db.close()
-            return render_template('edit_user.html', user=user, apartments=apts, linked_apartment_id=linked_apartment_id)
+            link_context = _get_resident_link_context(user)
+            return render_template('edit_user.html', user=user, apartments=apts, **link_context)
         
         try:
             # Actualizar usuario
@@ -411,24 +459,33 @@ def edit_user(user_id):
             """, (full_name, email, role, user_id))
             conn.commit()
             conn.close()
-            
-            # Desasociar apartments vinculados anteriormente con el email viejo/nuevo para re-vincular
-            conn_db = db.get_conn()
-            cur_db = conn_db.cursor()
-            cur_db.execute("UPDATE apartments SET resident_email = NULL WHERE resident_email = ?", (email,))
-            if user.email != email:
-                cur_db.execute("UPDATE apartments SET resident_email = NULL WHERE resident_email = ?", (user.email,))
-            conn_db.commit()
-            conn_db.close()
+
+            residents.clear_user_apartment_links(user_id, clear_emails=[email, user.email])
             
             # Asociar apartamento si el rol es 'resident' y apartment_id está seleccionado
             if role == 'resident' and apartment_id:
                 try:
-                    apartments.update_apartment(
-                        int(apartment_id), 
-                        resident_email=email, 
-                        resident_name=full_name or user.username
-                    )
+                    if resident_link_status == 'invited':
+                        invitation = residents.issue_resident_invitation(
+                            user_id,
+                            int(apartment_id),
+                            resident_email=email,
+                            resident_name=full_name or user.username,
+                            created_by=current_user.id,
+                        )
+                        flash(
+                            f"Codigo de invitacion regenerado para {user.username}: {invitation['invitation_code']}",
+                            'info',
+                        )
+                        return redirect(url_for('auth.edit_user', user_id=user_id))
+                    else:
+                        residents.link_user_to_apartment(
+                            user_id,
+                            int(apartment_id),
+                            resident_email=email,
+                            resident_name=full_name or user.username,
+                            created_by=current_user.id,
+                        )
                 except Exception as ex:
                     logger.error(f"Error associating apartment on update: {ex}")
                     flash(f"Usuario actualizado, pero hubo un error asociando el apartamento: {ex}", "warning")
@@ -439,14 +496,9 @@ def edit_user(user_id):
             flash(f'Error al actualizar usuario: {str(e)}', 'error')
     
     # GET request
-    conn_db = db.get_conn()
-    cur_db = conn_db.cursor()
-    cur_db.execute("SELECT id FROM apartments WHERE resident_email = ? LIMIT 1", (user.email,))
-    linked_apt_row = cur_db.fetchone()
-    linked_apartment_id = linked_apt_row['id'] if linked_apt_row else None
-    conn_db.close()
-    
-    return render_template('edit_user.html', user=user, apartments=apts, linked_apartment_id=linked_apartment_id)
+    link_context = _get_resident_link_context(user)
+
+    return render_template('edit_user.html', user=user, apartments=apts, **link_context)
 
 
 @auth_bp.route('/users/<int:user_id>/delete', methods=['POST'])
