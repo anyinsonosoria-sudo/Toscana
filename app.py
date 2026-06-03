@@ -6,13 +6,14 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import timedelta
-from typing import Optional
+from typing import Any, Optional
 from dotenv import load_dotenv
+import requests
 
 # Cargar variables de entorno desde .env
 load_dotenv()
 
-from flask import Flask, redirect, url_for, render_template, jsonify
+from flask import Flask, redirect, url_for, render_template, jsonify, request, session
 from flask_login import current_user, login_required
 
 import db
@@ -103,6 +104,26 @@ def create_app(config_object: Optional[str] = None) -> Flask:
     app.config.setdefault(
         'WEB_DB_RESTORE_CONFIRM_TEXT',
         os.environ.get('WEB_DB_RESTORE_CONFIRM_TEXT', 'RESTAURAR').strip() or 'RESTAURAR',
+    )
+    app.config.setdefault(
+        'RESIDENT_AI_CHAT_ENABLED',
+        os.environ.get('RESIDENT_AI_CHAT_ENABLED', '0').strip().lower() in {'1', 'true', 'yes', 'on'},
+    )
+    app.config.setdefault(
+        'RESIDENT_AI_API_URL',
+        os.environ.get('RESIDENT_AI_API_URL', 'https://api.openai.com/v1/chat/completions').strip(),
+    )
+    app.config.setdefault(
+        'RESIDENT_AI_API_KEY',
+        os.environ.get('RESIDENT_AI_API_KEY', '').strip(),
+    )
+    app.config.setdefault(
+        'RESIDENT_AI_MODEL',
+        os.environ.get('RESIDENT_AI_MODEL', 'gpt-4o-mini').strip() or 'gpt-4o-mini',
+    )
+    app.config.setdefault(
+        'RESIDENT_AI_TIMEOUT_SECONDS',
+        int(os.environ.get('RESIDENT_AI_TIMEOUT_SECONDS', '20')),
     )
     
     # Configurar carpeta de uploads
@@ -406,6 +427,45 @@ def _register_context_processors(app: Flask) -> None:
             except Exception:
                 return default_menus
         return dict(get_sidebar_menu=get_sidebar_menu)
+
+    @app.context_processor
+    def inject_resident_navigation():
+        """Inyecta la navegación del portal residente."""
+        def get_resident_navigation():
+            return [
+                {
+                    'endpoint': 'resident_balances',
+                    'label': 'Balances',
+                    'icon': 'bi bi-wallet2',
+                    'url': '/dashboard/balances',
+                },
+                {
+                    'endpoint': 'resident_evolution',
+                    'label': 'Evolución',
+                    'icon': 'bi bi-graph-up-arrow',
+                    'url': '/dashboard/evolucion',
+                },
+                {
+                    'endpoint': 'resident_billing_overview',
+                    'label': 'Facturas y pagos',
+                    'icon': 'bi bi-receipt-cutoff',
+                    'url': '/dashboard/facturas-pagos',
+                },
+                {
+                    'endpoint': 'resident_reports',
+                    'label': 'Reportes',
+                    'icon': 'bi bi-file-earmark-bar-graph',
+                    'url': '/dashboard/reportes',
+                },
+                {
+                    'endpoint': 'resident_help',
+                    'label': 'Ayuda',
+                    'icon': 'bi bi-chat-square-dots',
+                    'url': '/dashboard/ayuda',
+                },
+            ]
+
+        return dict(get_resident_navigation=get_resident_navigation)
     
     @app.context_processor
     def inject_payment_helpers():
@@ -446,80 +506,23 @@ def _register_routes(app: Flask) -> None:
             return redirect(url_for("dashboard"))
         else:
             return redirect(url_for("auth.login"))
-    
-    def resident_dashboard():
-        """Dashboard exclusivo e informativo para residentes."""
-        from datetime import datetime
-        import company
-        
-        my_apts = []
-        pending_invoices = []
-        paid_invoices = []
-        payments_history = []
-        total_pending = 0
-        total_paid_by_me = 0
-        
-        try:
-            my_apts = residents.list_linked_apartments_for_user(
-                current_user.id,
-                fallback_email=current_user.email,
-            )
-            
-            unit_ids = [apt['id'] for apt in my_apts]
-            
-            if unit_ids:
-                conn = db.get_conn()
-                cur = conn.cursor()
-                placeholders = ",".join("?" for _ in unit_ids)
-                
-                # Facturas pendientes
-                cur.execute(f"""
-                    SELECT i.*, 
-                           COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) as total_paid
-                    FROM invoices i
-                    WHERE i.unit_id IN ({placeholders}) AND i.paid = 0
-                    ORDER BY i.issued_date DESC
-                """, tuple(unit_ids))
-                pending_raw = [dict(r) for r in cur.fetchall()]
-                for pi in pending_raw:
-                    pi['remaining'] = max(pi['amount'] - pi['total_paid'], 0)
-                    total_pending += pi['remaining']
-                    pending_invoices.append(pi)
-                    
-                # Facturas pagadas (histórico)
-                cur.execute(f"""
-                    SELECT i.*, 
-                           COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) as total_paid
-                    FROM invoices i
-                    WHERE i.unit_id IN ({placeholders}) AND i.paid = 1
-                    ORDER BY i.issued_date DESC
-                """, tuple(unit_ids))
-                paid_invoices = [dict(r) for r in cur.fetchall()]
-                
-                # Histórico de pagos (recibos)
-                cur.execute(f"""
-                    SELECT p.*, i.description as invoice_desc, a.number as apt_number, i.amount as invoice_total
-                    FROM payments p
-                    JOIN invoices i ON p.invoice_id = i.id
-                    JOIN apartments a ON i.unit_id = a.id
-                    WHERE i.unit_id IN ({placeholders})
-                    ORDER BY p.paid_date DESC
-                """, tuple(unit_ids))
-                payments_history = [dict(r) for r in cur.fetchall()]
-                total_paid_by_me = sum(p['amount'] for p in payments_history)
 
-                conn.close()
-        except Exception as e:
-            app.logger.error(f"Error loading resident dashboard: {e}")
-            
-        # Generar últimos 6 meses para descarga de reportes, filtrando antes del inicio de operaciones
+    resident_month_names = {
+        1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
+        7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+    }
+    resident_month_lookup = {name.lower(): number for number, name in resident_month_names.items()}
+    resident_month_short_names = {
+        1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr", 5: "May", 6: "Jun",
+        7: "Jul", 8: "Ago", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic"
+    }
+
+    def _build_resident_report_months():
+        """Genera el histórico de reportes mensuales completos visibles para residentes."""
+        from datetime import datetime
+
         months = []
         now = datetime.now()
-        spanish_months = {
-            1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
-            7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
-        }
-        
         oldest_date_str = None
         try:
             conn = db.get_conn()
@@ -529,7 +532,7 @@ def _register_routes(app: Flask) -> None:
             cur.execute("SELECT MIN(paid_date) FROM payments")
             min_pay = cur.fetchone()[0]
             conn.close()
-            
+
             dates = []
             if min_inv:
                 dates.append(min_inv[:7])
@@ -539,37 +542,735 @@ def _register_routes(app: Flask) -> None:
                 oldest_date_str = min(dates)
         except Exception as e:
             app.logger.error(f"Error finding start of operations for reports list: {e}")
-        
-        for i in range(6):
-            m = now.month - i
-            y = now.year
-            while m <= 0:
-                m += 12
-                y -= 1
-            
-            month_key = f"{y}-{m:02d}"
+
+        for offset in range(1, 7):
+            month_value = now.month - offset
+            year_value = now.year
+            while month_value <= 0:
+                month_value += 12
+                year_value -= 1
+
+            month_key = f"{year_value}-{month_value:02d}"
             if oldest_date_str and month_key < oldest_date_str:
                 continue
-                
-            month_name = spanish_months[m]
-            ref_date = f"{y}-{m:02d}-01"
+
+            reference_year = year_value
+            reference_month = month_value + 1
+            if reference_month == 13:
+                reference_month = 1
+                reference_year += 1
+
             months.append({
-                'label': f"{month_name} {y}",
-                'ref_date': ref_date
+                'label': f"{resident_month_names[month_value]} {year_value}",
+                'ref_date': f"{reference_year}-{reference_month:02d}-01",
+                'period_key': month_key,
             })
-            
-        company_info = company.get_company_info() or {}
-        
-        return render_template(
-            "resident_dashboard.html",
-            apartments=my_apts,
-            pending_invoices=pending_invoices,
-            paid_invoices=paid_invoices,
-            payments_history=payments_history,
-            total_pending=total_pending,
-            total_paid=total_paid_by_me,
-            months=months,
-            company_info=company_info
+
+        return months
+
+    def _format_resident_currency(amount):
+        try:
+            return f"RD$ {float(amount or 0):,.2f}"
+        except (TypeError, ValueError):
+            return "RD$ 0.00"
+
+    def _format_resident_month_option(month_key: str):
+        try:
+            year_value, month_value = month_key.split('-', 1)
+            month_number = int(month_value)
+            return {
+                'value': month_key,
+                'label': f"{resident_month_names[month_number]} {year_value}",
+            }
+        except Exception:
+            return {'value': month_key, 'label': month_key}
+
+    def _get_resident_common_context():
+        linked_apartments = residents.list_linked_apartments_for_user(
+            current_user.id,
+            fallback_email=current_user.email,
+        )
+        resident_summary = residents.get_resident_statement_summary_for_user(
+            current_user.id,
+            fallback_email=current_user.email,
+        )
+        return {
+            'apartments': linked_apartments,
+            'resident_summary': resident_summary,
+            'resident_totals': resident_summary['totals'],
+            'resident_units': resident_summary['apartments'],
+            'company_info': company.get_company_info() or {},
+            'report_months': _build_resident_report_months(),
+        }
+
+    def _build_resident_balances_context():
+        context = _get_resident_common_context()
+        context.update({
+            'pending_preview': residents.list_resident_invoices_for_user(
+                current_user.id,
+                fallback_email=current_user.email,
+                paid=False,
+                limit=4,
+            ),
+        })
+        return context
+
+    def _build_resident_evolution_context():
+        from datetime import datetime
+
+        context = _get_resident_common_context()
+        invoices = residents.list_resident_invoices_for_user(
+            current_user.id,
+            fallback_email=current_user.email,
+        )
+        payment_history: dict[str, Any] = residents.get_resident_payment_history_for_user(
+            current_user.id,
+            fallback_email=current_user.email,
+            limit=None,
+        )
+        payment_items = list(payment_history.get('items') or [])
+
+        trend_keys = []
+        trend_labels = []
+        trend_invoiced = {}
+        trend_paid = {}
+        now = datetime.now()
+
+        for offset in range(5, -1, -1):
+            month_value = now.month - offset
+            year_value = now.year
+            while month_value <= 0:
+                month_value += 12
+                year_value -= 1
+            key = f"{year_value}-{month_value:02d}"
+            trend_keys.append(key)
+            trend_labels.append(f"{resident_month_short_names[month_value]} {year_value}")
+            trend_invoiced[key] = 0.0
+            trend_paid[key] = 0.0
+
+        for invoice in invoices:
+            month_key = (invoice.get('issued_date') or '')[:7]
+            if month_key in trend_invoiced:
+                trend_invoiced[month_key] += float(invoice.get('amount') or 0)
+
+        for payment in payment_items:
+            month_key = (payment.get('paid_date') or '')[:7]
+            if month_key in trend_paid:
+                trend_paid[month_key] += float(payment.get('amount') or 0)
+
+        context.update({
+            'trend_labels': trend_labels,
+            'trend_invoiced_values': [trend_invoiced[key] for key in trend_keys],
+            'trend_paid_values': [trend_paid[key] for key in trend_keys],
+            'status_distribution_labels': ['Pendiente', 'Pagado'],
+            'status_distribution_values': [
+                float(context['resident_totals'].get('balance') or 0),
+                float(context['resident_totals'].get('total_paid') or 0),
+            ],
+            'unit_balance_labels': [
+                f"Apto {unit.get('apartment_number') or unit.get('unit_id')}" for unit in context['resident_units']
+            ],
+            'unit_balance_values': [float(unit.get('balance') or 0) for unit in context['resident_units']],
+            'unit_paid_values': [float(unit.get('total_paid') or 0) for unit in context['resident_units']],
+            'has_financial_activity': bool(invoices or payment_items),
+        })
+        return context
+
+    def _build_resident_billing_context():
+        context = _get_resident_common_context()
+        page = max(request.args.get('page', type=int) or 1, 1)
+        page_size = 6
+        method_filter = (request.args.get('method') or '').strip()
+        month_filter = (request.args.get('month') or '').strip()
+
+        payment_history: dict[str, Any] = residents.get_resident_payment_history_for_user(
+            current_user.id,
+            fallback_email=current_user.email,
+            method=method_filter or None,
+            month=month_filter or None,
+            limit=page_size,
+            offset=(page - 1) * page_size,
+        )
+        payment_items = list(payment_history.get('items') or [])
+        payment_total = int(payment_history.get('total') or 0)
+        payment_methods = list(payment_history.get('methods') or [])
+        payment_months = list(payment_history.get('months') or [])
+        total_pages = max(1, (payment_total + page_size - 1) // page_size) if payment_total else 1
+
+        context.update({
+            'pending_invoices': residents.list_resident_invoices_for_user(
+                current_user.id,
+                fallback_email=current_user.email,
+                paid=False,
+            ),
+            'payments_history': payment_items,
+            'payments_total': payment_total,
+            'payments_page': page,
+            'payments_total_pages': total_pages,
+            'payments_has_prev': page > 1,
+            'payments_has_next': page < total_pages,
+            'payment_filter_method': method_filter,
+            'payment_filter_month': month_filter,
+            'payment_filter_methods': payment_methods,
+            'payment_filter_months': [
+                _format_resident_month_option(month_key) for month_key in payment_months
+            ],
+        })
+        return context
+
+    def _build_resident_reports_context():
+        from datetime import datetime
+
+        context = _get_resident_common_context()
+        context.update({
+            'current_report_url': url_for(
+                'reports.monthly_preview_pdf',
+                reference_date=datetime.now().strftime('%Y-%m-%d'),
+                period_mode='current_month_to_date',
+            ),
+        })
+        return context
+
+    def _extract_resident_month_reference(question: str):
+        import re
+        from datetime import datetime
+
+        year_match = re.search(r'(20\d{2})', question)
+        year_value = int(year_match.group(1)) if year_match else datetime.now().year
+        for month_name, month_number in resident_month_lookup.items():
+            if month_name in question:
+                reference_month = month_number + 1
+                reference_year = year_value
+                if reference_month == 13:
+                    reference_month = 1
+                    reference_year += 1
+                return {
+                    'label': f"{resident_month_names[month_number]} {year_value}",
+                    'reference_date': f"{reference_year}-{reference_month:02d}-01",
+                }
+        return None
+
+    def _build_resident_help_answer(question: str, context: dict):
+        from datetime import datetime
+        import reports as financial_reports
+
+        normalized_question = " ".join((question or '').strip().lower().split())
+        if not normalized_question:
+            return None
+
+        month_reference = _extract_resident_month_reference(normalized_question)
+        totals = context['resident_totals']
+        company_info = context['company_info']
+
+        if 'foto' in normalized_question or 'perfil' in normalized_question:
+            return {
+                'tone': 'primary',
+                'title': 'Actualizar foto o perfil',
+                'body': 'Puedes actualizar tu foto, nombre y telefono desde Mi Perfil dentro del portal.',
+                'detail': 'Abre el editor de perfil, carga la imagen y guarda los cambios.',
+                'link_url': url_for('auth.edit_profile'),
+                'link_label': 'Abrir Mi Perfil',
+            }
+
+        if 'contrase' in normalized_question or 'clave' in normalized_question:
+            return {
+                'tone': 'warning',
+                'title': 'Cambiar contrasena',
+                'body': 'El cambio de contrasena se realiza desde la opcion de seguridad del portal.',
+                'detail': 'Debes confirmar tu contrasena actual antes de guardar la nueva.',
+                'link_url': url_for('auth.change_password'),
+                'link_label': 'Cambiar contrasena',
+            }
+
+        if 'factura' in normalized_question and ('pendient' in normalized_question or 'debo' in normalized_question or 'por pagar' in normalized_question):
+            pending_count = int(totals.get('pending_invoices') or 0)
+            pending_balance = totals.get('balance') or 0
+            if pending_count == 0:
+                body = 'No tienes facturas pendientes en este momento.'
+                detail = 'Tu cuenta se encuentra al dia en las unidades vinculadas.'
+            else:
+                body = f"Tienes {pending_count} factura(s) pendiente(s) por {_format_resident_currency(pending_balance)}."
+                detail = 'En la seccion Facturas y pagos puedes revisar conceptos, fechas y descargar PDFs.'
+            return {
+                'tone': 'success' if pending_count == 0 else 'warning',
+                'title': 'Estado de facturas pendientes',
+                'body': body,
+                'detail': detail,
+                'link_url': url_for('resident_billing_overview'),
+                'link_label': 'Ir a Facturas y pagos',
+            }
+
+        if month_reference and ('gasto' in normalized_question or 'gastos' in normalized_question):
+            reference_dt = datetime.strptime(month_reference['reference_date'], '%Y-%m-%d')
+            report_data = financial_reports.get_monthly_financial_report_data(
+                reference_dt=reference_dt,
+                period_mode='previous_month',
+            )
+            return {
+                'tone': 'primary',
+                'title': f"Gastos de {month_reference['label']}",
+                'body': f"Los gastos operativos publicados fueron {_format_resident_currency(report_data.get('total_expenses'))}.",
+                'detail': (
+                    f"Cobros reportados: {_format_resident_currency(report_data.get('total_collections'))}. "
+                    f"Balance de cierre: {_format_resident_currency(report_data.get('closing_balance'))}."
+                ),
+                'link_url': url_for(
+                    'reports.monthly_preview_pdf',
+                    reference_date=month_reference['reference_date'],
+                    period_mode='previous_month',
+                ),
+                'link_label': 'Abrir reporte mensual',
+            }
+
+        if month_reference and ('balance' in normalized_question or 'saldo' in normalized_question or 'reporte' in normalized_question):
+            reference_dt = datetime.strptime(month_reference['reference_date'], '%Y-%m-%d')
+            report_data = financial_reports.get_monthly_financial_report_data(
+                reference_dt=reference_dt,
+                period_mode='previous_month',
+            )
+            return {
+                'tone': 'primary',
+                'title': f"Balance del reporte de {month_reference['label']}",
+                'body': f"El balance de cierre publicado fue {_format_resident_currency(report_data.get('closing_balance'))}.",
+                'detail': (
+                    f"Ingresos cobrados: {_format_resident_currency(report_data.get('total_collections'))}. "
+                    f"Gastos: {_format_resident_currency(report_data.get('total_expenses'))}."
+                ),
+                'link_url': url_for(
+                    'reports.monthly_preview_pdf',
+                    reference_date=month_reference['reference_date'],
+                    period_mode='previous_month',
+                ),
+                'link_label': 'Ver PDF del reporte',
+            }
+
+        if 'saldo actual' in normalized_question or 'balance actual' in normalized_question or (
+            ('saldo' in normalized_question or 'balance' in normalized_question) and not month_reference
+        ):
+            return {
+                'tone': 'primary',
+                'title': 'Balance actual de tu cuenta',
+                'body': f"Tu balance pendiente actual es {_format_resident_currency(totals.get('balance'))}.",
+                'detail': (
+                    f"Pagos registrados: {_format_resident_currency(totals.get('total_paid'))}. "
+                    f"Facturas pendientes: {int(totals.get('pending_invoices') or 0)}."
+                ),
+                'link_url': url_for('resident_balances'),
+                'link_label': 'Abrir Balances',
+            }
+
+        if 'reporte' in normalized_question:
+            latest_report = context['report_months'][0] if context['report_months'] else None
+            if latest_report:
+                return {
+                    'tone': 'primary',
+                    'title': 'Ultimo reporte disponible',
+                    'body': f"El ultimo reporte mensual completo disponible es {latest_report['label']}.",
+                    'detail': 'Tambien tienes disponible un reporte actualizado del mes en curso dentro de la seccion Reportes.',
+                    'link_url': url_for(
+                        'reports.monthly_preview_pdf',
+                        reference_date=latest_report['ref_date'],
+                        period_mode='previous_month',
+                    ),
+                    'link_label': 'Abrir ultimo reporte',
+                }
+
+        if 'telefono' in normalized_question or 'correo' in normalized_question or 'contact' in normalized_question or 'administracion' in normalized_question:
+            contact_lines = []
+            if company_info.get('phone'):
+                contact_lines.append(f"Telefono: {company_info['phone']}")
+            if company_info.get('email'):
+                contact_lines.append(f"Correo: {company_info['email']}")
+            if company_info.get('name'):
+                contact_lines.insert(0, f"Contacto principal: {company_info['name']}")
+            return {
+                'tone': 'info',
+                'title': 'Contacto de administracion',
+                'body': 'Puedes comunicarte con la administracion usando los datos registrados en el portal.',
+                'detail': ' | '.join(contact_lines) if contact_lines else 'La administracion no tiene informacion de contacto completa en este momento.',
+                'link_url': url_for('resident_help'),
+                'link_label': 'Ver centro de ayuda',
+            }
+
+        return {
+            'tone': 'secondary',
+            'title': 'Pregunta lista para responderse',
+            'body': 'Todavia no tengo una respuesta automatica para esa consulta dentro del portal.',
+            'detail': 'Prueba preguntas sobre perfil, facturas pendientes, saldo actual, balance de un mes o gastos publicados.',
+            'link_url': url_for('resident_help'),
+            'link_label': 'Intentar otra pregunta',
+        }
+
+    def _sanitize_resident_help_text(value: Any, max_length: int = 700) -> str:
+        normalized = " ".join(str(value or '').strip().split())
+        if len(normalized) <= max_length:
+            return normalized
+        return normalized[: max_length - 3].rstrip() + '...'
+
+    def _resident_help_thread_key() -> str:
+        return f"resident_help_thread_{current_user.id}"
+
+    def _serialize_resident_help_message(message: dict[str, Any]) -> dict[str, str]:
+        role = 'assistant' if message.get('role') == 'assistant' else 'user'
+        return {
+            'role': role,
+            'title': _sanitize_resident_help_text(message.get('title'), 120),
+            'content': _sanitize_resident_help_text(message.get('content'), 900),
+            'detail': _sanitize_resident_help_text(message.get('detail'), 280),
+            'tone': _sanitize_resident_help_text(message.get('tone'), 24) or ('primary' if role == 'assistant' else 'secondary'),
+            'source': _sanitize_resident_help_text(message.get('source'), 24) or ('rules' if role == 'assistant' else 'user'),
+            'link_url': str(message.get('link_url') or '')[:500],
+            'link_label': _sanitize_resident_help_text(message.get('link_label'), 60),
+        }
+
+    def _get_resident_help_thread() -> list[dict[str, str]]:
+        raw_thread = session.get(_resident_help_thread_key()) or []
+        if not isinstance(raw_thread, list):
+            return []
+        return [
+            _serialize_resident_help_message(item)
+            for item in raw_thread[-8:]
+            if isinstance(item, dict)
+        ]
+
+    def _store_resident_help_thread(thread: list[dict[str, Any]]):
+        session[_resident_help_thread_key()] = [
+            _serialize_resident_help_message(item)
+            for item in thread[-8:]
+            if isinstance(item, dict)
+        ]
+        session.modified = True
+
+    def _clear_resident_help_thread():
+        session.pop(_resident_help_thread_key(), None)
+        session.modified = True
+
+    def _resident_ai_enabled() -> bool:
+        return bool(
+            app.config.get('RESIDENT_AI_CHAT_ENABLED')
+            and app.config.get('RESIDENT_AI_API_URL')
+            and app.config.get('RESIDENT_AI_API_KEY')
+            and app.config.get('RESIDENT_AI_MODEL')
+        )
+
+    def _build_resident_ai_context_text(question: str, context: dict, deterministic_answer: Optional[dict]) -> str:
+        from datetime import datetime
+        import reports as financial_reports
+
+        totals = context.get('resident_totals') or {}
+        company_info = context.get('company_info') or {}
+        report_months = context.get('report_months') or []
+        pending_preview = context.get('pending_preview') or []
+        month_reference = _extract_resident_month_reference(question.lower())
+
+        lines = [
+            f"Residente: {current_user.full_name or current_user.username}",
+            f"Balance actual: {_format_resident_currency(totals.get('balance'))}",
+            f"Pagos registrados: {_format_resident_currency(totals.get('total_paid'))}",
+            f"Facturas pendientes: {int(totals.get('pending_invoices') or 0)}",
+            f"Unidades vinculadas: {int(totals.get('apartments') or 0)}",
+        ]
+
+        resident_units = context.get('resident_units') or []
+        if resident_units:
+            lines.append('Resumen por unidad:')
+            for unit in resident_units[:4]:
+                apartment_number = unit.get('apartment_number') or unit.get('unit_id') or 'N/D'
+                lines.append(
+                    f"- Apto {apartment_number}: balance {_format_resident_currency(unit.get('balance'))}, "
+                    f"pagado {_format_resident_currency(unit.get('total_paid'))}, "
+                    f"facturas pendientes {int(unit.get('pending_invoices') or 0)}"
+                )
+
+        if pending_preview:
+            lines.append('Facturas pendientes recientes:')
+            for invoice in pending_preview[:3]:
+                lines.append(
+                    f"- {invoice.get('description') or 'Factura'} | Apto {invoice.get('apartment_number') or invoice.get('unit_id') or 'N/D'} | "
+                    f"Monto {_format_resident_currency(invoice.get('remaining') or invoice.get('amount'))} | "
+                    f"Vence {invoice.get('due_date') or 'sin fecha'}"
+                )
+
+        if report_months:
+            lines.append(
+                "Reportes historicos disponibles: " + ", ".join(month['label'] for month in report_months[:4])
+            )
+
+        if month_reference:
+            try:
+                reference_dt = datetime.strptime(month_reference['reference_date'], '%Y-%m-%d')
+                report_data = financial_reports.get_monthly_financial_report_data(
+                    reference_dt=reference_dt,
+                    period_mode='previous_month',
+                )
+                lines.append(
+                    f"Reporte consultado {month_reference['label']}: cobros {_format_resident_currency(report_data.get('total_collections'))}, "
+                    f"gastos {_format_resident_currency(report_data.get('total_expenses'))}, "
+                    f"balance {_format_resident_currency(report_data.get('closing_balance'))}."
+                )
+            except Exception as exc:
+                app.logger.warning(f"No se pudo preparar contexto de reporte para residente: {exc}")
+
+        if company_info:
+            contact_chunks = []
+            if company_info.get('name'):
+                contact_chunks.append(f"Contacto: {company_info['name']}")
+            if company_info.get('phone'):
+                contact_chunks.append(f"Telefono: {company_info['phone']}")
+            if company_info.get('email'):
+                contact_chunks.append(f"Correo: {company_info['email']}")
+            if contact_chunks:
+                lines.append(' | '.join(contact_chunks))
+
+        if deterministic_answer:
+            lines.append('Respuesta validada por las reglas actuales del portal:')
+            lines.append(f"- Titulo: {deterministic_answer.get('title') or 'Sin titulo'}")
+            lines.append(f"- Cuerpo: {deterministic_answer.get('body') or ''}")
+            if deterministic_answer.get('detail'):
+                lines.append(f"- Detalle: {deterministic_answer['detail']}")
+
+        return "\n".join(lines)
+
+    def _build_resident_ai_answer(
+        question: str,
+        context: dict,
+        thread: list[dict[str, str]],
+        deterministic_answer: Optional[dict],
+    ) -> Optional[dict]:
+        if not _resident_ai_enabled():
+            return None
+
+        context_block = _build_resident_ai_context_text(question, context, deterministic_answer)
+        messages = [
+            {
+                'role': 'system',
+                'content': (
+                    'Eres el asistente del portal residente Toscana. Responde solo con la informacion proporcionada, '
+                    'sin inventar datos, montos ni estados. Si falta informacion, dilo claramente y sugiere contactar '
+                    'a la administracion. Responde en espanol, con tono claro, concreto y en maximo 4 frases.'
+                ),
+            },
+            {
+                'role': 'system',
+                'content': f'Contexto verificado del residente:\n{context_block}',
+            },
+        ]
+
+        for item in thread[-4:]:
+            role = 'assistant' if item.get('role') == 'assistant' else 'user'
+            content_parts = []
+            if role == 'assistant' and item.get('title'):
+                content_parts.append(item['title'])
+            if item.get('content'):
+                content_parts.append(item['content'])
+            if item.get('detail'):
+                content_parts.append(item['detail'])
+            content = "\n".join(content_parts).strip()
+            if content:
+                messages.append({'role': role, 'content': content[:700]})
+
+        messages.append({'role': 'user', 'content': question})
+
+        try:
+            response = requests.post(
+                app.config['RESIDENT_AI_API_URL'],
+                headers={
+                    'Authorization': f"Bearer {app.config['RESIDENT_AI_API_KEY']}",
+                    'Content-Type': 'application/json',
+                },
+                json={
+                    'model': app.config['RESIDENT_AI_MODEL'],
+                    'messages': messages,
+                    'temperature': 0.2,
+                    'max_tokens': 280,
+                },
+                timeout=app.config['RESIDENT_AI_TIMEOUT_SECONDS'],
+            )
+            response.raise_for_status()
+            payload = response.json()
+            choices = payload.get('choices') or []
+            ai_text = ''
+            if choices:
+                ai_text = ((choices[0].get('message') or {}).get('content') or '').strip()
+            ai_text = _sanitize_resident_help_text(ai_text, 900)
+            if not ai_text:
+                return None
+        except requests.RequestException as exc:
+            app.logger.warning(f"Asistente IA residente no disponible: {exc}")
+            return None
+        except ValueError as exc:
+            app.logger.warning(f"Respuesta invalida del asistente IA residente: {exc}")
+            return None
+
+        answer_title = 'Respuesta del asistente Toscana IA'
+        if deterministic_answer and deterministic_answer.get('title') != 'Pregunta lista para responderse':
+            answer_title = deterministic_answer.get('title') or answer_title
+
+        answer_detail = 'Respuesta generada con IA usando tu contexto validado y los reportes publicados.'
+        if deterministic_answer and deterministic_answer.get('detail'):
+            answer_detail = deterministic_answer['detail']
+
+        return {
+            'source': 'ai',
+            'tone': (deterministic_answer or {}).get('tone') or 'primary',
+            'title': answer_title,
+            'body': ai_text,
+            'detail': answer_detail,
+            'link_url': (deterministic_answer or {}).get('link_url'),
+            'link_label': (deterministic_answer or {}).get('link_label'),
+        }
+
+    def _compose_resident_help_answer(question: str, context: dict, thread: list[dict[str, str]]) -> Optional[dict]:
+        deterministic_answer = _build_resident_help_answer(question, context)
+        ai_answer = _build_resident_ai_answer(question, context, thread, deterministic_answer)
+        return ai_answer or deterministic_answer
+
+    def _resident_help_answer_to_message(answer: Optional[dict]) -> Optional[dict[str, str]]:
+        if not answer:
+            return None
+        return _serialize_resident_help_message({
+            'role': 'assistant',
+            'title': answer.get('title'),
+            'content': answer.get('body'),
+            'detail': answer.get('detail'),
+            'tone': answer.get('tone'),
+            'source': answer.get('source') or 'rules',
+            'link_url': answer.get('link_url'),
+            'link_label': answer.get('link_label'),
+        })
+
+    def _build_resident_help_context(question: str = '', thread: Optional[list[dict[str, str]]] = None):
+        context = _get_resident_common_context()
+        resident_help_thread = thread if thread is not None else _get_resident_help_thread()
+        latest_answer = next(
+            (message for message in reversed(resident_help_thread) if message.get('role') == 'assistant'),
+            None,
+        )
+        context.update({
+            'pending_preview': residents.list_resident_invoices_for_user(
+                current_user.id,
+                fallback_email=current_user.email,
+                paid=False,
+                limit=3,
+            ),
+            'resident_help_question': question,
+            'resident_help_answer': latest_answer,
+            'resident_help_thread': resident_help_thread,
+            'resident_ai_enabled': _resident_ai_enabled(),
+            'resident_ai_status_label': 'IA conectada' if _resident_ai_enabled() else 'Asistente guiado',
+            'resident_ai_status_detail': (
+                'Usa un modelo externo con contexto validado del portal y reportes publicados.'
+                if _resident_ai_enabled()
+                else 'Responde con logica del portal y datos verificados hasta que configures la IA externa.'
+            ),
+            'resident_help_suggestions': [
+                'Donde puedo actualizar mi foto de perfil?',
+                'Cuantas facturas pendientes tengo?',
+                'Cual es mi saldo actual?',
+                'Cuales fueron los gastos de abril 2026?',
+                'Cual fue el balance del reporte de mayo 2026?',
+                'Resumeme mis pagos mas recientes y dime si tengo deuda activa.',
+            ],
+        })
+        return context
+
+    def _render_resident_page(template_name: str, section: str, section_context: dict):
+        context = dict(section_context)
+        context['resident_active_section'] = section
+        return render_template(template_name, **context)
+    
+    @app.route("/dashboard/balances")
+    @login_required
+    def resident_balances():
+        if current_user.role != 'resident':
+            return redirect(url_for('dashboard'))
+        return _render_resident_page(
+            'resident_balances.html',
+            'balances',
+            _build_resident_balances_context(),
+        )
+
+    @app.route("/dashboard/evolucion")
+    @login_required
+    def resident_evolution():
+        if current_user.role != 'resident':
+            return redirect(url_for('dashboard'))
+        return _render_resident_page(
+            'resident_evolution.html',
+            'evolution',
+            _build_resident_evolution_context(),
+        )
+
+    @app.route("/dashboard/facturas-pagos")
+    @login_required
+    def resident_billing_overview():
+        if current_user.role != 'resident':
+            return redirect(url_for('dashboard'))
+        return _render_resident_page(
+            'resident_billing.html',
+            'billing',
+            _build_resident_billing_context(),
+        )
+
+    @app.route("/dashboard/reportes")
+    @login_required
+    def resident_reports():
+        if current_user.role != 'resident':
+            return redirect(url_for('dashboard'))
+        return _render_resident_page(
+            'resident_reports.html',
+            'reports',
+            _build_resident_reports_context(),
+        )
+
+    @app.route("/dashboard/ayuda", methods=['GET', 'POST'])
+    @login_required
+    def resident_help():
+        if current_user.role != 'resident':
+            return redirect(url_for('dashboard'))
+        action = (request.form.get('action') or request.args.get('action') or '').strip().lower()
+        if action == 'reset':
+            _clear_resident_help_thread()
+            return redirect(url_for('resident_help'))
+
+        resident_thread = _get_resident_help_thread()
+
+        if request.method == 'POST':
+            resident_question = (request.form.get('question') or '').strip()
+            if resident_question:
+                resident_context = _build_resident_help_context('', resident_thread)
+                resident_answer = _compose_resident_help_answer(resident_question, resident_context, resident_thread)
+                resident_thread.append(_serialize_resident_help_message({
+                    'role': 'user',
+                    'content': resident_question,
+                }))
+                assistant_message = _resident_help_answer_to_message(resident_answer)
+                if assistant_message:
+                    resident_thread.append(assistant_message)
+                _store_resident_help_thread(resident_thread)
+            return redirect(url_for('resident_help'))
+
+        resident_question = (request.args.get('q') or '').strip()
+        if resident_question:
+            resident_context = _build_resident_help_context('', resident_thread)
+            resident_answer = _compose_resident_help_answer(resident_question, resident_context, resident_thread)
+            preview_thread = resident_thread + [_serialize_resident_help_message({
+                'role': 'user',
+                'content': resident_question,
+            })]
+            assistant_message = _resident_help_answer_to_message(resident_answer)
+            if assistant_message:
+                preview_thread.append(assistant_message)
+            return _render_resident_page(
+                'resident_help.html',
+                'help',
+                _build_resident_help_context(resident_question, preview_thread),
+            )
+
+        return _render_resident_page(
+            'resident_help.html',
+            'help',
+            _build_resident_help_context('', resident_thread),
         )
 
     @app.route("/dashboard")
@@ -577,7 +1278,7 @@ def _register_routes(app: Flask) -> None:
     def dashboard():
         """Dashboard principal con acciones rápidas y resumen."""
         if current_user.role == 'resident':
-            return resident_dashboard()
+            return resident_balances()
         from datetime import datetime, timedelta
         import models
         import apartments

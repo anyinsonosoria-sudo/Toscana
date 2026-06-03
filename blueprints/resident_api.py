@@ -122,6 +122,21 @@ def _serialize_invoice(invoice: dict) -> dict:
     }
 
 
+def _serialize_payment(payment: dict) -> dict:
+    return {
+        'id': payment.get('id'),
+        'invoice_id': payment.get('invoice_id'),
+        'invoice_desc': payment.get('invoice_desc'),
+        'invoice_total': payment.get('invoice_total'),
+        'apartment_number': payment.get('apt_number'),
+        'amount': payment.get('amount'),
+        'paid_date': payment.get('paid_date'),
+        'method': payment.get('method'),
+        'notes': payment.get('notes'),
+        'receipt_url': url_for('billing.view_receipt_pdf', payment_id=payment.get('id')),
+    }
+
+
 @resident_api_bp.before_request
 def require_authenticated_resident():
     if request.endpoint in PUBLIC_ENDPOINTS:
@@ -331,6 +346,53 @@ def invoices():
     return jsonify({
         'success': True,
         'invoices': [_serialize_invoice(invoice) for invoice in invoices],
+    })
+
+
+@resident_api_bp.route('/payments', methods=['GET'])
+def payments():
+    request_user = _get_request_user()
+    method = (request.args.get('method') or '').strip() or None
+    month = (request.args.get('month') or '').strip() or None
+    limit = request.args.get('limit', type=int)
+    offset = request.args.get('offset', type=int) or 0
+
+    if limit is not None and limit <= 0:
+        return _json_error('Parametro limit invalido', 400)
+    if offset < 0:
+        return _json_error('Parametro offset invalido', 400)
+    if month and len(month) != 7:
+        return _json_error('Parametro month invalido', 400)
+
+    payment_history = residents.get_resident_payment_history_for_user(
+        request_user.id,
+        fallback_email=request_user.email,
+        method=method,
+        month=month,
+        limit=limit,
+        offset=offset,
+    )
+    payments = list(payment_history.get('items') or [])
+    total = int(payment_history.get('total') or 0)
+
+    return jsonify({
+        'success': True,
+        'payments': [_serialize_payment(payment) for payment in payments],
+        'pagination': {
+            'limit': limit,
+            'offset': offset,
+            'returned': len(payments),
+            'total': total,
+            'has_more': offset + len(payments) < total,
+        },
+        'filters': {
+            'applied': {
+                'method': method,
+                'month': month,
+            },
+            'methods': payment_history.get('methods') or [],
+            'months': payment_history.get('months') or [],
+        },
     })
 
 

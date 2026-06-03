@@ -63,6 +63,16 @@
 
         <div class="sidebar-nav">
             <ul class="nav flex-column" style="list-style: none; padding: 0; margin: 0;">
+                {% if is_resident_shell %}
+                    <li class="nav-section-label">Portal residente</li>
+                    {% for item in get_resident_navigation() %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == item.endpoint %}active{% endif %}" href="{{ item.url }}">
+                            <i class="{{ item.icon }}"></i> {{ item.label }}
+                        </a>
+                    </li>
+                    {% endfor %}
+                {% else %}
                 <!-- Dashboard -->
                 <li class="nav-item">
                     <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
@@ -106,6 +116,7 @@
                         </li>
                     {% endif %}
                 {% endfor %}
+                {% endif %}
             </ul>
         </div>
 

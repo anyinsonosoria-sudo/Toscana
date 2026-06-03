@@ -1,0 +1,134 @@
+{% extends "resident_portal_base.html" %}
+
+{% block resident_title %}Facturas y pagos{% endblock %}
+
+{% block resident_heading %}Facturas pendientes e histórico{% endblock %}
+
+{% block resident_subtitle %}Una pantalla compacta para revisar lo pendiente, filtrar pagos y abrir comprobantes sin navegar por una lista interminable.{% endblock %}
+
+{% block resident_content %}
+<div class="row g-4">
+    <div class="col-lg-5">
+        <section class="resident-panel h-100">
+            <div class="resident-panel__header">
+                <div>
+                    <h2 class="resident-panel__title">Facturas pendientes</h2>
+                    <p class="resident-panel__subtitle">Pendientes por concepto, monto restante y acceso al PDF.</p>
+                </div>
+                <span class="resident-badge {% if pending_invoices %}is-warning{% else %}is-success{% endif %}">
+                    {{ pending_invoices|length }} abierta(s)
+                </span>
+            </div>
+            {% if pending_invoices %}
+            <div class="resident-payment-list">
+                {% for invoice in pending_invoices %}
+                <article class="resident-list-item">
+                    <div class="resident-list-item__row">
+                        <div>
+                            <h3 class="resident-list-item__title">{{ invoice.description }}</h3>
+                            <p class="resident-list-item__meta">Apto {{ invoice.apartment_number }} · Emisión {{ invoice.issued_date or 'N/D' }}{% if invoice.due_date %} · Vence {{ invoice.due_date }}{% endif %}</p>
+                        </div>
+                        <div class="text-end">
+                            <div class="resident-list-item__value text-danger">RD$ {{ '{:,.2f}'.format(invoice.remaining or 0) }}</div>
+                            <a href="{{ url_for('billing.view_invoice_pdf', invoice_id=invoice.id) }}" target="_blank" class="btn btn-sm btn-outline-primary mt-2 rounded-pill">
+                                <i class="bi bi-file-earmark-pdf"></i> PDF
+                            </a>
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="resident-empty">
+                <i class="bi bi-patch-check"></i>
+                <p>No tienes facturas pendientes.</p>
+            </div>
+            {% endif %}
+        </section>
+    </div>
+
+    <div class="col-lg-7">
+        <section class="resident-panel h-100">
+            <div class="resident-panel__header">
+                <div>
+                    <h2 class="resident-panel__title">Historial de pagos</h2>
+                    <p class="resident-panel__subtitle">Filtra por método o mes y revisa solo una ventana corta de movimientos.</p>
+                </div>
+                <span class="resident-badge is-info">{{ payments_total }} movimiento(s)</span>
+            </div>
+
+            <form class="resident-filter-bar" method="get" action="{{ url_for('resident_billing_overview') }}">
+                <select class="form-select" name="method">
+                    <option value="">Todos los métodos</option>
+                    {% for method in payment_filter_methods %}
+                    <option value="{{ method.value }}" {% if payment_filter_method == method.value %}selected{% endif %}>{{ method.label }}</option>
+                    {% endfor %}
+                </select>
+
+                <select class="form-select" name="month">
+                    <option value="">Todos los meses</option>
+                    {% for month in payment_filter_months %}
+                    <option value="{{ month.value }}" {% if payment_filter_month == month.value %}selected{% endif %}>{{ month.label }}</option>
+                    {% endfor %}
+                </select>
+
+                <button type="submit" class="btn btn-primary rounded-pill px-4">Filtrar</button>
+                <a href="{{ url_for('resident_billing_overview') }}" class="btn btn-outline-secondary rounded-pill px-4">Limpiar</a>
+            </form>
+
+            {% if payments_history %}
+            <div class="table-responsive data-table-wrapper">
+                <table class="table data-table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Concepto</th>
+                            <th>Método</th>
+                            <th>Unidad</th>
+                            <th>Fecha</th>
+                            <th class="text-end">Monto</th>
+                            <th class="text-end">Recibo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pay in payments_history %}
+                        <tr>
+                            <td data-label="Concepto">
+                                <strong>{{ pay.invoice_desc }}</strong>
+                                {% if pay.notes %}<div class="text-muted small mt-1">{{ pay.notes }}</div>{% endif %}
+                            </td>
+                            <td data-label="Método">{{ pay.method }}</td>
+                            <td data-label="Unidad">Apto {{ pay.apt_number }}</td>
+                            <td data-label="Fecha">{{ pay.paid_date or 'N/D' }}</td>
+                            <td data-label="Monto" class="text-end text-success fw-bold">RD$ {{ '{:,.2f}'.format(pay.amount or 0) }}</td>
+                            <td data-label="Recibo" class="text-end">
+                                <a href="{{ url_for('billing.view_receipt_pdf', payment_id=pay.id) }}" target="_blank" class="btn btn-sm btn-outline-success rounded-pill">
+                                    <i class="bi bi-file-earmark-check"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="resident-pagination">
+                <div class="text-muted small">Página {{ payments_page }} de {{ payments_total_pages }}</div>
+                <div class="d-flex gap-2">
+                    {% if payments_has_prev %}
+                    <a class="btn btn-outline-secondary rounded-pill" href="{{ url_for('resident_billing_overview', page=payments_page - 1, method=payment_filter_method or None, month=payment_filter_month or None) }}">Anterior</a>
+                    {% endif %}
+                    {% if payments_has_next %}
+                    <a class="btn btn-primary rounded-pill" href="{{ url_for('resident_billing_overview', page=payments_page + 1, method=payment_filter_method or None, month=payment_filter_month or None) }}">Siguiente</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="resident-empty">
+                <i class="bi bi-clock-history"></i>
+                <p>No hay pagos que coincidan con los filtros seleccionados.</p>
+            </div>
+            {% endif %}
+        </section>
+    </div>
+</div>
+{% endblock %}

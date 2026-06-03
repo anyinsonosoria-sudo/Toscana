@@ -101,6 +101,66 @@ def test_resident_api_returns_profile_apartments_invoices_and_summary(client, ap
 
 
 @pytest.mark.integration
+def test_resident_api_payments_supports_filters_and_pagination(client, app):
+    with app.app_context():
+        _reset_api_state()
+        unit_id = apartments.add_apartment(number='M-404', resident_name='Payments Resident', resident_email='')
+        user_id = user_model.create_user(
+            username='payments_resident',
+            email='payments_resident@example.com',
+            password='password123',
+            full_name='Payments Resident',
+            role='resident',
+        )
+        residents.link_user_to_apartment(
+            user_id,
+            unit_id,
+            resident_email='payments_resident@example.com',
+            resident_name='Payments Resident',
+            created_by=1,
+        )
+
+        conn = db.get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO invoices (unit_id, description, amount, issued_date, due_date, paid) VALUES (?, ?, ?, ?, ?, ?)",
+                (unit_id, 'Cuota abril', 100.0, '2026-04-01', '2026-04-15', 1),
+            )
+            invoice_april_id = cur.lastrowid
+            cur.execute(
+                "INSERT INTO payments (invoice_id, amount, paid_date, method, notes) VALUES (?, ?, ?, ?, ?)",
+                (invoice_april_id, 100.0, '2026-04-10', 'cash', 'Pago abril'),
+            )
+
+            cur.execute(
+                "INSERT INTO invoices (unit_id, description, amount, issued_date, due_date, paid) VALUES (?, ?, ?, ?, ?, ?)",
+                (unit_id, 'Cuota mayo', 120.0, '2026-05-01', '2026-05-15', 1),
+            )
+            invoice_may_id = cur.lastrowid
+            cur.execute(
+                "INSERT INTO payments (invoice_id, amount, paid_date, method, notes) VALUES (?, ?, ?, ?, ?)",
+                (invoice_may_id, 120.0, '2026-05-09', 'transfer', 'Pago mayo'),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    _login_user_session(client, user_id)
+
+    response = client.get('/api/resident/payments?limit=1&offset=0&method=transfer&month=2026-05')
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['pagination']['total'] == 1
+    assert payload['pagination']['returned'] == 1
+    assert payload['payments'][0]['method'] == 'transfer'
+    assert payload['payments'][0]['invoice_desc'] == 'Cuota mayo'
+    assert payload['filters']['applied']['month'] == '2026-05'
+    assert any(method['value'] == 'cash' for method in payload['filters']['methods'])
+
+
+@pytest.mark.integration
 def test_resident_api_activates_invitation_code(client, app):
     with app.app_context():
         _reset_api_state()

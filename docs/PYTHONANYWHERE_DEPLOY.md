@@ -186,6 +186,26 @@ from wsgi import application
 
 Si falta SMTP, las notificaciones por correo no van a salir aunque el despliegue quede arriba.
 
+## Variables opcionales para activar el chat IA del residente en PythonAnywhere
+
+Si no configuras estas variables, la pantalla `Ayuda` sigue funcionando con el asistente contextual interno del portal.
+
+Si quieres habilitar el modo IA externo en PythonAnywhere, agrega tambien en el WSGI file:
+
+```python
+os.environ['RESIDENT_AI_CHAT_ENABLED'] = '1'
+os.environ['RESIDENT_AI_API_URL'] = 'https://api.openai.com/v1/chat/completions'
+os.environ['RESIDENT_AI_API_KEY'] = 'tu_api_key'
+os.environ['RESIDENT_AI_MODEL'] = 'gpt-4o-mini'
+os.environ['RESIDENT_AI_TIMEOUT_SECONDS'] = '20'
+```
+
+Despues de guardar el WSGI file, vuelve a ejecutar:
+
+```bash
+touch /var/www/toscana_pythonanywhere_com_wsgi.py
+```
+
 ## Verificación rápida después del reload
 
 1. Abre `https://toscana.pythonanywhere.com/ventas/registrar-pago`

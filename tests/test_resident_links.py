@@ -1,4 +1,5 @@
 import pytest
+import app as app_module
 
 import apartments
 import db
@@ -183,6 +184,169 @@ def test_resident_dashboard_uses_bridge_assignment_without_legacy_email(client, 
     assert response.status_code == 200
     assert b'C-303' in response.data
     assert b'Mantenimiento junio' in response.data
+
+
+@pytest.mark.integration
+def test_resident_section_routes_and_help_answer_render(client, app):
+    with app.app_context():
+        _reset_resident_link_state()
+        unit_id = apartments.add_apartment(number='E-505', resident_name='Portal Resident', resident_email='')
+        conn = db.get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO invoices (unit_id, description, amount, issued_date, paid) VALUES (?, ?, ?, ?, ?)",
+                (unit_id, 'Cuota portal', 200.0, '2026-06-01', 0),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        user_id = user_model.create_user(
+            username='portal_resident',
+            email='portal_resident@example.com',
+            password='password123',
+            full_name='Portal Resident',
+            role='resident',
+        )
+        residents.link_user_to_apartment(
+            user_id,
+            unit_id,
+            resident_email='portal_resident@example.com',
+            resident_name='Portal Resident',
+            created_by=1,
+        )
+
+    with client.session_transaction() as session:
+        session['_user_id'] = str(user_id)
+        session['_fresh'] = True
+
+    balances_response = client.get('/dashboard')
+    evolution_response = client.get('/dashboard/evolucion')
+    billing_response = client.get('/dashboard/facturas-pagos')
+    reports_response = client.get('/dashboard/reportes')
+    help_response = client.get('/dashboard/ayuda?q=Cuantas%20facturas%20pendientes%20tengo')
+
+    assert balances_response.status_code == 200
+    assert evolution_response.status_code == 200
+    assert billing_response.status_code == 200
+    assert reports_response.status_code == 200
+    assert help_response.status_code == 200
+
+    assert 'Balance y estado actual' in balances_response.get_data(as_text=True)
+    assert 'Evolución y distribución' in evolution_response.get_data(as_text=True)
+    assert 'Facturas pendientes e histórico' in billing_response.get_data(as_text=True)
+    assert 'Reportes y PDF económicos' in reports_response.get_data(as_text=True)
+    assert 'Estado de facturas pendientes' in help_response.get_data(as_text=True)
+
+
+@pytest.mark.integration
+def test_resident_help_ai_chat_uses_external_provider_when_configured(client, app, monkeypatch):
+    with app.app_context():
+        _reset_resident_link_state()
+        unit_id = apartments.add_apartment(number='F-606', resident_name='AI Resident', resident_email='')
+        user_id = user_model.create_user(
+            username='ai_resident',
+            email='ai_resident@example.com',
+            password='password123',
+            full_name='AI Resident',
+            role='resident',
+        )
+        residents.link_user_to_apartment(
+            user_id,
+            unit_id,
+            resident_email='ai_resident@example.com',
+            resident_name='AI Resident',
+            created_by=1,
+        )
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                'choices': [
+                    {
+                        'message': {
+                            'content': 'Tu balance pendiente sigue activo y puedes revisarlo en Balances o Facturas y pagos.'
+                        }
+                    }
+                ]
+            }
+
+    def _fake_post(url, headers=None, json=None, timeout=None):
+        assert json['model'] == 'demo-model'
+        assert json['messages'][-1]['content'] == 'Explicame mi balance actual'
+        return _FakeResponse()
+
+    monkeypatch.setattr(app_module.requests, 'post', _fake_post)
+    app.config.update({
+        'RESIDENT_AI_CHAT_ENABLED': True,
+        'RESIDENT_AI_API_URL': 'https://example.com/v1/chat/completions',
+        'RESIDENT_AI_API_KEY': 'test-key',
+        'RESIDENT_AI_MODEL': 'demo-model',
+    })
+
+    with client.session_transaction() as session:
+        session['_user_id'] = str(user_id)
+        session['_fresh'] = True
+
+    response = client.get('/dashboard/ayuda?q=Explicame%20mi%20balance%20actual', follow_redirects=True)
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert 'IA conectada' in body
+    assert 'Toscana IA' in body
+    assert 'Tu balance pendiente sigue activo y puedes revisarlo en Balances o Facturas y pagos.' in body
+
+
+@pytest.mark.integration
+def test_resident_help_chat_post_persists_and_reset_clears_thread(client, app):
+    with app.app_context():
+        _reset_resident_link_state()
+        unit_id = apartments.add_apartment(number='G-707', resident_name='Chat Resident', resident_email='')
+        user_id = user_model.create_user(
+            username='chat_resident',
+            email='chat_resident@example.com',
+            password='password123',
+            full_name='Chat Resident',
+            role='resident',
+        )
+        residents.link_user_to_apartment(
+            user_id,
+            unit_id,
+            resident_email='chat_resident@example.com',
+            resident_name='Chat Resident',
+            created_by=1,
+        )
+
+    with client.session_transaction() as session:
+        session['_user_id'] = str(user_id)
+        session['_fresh'] = True
+
+    response = client.post(
+        '/dashboard/ayuda',
+        data={'question': 'Cual es mi saldo actual?'},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    response_text = response.get_data(as_text=True)
+    assert 'Cual es mi saldo actual?' in response_text
+    assert 'Balance actual de tu cuenta' in response_text
+
+    with client.session_transaction() as session:
+        thread_keys = [key for key in session.keys() if key.startswith('resident_help_thread_')]
+        assert thread_keys
+        assert len(session[thread_keys[0]]) == 2
+
+    reset_response = client.get('/dashboard/ayuda?action=reset', follow_redirects=True)
+
+    assert reset_response.status_code == 200
+    assert 'Inicia una conversación con una pregunta sobre tu cuenta' in reset_response.get_data(as_text=True)
+
+    with client.session_transaction() as session:
+        assert not any(key.startswith('resident_help_thread_') for key in session.keys())
 
 
 @pytest.mark.integration

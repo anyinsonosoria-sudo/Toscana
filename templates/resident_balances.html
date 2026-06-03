@@ -1,0 +1,115 @@
+{% extends "resident_portal_base.html" %}
+
+{% block resident_title %}Balances{% endblock %}
+
+{% block resident_heading %}Balance y estado actual{% endblock %}
+
+{% block resident_subtitle %}Una vista corta para revisar deuda, aportes acumulados y el estado por unidad sin tener que bajar por todo el portal.{% endblock %}
+
+{% block resident_content %}
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="resident-metric-card is-balance">
+            <div class="resident-metric-card__icon"><i class="bi bi-cash-stack"></i></div>
+            <span class="resident-metric-card__label">Balance pendiente</span>
+            <span class="resident-metric-card__value">RD$ {{ '{:,.2f}'.format(resident_totals.balance or 0) }}</span>
+            <p class="resident-metric-card__hint">Monto acumulado pendiente para todas tus unidades vinculadas.</p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="resident-metric-card is-success">
+            <div class="resident-metric-card__icon"><i class="bi bi-check2-circle"></i></div>
+            <span class="resident-metric-card__label">Total pagado</span>
+            <span class="resident-metric-card__value">RD$ {{ '{:,.2f}'.format(resident_totals.total_paid or 0) }}</span>
+            <p class="resident-metric-card__hint">Pagos registrados en el sistema para tus facturas.</p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="resident-metric-card is-info">
+            <div class="resident-metric-card__icon"><i class="bi bi-buildings"></i></div>
+            <span class="resident-metric-card__label">Unidades vinculadas</span>
+            <span class="resident-metric-card__value">{{ resident_totals.apartments or 0 }}</span>
+            <p class="resident-metric-card__hint">Accede a estados de cuenta y resumen por apartamento desde aquí.</p>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-1">
+    <div class="col-lg-7">
+        <section class="resident-panel h-100">
+            <div class="resident-panel__header">
+                <div>
+                    <h2 class="resident-panel__title">Resumen por unidad</h2>
+                    <p class="resident-panel__subtitle">Estado de cuenta puntual para cada apartamento vinculado.</p>
+                </div>
+                <span class="resident-badge {% if (resident_totals.balance or 0) > 0 %}is-warning{% else %}is-success{% endif %}">
+                    <i class="bi {% if (resident_totals.balance or 0) > 0 %}bi-exclamation-circle{% else %}bi-check-circle{% endif %}"></i>
+                    {% if (resident_totals.balance or 0) > 0 %}Con pendiente{% else %}Al día{% endif %}
+                </span>
+            </div>
+
+            <div class="resident-unit-list">
+                {% for unit in resident_units %}
+                <article class="resident-unit-card">
+                    <div class="resident-unit-card__row">
+                        <div>
+                            <h3 class="resident-unit-card__title">Apto {{ unit.apartment_number }}</h3>
+                            <p class="resident-unit-card__meta">{{ unit.pending_invoices or 0 }} factura(s) pendiente(s) · Pagado RD$ {{ '{:,.2f}'.format(unit.total_paid or 0) }}</p>
+                        </div>
+                        <div class="text-end">
+                            <div class="resident-unit-card__value">RD$ {{ '{:,.2f}'.format(unit.balance or 0) }}</div>
+                            <a href="{{ url_for('billing.download_statement_pdf', unit_id=unit.unit_id) }}" target="_blank" class="btn btn-sm btn-outline-primary mt-2 rounded-pill">
+                                <i class="bi bi-file-earmark-pdf"></i> Estado de cuenta
+                            </a>
+                        </div>
+                    </div>
+                </article>
+                {% else %}
+                <div class="resident-empty">
+                    <i class="bi bi-house-door"></i>
+                    <p>No hay unidades vinculadas todavía.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <div class="col-lg-5">
+        <section class="resident-panel h-100">
+            <div class="resident-panel__header">
+                <div>
+                    <h2 class="resident-panel__title">Próximas facturas</h2>
+                    <p class="resident-panel__subtitle">Vista rápida de lo que requiere atención inmediata.</p>
+                </div>
+                <a href="{{ url_for('resident_billing_overview') }}" class="btn btn-sm btn-primary rounded-pill">Ver todo</a>
+            </div>
+
+            {% if pending_preview %}
+            <div class="resident-payment-list">
+                {% for invoice in pending_preview %}
+                <article class="resident-list-item">
+                    <div class="resident-list-item__row">
+                        <div>
+                            <h3 class="resident-list-item__title">{{ invoice.description }}</h3>
+                            <p class="resident-list-item__meta">Apto {{ invoice.apartment_number }} · Emisión {{ invoice.issued_date or 'N/D' }}</p>
+                        </div>
+                        <div class="text-end">
+                            <div class="resident-list-item__value text-danger">RD$ {{ '{:,.2f}'.format(invoice.remaining or 0) }}</div>
+                            <a href="{{ url_for('billing.view_invoice_pdf', invoice_id=invoice.id) }}" target="_blank" class="btn btn-sm btn-outline-secondary mt-2 rounded-pill">
+                                <i class="bi bi-file-earmark-pdf"></i> PDF
+                            </a>
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="resident-empty">
+                <i class="bi bi-check2-circle"></i>
+                <p>No tienes facturas pendientes en este momento.</p>
+            </div>
+            {% endif %}
+        </section>
+    </div>
+</div>
+{% endblock %}

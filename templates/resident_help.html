@@ -1,0 +1,130 @@
+{% extends "resident_portal_base.html" %}
+
+{% block resident_title %}Ayuda{% endblock %}
+
+{% block resident_heading %}Ayuda y asistente contextual{% endblock %}
+
+{% block resident_subtitle %}Contacto directo con la administración y respuestas rápidas sobre tu portal, tus facturas y los reportes publicados.{% endblock %}
+
+{% block resident_content %}
+<div class="row g-4">
+    <div class="col-lg-5">
+        <section class="resident-help-card h-100">
+            <span class="resident-badge is-warning mb-3"><i class="bi bi-headset"></i> Soporte</span>
+            <h2 class="resident-panel__title text-white">Administración Toscana</h2>
+            <p class="resident-panel__subtitle text-white-50">Si necesitas validar un pago o resolver algo que el portal no cubre, usa estos contactos.</p>
+
+            <div class="resident-ai-status {% if resident_ai_enabled %}is-live{% else %}is-guided{% endif %}">
+                <i class="bi {% if resident_ai_enabled %}bi-cpu{% else %}bi-shield-check{% endif %}"></i>
+                <div>
+                    <strong>{{ resident_ai_status_label }}</strong>
+                    <div>{{ resident_ai_status_detail }}</div>
+                </div>
+            </div>
+
+            <div class="resident-help-card__contact">
+                {% if company_info.name %}<div><strong>{{ company_info.name }}</strong></div>{% endif %}
+                {% if company_info.phone %}<div><span><i class="bi bi-telephone"></i> {{ company_info.phone }}</span></div>{% endif %}
+                {% if company_info.email %}<div><span><i class="bi bi-envelope"></i> {{ company_info.email }}</span></div>{% endif %}
+            </div>
+        </section>
+
+        <section class="resident-panel mt-4">
+            <div class="resident-panel__header">
+                <div>
+                    <h2 class="resident-panel__title">Atajos frecuentes</h2>
+                    <p class="resident-panel__subtitle">Accesos directos a tareas que suelen generar preguntas.</p>
+                </div>
+            </div>
+            <div class="resident-shortcut-list">
+                <a href="{{ url_for('auth.edit_profile') }}" class="resident-shortcut-link">
+                    <div>
+                        <strong>Actualizar perfil y foto</strong>
+                        <div class="resident-list-item__meta">Nombre, teléfono e imagen del usuario.</div>
+                    </div>
+                    <i class="bi bi-arrow-right"></i>
+                </a>
+                <a href="{{ url_for('auth.change_password') }}" class="resident-shortcut-link">
+                    <div>
+                        <strong>Cambiar contraseña</strong>
+                        <div class="resident-list-item__meta">Actualiza tus credenciales de acceso.</div>
+                    </div>
+                    <i class="bi bi-arrow-right"></i>
+                </a>
+                <a href="{{ url_for('resident_reports') }}" class="resident-shortcut-link">
+                    <div>
+                        <strong>Ver reportes publicados</strong>
+                        <div class="resident-list-item__meta">Balances y gastos generales del residencial.</div>
+                    </div>
+                    <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+        </section>
+    </div>
+
+    <div class="col-lg-7">
+        <section class="resident-panel h-100">
+            <div class="resident-panel__header">
+                <div>
+                    <h2 class="resident-panel__title">Chat del asistente Toscana</h2>
+                    <p class="resident-panel__subtitle">Consulta tu balance, tus pagos, tus facturas y los reportes del residencial sin salir del portal.</p>
+                </div>
+                <a href="{{ url_for('resident_help', action='reset') }}" class="btn btn-outline-secondary rounded-pill px-3">Nueva conversación</a>
+            </div>
+
+            <div class="resident-chat-thread mb-4">
+                {% if resident_help_thread %}
+                    {% for message in resident_help_thread %}
+                    <article class="resident-chat-message is-{{ message.role }} tone-{{ message.tone }}">
+                        <div class="resident-chat-message__meta">
+                            {% if message.role == 'assistant' %}
+                                <span>{% if message.source == 'ai' %}Toscana IA{% else %}Asistente Toscana{% endif %}</span>
+                                {% if message.source == 'ai' %}<span class="resident-chat-message__pill">IA</span>{% endif %}
+                            {% else %}
+                                <span>Tu consulta</span>
+                            {% endif %}
+                        </div>
+                        {% if message.title and message.role == 'assistant' %}
+                        <h3 class="resident-chat-message__title">{{ message.title }}</h3>
+                        {% endif %}
+                        {% if message.content %}
+                        <p class="resident-chat-message__body">{{ message.content }}</p>
+                        {% endif %}
+                        {% if message.detail %}
+                        <p class="resident-chat-message__detail">{{ message.detail }}</p>
+                        {% endif %}
+                        {% if message.link_url %}
+                        <a href="{{ message.link_url }}" {% if 'http' not in message.link_url and '.pdf' not in message.link_url %}{% else %}target="_blank"{% endif %} class="btn btn-sm btn-outline-dark rounded-pill mt-2">
+                            {{ message.link_label }}
+                        </a>
+                        {% endif %}
+                    </article>
+                    {% endfor %}
+                {% else %}
+                <div class="resident-empty resident-empty--chat">
+                    <i class="bi bi-chat-square-dots"></i>
+                    <p>Inicia una conversación con una pregunta sobre tu cuenta o sobre los reportes mensuales publicados.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <form method="post" action="{{ url_for('resident_help') }}" class="resident-help-form resident-chat-composer mb-4">
+                <textarea class="form-control" name="question" rows="3" placeholder="Ejemplo: Resúmeme mis pagos recientes y dime si tengo balance pendiente">{{ resident_help_question }}</textarea>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button type="submit" class="btn btn-primary rounded-pill px-4">Enviar</button>
+                    <a href="{{ url_for('resident_help', action='reset') }}" class="btn btn-outline-secondary rounded-pill px-4">Limpiar chat</a>
+                </div>
+            </form>
+
+            <div class="resident-suggestion-list mb-4">
+                {% for suggestion in resident_help_suggestions %}
+                <a class="resident-suggestion-chip" href="{{ url_for('resident_help', q=suggestion) }}">
+                    <i class="bi bi-lightbulb"></i>
+                    {{ suggestion }}
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

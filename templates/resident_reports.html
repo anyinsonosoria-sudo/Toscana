@@ -1,0 +1,58 @@
+{% extends "resident_portal_base.html" %}
+
+{% block resident_title %}Reportes mensuales{% endblock %}
+
+{% block resident_heading %}Reportes y PDF económicos{% endblock %}
+
+{% block resident_subtitle %}Accede al reporte actualizado del mes en curso y al historial mensual consolidado sin mezclarlo con facturas o pagos individuales.{% endblock %}
+
+{% block resident_content %}
+<div class="row g-4">
+    <div class="col-lg-5">
+        <section class="resident-panel h-100">
+            <div class="resident-report-highlight">
+                <span class="resident-badge is-warning mb-3"><i class="bi bi-lightning-charge"></i> Actualizado</span>
+                <h2 class="resident-panel__title mb-2">Reporte del mes en curso</h2>
+                <p class="resident-panel__subtitle mb-3">Descarga una vista financiera actualizada al día de hoy para seguir la situación general del residencial.</p>
+                <a href="{{ current_report_url }}" target="_blank" class="btn btn-primary w-100 rounded-pill py-2">
+                    <i class="bi bi-cloud-arrow-down-fill"></i> Descargar reporte actualizado
+                </a>
+            </div>
+        </section>
+    </div>
+
+    <div class="col-lg-7">
+        <section class="resident-panel h-100">
+            <div class="resident-panel__header">
+                <div>
+                    <h2 class="resident-panel__title">Histórico mensual</h2>
+                    <p class="resident-panel__subtitle">Reportes completos cerrados por mes, listos para abrir en PDF.</p>
+                </div>
+            </div>
+
+            {% if report_months %}
+            <div class="resident-report-list">
+                {% for month in report_months %}
+                <article class="resident-report-item">
+                    <div class="resident-report-item__row">
+                        <div>
+                            <h3 class="resident-report-item__title">{{ month.label }}</h3>
+                            <p class="resident-report-item__meta">Reporte mensual cerrado del residencial.</p>
+                        </div>
+                        <a href="{{ url_for('reports.monthly_preview_pdf', reference_date=month.ref_date, period_mode='previous_month') }}" target="_blank" class="btn btn-outline-primary rounded-pill px-4">
+                            <i class="bi bi-file-earmark-pdf"></i> PDF
+                        </a>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="resident-empty">
+                <i class="bi bi-file-earmark-bar-graph"></i>
+                <p>Todavía no hay reportes históricos disponibles.</p>
+            </div>
+            {% endif %}
+        </section>
+    </div>
+</div>
+{% endblock %}

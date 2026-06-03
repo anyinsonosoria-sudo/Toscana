@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}{% block resident_title %}Portal del Residente{% endblock %} - Toscana{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/resident_portal.css') }}">
+{% block resident_page_css %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+<div class="resident-shell">
+    <section class="resident-hero">
+        <span class="resident-hero__eyebrow">
+            <i class="bi bi-person-badge"></i>
+            Hola, {{ current_user.full_name or current_user.username }}
+        </span>
+        <h1 class="resident-hero__title">{% block resident_heading %}{% endblock %}</h1>
+        <p class="resident-hero__subtitle">{% block resident_subtitle %}{% endblock %}</p>
+
+        <div class="resident-hero__summary">
+            <article class="resident-hero__summary-card">
+                <span class="resident-hero__summary-label">Balance actual</span>
+                <span class="resident-hero__summary-value">RD$ {{ "{:,.2f}".format(resident_totals.balance or 0) }}</span>
+            </article>
+            <article class="resident-hero__summary-card">
+                <span class="resident-hero__summary-label">Pagos registrados</span>
+                <span class="resident-hero__summary-value">RD$ {{ "{:,.2f}".format(resident_totals.total_paid or 0) }}</span>
+            </article>
+            <article class="resident-hero__summary-card">
+                <span class="resident-hero__summary-label">Unidades vinculadas</span>
+                <span class="resident-hero__summary-value">{{ resident_totals.apartments or 0 }}</span>
+            </article>
+        </div>
+    </section>
+
+    <nav class="resident-switcher" aria-label="Navegación del residente">
+        {% for item in get_resident_navigation() %}
+        <a class="resident-switcher__item {% if resident_active_section and request.endpoint == item.endpoint %}active{% endif %}" href="{{ item.url }}">
+            <i class="{{ item.icon }}"></i>
+            <span>{{ item.label }}</span>
+        </a>
+        {% endfor %}
+    </nav>
+
+    {% block resident_content %}{% endblock %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% block resident_page_js %}{% endblock %}
+{% endblock %}

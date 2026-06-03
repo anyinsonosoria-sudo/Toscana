@@ -420,6 +420,123 @@ def list_resident_invoices_for_user(user_id: Optional[int], fallback_email: Opti
         conn.close()
 
 
+def get_resident_payment_history_for_user(user_id: Optional[int], fallback_email: Optional[str] = None,
+                                          method: Optional[str] = None, month: Optional[str] = None,
+                                          limit: Optional[int] = None, offset: int = 0) -> Dict[str, object]:
+    allowed_unit_ids = sorted(get_allowed_unit_ids_for_user(user_id, fallback_email=fallback_email))
+    if not allowed_unit_ids:
+        return {
+            'items': [],
+            'total': 0,
+            'methods': [],
+            'months': [],
+            'applied_filters': {
+                'method': None,
+                'month': None,
+            },
+        }
+
+    normalized_method = (method or '').strip().lower() or None
+    normalized_month = (month or '').strip() or None
+    if normalized_month and len(normalized_month) != 7:
+        normalized_month = None
+
+    try:
+        normalized_offset = max(int(offset or 0), 0)
+    except (TypeError, ValueError):
+        normalized_offset = 0
+
+    normalized_limit = None
+    if limit is not None:
+        try:
+            normalized_limit = max(int(limit), 1)
+        except (TypeError, ValueError):
+            normalized_limit = 1
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        placeholders = ','.join('?' for _ in allowed_unit_ids)
+        base_from_clause = f"""
+            FROM payments p
+            JOIN invoices i ON p.invoice_id = i.id
+            JOIN apartments a ON i.unit_id = a.id
+            WHERE i.unit_id IN ({placeholders})
+        """
+        base_params = list(allowed_unit_ids)
+
+        filtered_from_clause = base_from_clause
+        filtered_params = list(base_params)
+
+        if normalized_method:
+            filtered_from_clause += " AND lower(COALESCE(NULLIF(TRIM(p.method), ''), 'sin especificar')) = ?"
+            filtered_params.append(normalized_method)
+
+        if normalized_month:
+            filtered_from_clause += " AND substr(COALESCE(p.paid_date, ''), 1, 7) = ?"
+            filtered_params.append(normalized_month)
+
+        cur.execute(f"SELECT COUNT(*) as total {filtered_from_clause}", filtered_params)
+        total = int((cur.fetchone() or {'total': 0})['total'] or 0)
+
+        items_query = f"""
+            SELECT p.id,
+                   p.invoice_id,
+                   p.amount,
+                   p.paid_date,
+                   COALESCE(NULLIF(TRIM(p.method), ''), 'Sin especificar') as method,
+                   p.notes,
+                   i.description as invoice_desc,
+                   i.amount as invoice_total,
+                   a.number as apt_number
+            {filtered_from_clause}
+            ORDER BY p.paid_date DESC, p.id DESC
+        """
+        item_params = list(filtered_params)
+        if normalized_limit is not None:
+            items_query += " LIMIT ? OFFSET ?"
+            item_params.extend([normalized_limit, normalized_offset])
+
+        cur.execute(items_query, item_params)
+        items = [dict(row) for row in cur.fetchall()]
+
+        cur.execute(f"""
+            SELECT DISTINCT lower(COALESCE(NULLIF(TRIM(p.method), ''), 'sin especificar')) as method_value,
+                            COALESCE(NULLIF(TRIM(p.method), ''), 'Sin especificar') as method_label
+            {base_from_clause}
+            ORDER BY method_label
+        """, base_params)
+        methods = [
+            {
+                'value': row['method_value'],
+                'label': row['method_label'],
+            }
+            for row in cur.fetchall()
+            if row['method_value']
+        ]
+
+        cur.execute(f"""
+            SELECT DISTINCT substr(COALESCE(p.paid_date, ''), 1, 7) as payment_month
+            {base_from_clause}
+            AND COALESCE(p.paid_date, '') != ''
+            ORDER BY payment_month DESC
+        """, base_params)
+        months = [row['payment_month'] for row in cur.fetchall() if row['payment_month']]
+
+        return {
+            'items': items,
+            'total': total,
+            'methods': methods,
+            'months': months,
+            'applied_filters': {
+                'method': normalized_method,
+                'month': normalized_month,
+            },
+        }
+    finally:
+        conn.close()
+
+
 def get_resident_statement_summary_for_user(user_id: Optional[int], fallback_email: Optional[str] = None) -> Dict:
     apartments = list_linked_apartments_for_user(user_id, fallback_email=fallback_email)
     invoices = list_resident_invoices_for_user(user_id, fallback_email=fallback_email)
