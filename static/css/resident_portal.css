@@ -12,8 +12,9 @@
     border-radius: 28px;
     padding: 1.5rem;
     background:
-        radial-gradient(circle at top right, rgba(251, 191, 36, 0.24), transparent 38%),
-        linear-gradient(135deg, #0f172a 0%, #1e3a8a 48%, #0f766e 100%);
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.15), transparent 45%),
+        linear-gradient(135deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.1) 100%),
+        var(--primary);
     color: white;
     box-shadow: 0 24px 50px rgba(15, 23, 42, 0.16);
 }
@@ -119,7 +120,7 @@
 }
 
 .resident-switcher__item.active {
-    background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, transparent 100%), var(--primary);
     color: white;
     border-color: transparent;
 }
@@ -181,7 +182,7 @@
     position: absolute;
     inset: 0 auto 0 0;
     width: 6px;
-    background: var(--resident-card-accent, #14b8a6);
+    background: var(--resident-card-accent, var(--primary));
 }
 
 .resident-metric-card__label {
@@ -296,8 +297,9 @@
 
 .resident-outline-btn {
     background: white;
-    color: #0f766e;
-    border: 1px solid rgba(15, 118, 110, 0.22);
+    color: var(--primary);
+    border: 1px solid var(--primary);
+    opacity: 0.8;
 }
 
 .resident-stack {
@@ -368,7 +370,7 @@
 .resident-progress-bar__value {
     height: 100%;
     border-radius: 999px;
-    background: linear-gradient(135deg, #14b8a6 0%, #0f766e 100%);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, transparent 100%), var(--primary);
 }
 
 .resident-filter-form {
@@ -886,7 +888,7 @@
 .resident-progress-fill {
     height: 100%;
     border-radius: 999px;
-    background: linear-gradient(90deg, #14b8a6 0%, #0f766e 100%);
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.25) 0%, transparent 100%), var(--primary);
 }
 
 .resident-progress-fill.is-warning {
@@ -937,8 +939,8 @@
     justify-content: center;
     margin-bottom: 1rem;
     border-radius: 20px;
-    background: rgba(20, 184, 166, 0.12);
-    color: #0f766e;
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--primary);
     font-size: 2rem;
 }
 
@@ -952,7 +954,7 @@
 .resident-help-card {
     padding: 1.25rem;
     border-radius: 26px;
-    background: linear-gradient(145deg, #0f1c34 0%, #3d2d4f 100%);
+    background: linear-gradient(145deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.3) 100%), var(--primary);
     color: #fff;
 }
 
@@ -1158,7 +1160,7 @@
 
 .resident-chat-message.is-user {
     margin-left: auto;
-    background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, transparent 100%), var(--primary);
     color: #fff;
     border-color: transparent;
 }
@@ -1207,8 +1209,8 @@
     min-width: 34px;
     padding: 0.2rem 0.45rem;
     border-radius: 999px;
-    background: rgba(15, 118, 110, 0.12);
-    color: #0f766e;
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--primary);
     font-size: 0.68rem;
     font-weight: 800;
 }

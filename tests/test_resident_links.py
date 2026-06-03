@@ -350,6 +350,98 @@ def test_resident_help_chat_post_persists_and_reset_clears_thread(client, app):
 
 
 @pytest.mark.integration
+def test_resident_help_understands_question_variations_for_debt_payments_and_units(client, app):
+    with app.app_context():
+        _reset_resident_link_state()
+        unit_id = apartments.add_apartment(number='J-808', resident_name='Variation Resident', resident_email='')
+        user_id = user_model.create_user(
+            username='variation_resident',
+            email='variation_resident@example.com',
+            password='password123',
+            full_name='Variation Resident',
+            role='resident',
+        )
+        residents.link_user_to_apartment(
+            user_id,
+            unit_id,
+            resident_email='variation_resident@example.com',
+            resident_name='Variation Resident',
+            created_by=1,
+        )
+
+        conn = db.get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO invoices (unit_id, description, amount, issued_date, due_date, paid) VALUES (?, ?, ?, ?, ?, ?)",
+                (unit_id, 'Cuota variacion', 180.0, '2026-06-01', '2026-06-15', 0),
+            )
+            invoice_id = cur.lastrowid
+            cur.execute(
+                "INSERT INTO payments (invoice_id, amount, paid_date, method, notes) VALUES (?, ?, ?, ?, ?)",
+                (invoice_id, 60.0, '2026-06-08', 'transfer', 'Abono parcial'),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    with client.session_transaction() as session:
+        session['_user_id'] = str(user_id)
+        session['_fresh'] = True
+
+    debt_response = client.get('/dashboard/ayuda?q=Sigo%20adeudando%20algo%20o%20ya%20estoy%20al%20dia')
+    payments_response = client.get('/dashboard/ayuda?q=Ensename%20mis%20ultimos%20abonos%20registrados')
+    units_response = client.get('/dashboard/ayuda?q=Que%20inmuebles%20tengo%20asociados%20en%20el%20portal')
+
+    assert debt_response.status_code == 200
+    assert payments_response.status_code == 200
+    assert units_response.status_code == 200
+
+    debt_text = debt_response.get_data(as_text=True)
+    payments_text = payments_response.get_data(as_text=True)
+    units_text = units_response.get_data(as_text=True)
+
+    assert 'Estado actual de tu cuenta' in debt_text or 'Balance actual de tu cuenta' in debt_text
+    assert 'RD$' in debt_text
+    assert 'Pagos recientes' in payments_text
+    assert 'Abono parcial' in payments_text or 'transfer' in payments_text
+    assert 'Tus unidades vinculadas' in units_text
+    assert 'J-808' in units_text
+
+
+@pytest.mark.integration
+def test_resident_help_returns_portal_summary_for_generic_capability_question(client, app):
+    with app.app_context():
+        _reset_resident_link_state()
+        unit_id = apartments.add_apartment(number='K-909', resident_name='Capability Resident', resident_email='')
+        user_id = user_model.create_user(
+            username='capability_resident',
+            email='capability_resident@example.com',
+            password='password123',
+            full_name='Capability Resident',
+            role='resident',
+        )
+        residents.link_user_to_apartment(
+            user_id,
+            unit_id,
+            resident_email='capability_resident@example.com',
+            resident_name='Capability Resident',
+            created_by=1,
+        )
+
+    with client.session_transaction() as session:
+        session['_user_id'] = str(user_id)
+        session['_fresh'] = True
+
+    response = client.get('/dashboard/ayuda?q=Que%20informacion%20del%20portal%20puedes%20responderme')
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert 'Informacion disponible en tu portal' in body
+    assert 'saldo, facturas, pagos, unidades vinculadas' in body
+
+
+@pytest.mark.integration
 def test_download_statement_pdf_allows_bridge_linked_resident(client, app, monkeypatch, tmp_path):
     with app.app_context():
         _reset_resident_link_state()

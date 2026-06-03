@@ -585,6 +585,306 @@ def _register_routes(app: Flask) -> None:
         except Exception:
             return {'value': month_key, 'label': month_key}
 
+    def _normalize_resident_help_question(question: str) -> str:
+        import re
+        import unicodedata
+
+        normalized = unicodedata.normalize('NFKD', question or '')
+        normalized = normalized.encode('ascii', 'ignore').decode('ascii')
+        normalized = re.sub(r'[^a-z0-9\s]+', ' ', normalized.lower())
+        return ' '.join(normalized.split())
+
+    def _resident_question_has_any(normalized_question: str, fragments: list[str]) -> bool:
+        return any(fragment in normalized_question for fragment in fragments)
+
+    def _format_resident_short_date(date_value: str | None) -> str:
+        from datetime import datetime
+
+        if not date_value:
+            return 'sin fecha'
+        try:
+            return datetime.strptime(date_value[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+        except ValueError:
+            return date_value[:10]
+
+    def _build_resident_help_payload(
+        title: str,
+        body: str,
+        detail: str = '',
+        tone: str = 'primary',
+        link_url: str | None = None,
+        link_label: str | None = None,
+    ) -> dict[str, str | None]:
+        return {
+            'tone': tone,
+            'title': title,
+            'body': body,
+            'detail': detail,
+            'link_url': link_url,
+            'link_label': link_label,
+        }
+
+    def _build_resident_account_help_answer(normalized_question: str, context: dict) -> dict[str, str | None]:
+        totals = context['resident_totals']
+        pending_preview = list(context.get('pending_preview') or [])
+        pending_count = int(totals.get('pending_invoices') or 0)
+        pending_balance = totals.get('balance') or 0
+
+        if pending_count == 0:
+            body = 'No tienes balance pendiente ni facturas vencidas en este momento.'
+            detail = (
+                f"Pagos registrados: {_format_resident_currency(totals.get('total_paid'))}. "
+                'Tu cuenta se encuentra al dia en las unidades vinculadas.'
+            )
+            tone = 'success'
+        else:
+            body = (
+                f"Tu cuenta mantiene {pending_count} factura(s) pendiente(s) por "
+                f"{_format_resident_currency(pending_balance)}."
+            )
+            detail_parts = [
+                f"Pagos registrados: {_format_resident_currency(totals.get('total_paid'))}."
+            ]
+            if pending_preview:
+                detail_parts.append(
+                    'Pendientes recientes: ' + '; '.join(
+                        f"{invoice.get('description') or 'Factura'} "
+                        f"(Apto {invoice.get('apartment_number') or invoice.get('unit_id') or 'N/D'})"
+                        for invoice in pending_preview[:3]
+                    )
+                )
+            detail = ' '.join(detail_parts)
+            tone = 'warning'
+
+        invoice_specific = _resident_question_has_any(
+            normalized_question,
+            ['factura', 'facturas', 'recibo', 'recibos', 'pendient', 'vencid', 'por pagar'],
+        )
+        balance_specific = _resident_question_has_any(
+            normalized_question,
+            ['saldo', 'balance', 'deuda', 'adeud', 'debo', 'mora', 'cuenta'],
+        )
+        if invoice_specific and not balance_specific:
+            title = 'Estado de facturas pendientes'
+        elif balance_specific and not invoice_specific:
+            title = 'Balance actual de tu cuenta'
+        else:
+            title = 'Estado actual de tu cuenta'
+
+        return _build_resident_help_payload(
+            title=title,
+            body=body,
+            detail=detail,
+            tone=tone,
+            link_url=url_for('resident_billing_overview'),
+            link_label='Ir a Facturas y pagos',
+        )
+
+    def _build_resident_payments_help_answer(context: dict) -> dict[str, str | None]:
+        recent_payments = list(context.get('recent_payments') or [])
+        if not recent_payments:
+            return _build_resident_help_payload(
+                title='Pagos recientes',
+                body='Todavia no hay pagos registrados en tus unidades vinculadas.',
+                detail='Cuando registres pagos, aqui podras resumir los movimientos mas recientes y revisar el historial.',
+                tone='info',
+                link_url=url_for('resident_billing_overview'),
+                link_label='Abrir historial de pagos',
+            )
+
+        recent_total = sum(float(payment.get('amount') or 0) for payment in recent_payments[:3])
+        latest_payment = recent_payments[0]
+        detail = 'Movimientos recientes: ' + '; '.join(
+            f"{_format_resident_short_date(payment.get('paid_date'))}: "
+            f"{_format_resident_currency(payment.get('amount'))} "
+            f"via {(payment.get('method') or 'Sin especificar')}"
+            for payment in recent_payments[:3]
+        )
+        if latest_payment.get('invoice_desc'):
+            detail += f". Ultimo concepto: {latest_payment['invoice_desc']}"
+
+        return _build_resident_help_payload(
+            title='Pagos recientes',
+            body=(
+                f"Tus {len(recent_payments[:3])} pago(s) mas recientes suman "
+                f"{_format_resident_currency(recent_total)}. El ultimo fue "
+                f"{_format_resident_currency(latest_payment.get('amount'))} el "
+                f"{_format_resident_short_date(latest_payment.get('paid_date'))}."
+            ),
+            detail=detail,
+            tone='primary',
+            link_url=url_for('resident_billing_overview'),
+            link_label='Ver historial de pagos',
+        )
+
+    def _build_resident_units_help_answer(context: dict) -> dict[str, str | None]:
+        resident_units = list(context.get('resident_units') or [])
+        if not resident_units:
+            return _build_resident_help_payload(
+                title='Unidades vinculadas',
+                body='No se encontraron unidades vinculadas a tu usuario en este momento.',
+                detail='Si esperabas ver un apartamento aqui, revisa con administracion la vinculacion del residente.',
+                tone='warning',
+                link_url=url_for('resident_balances'),
+                link_label='Volver al portal',
+            )
+
+        apartment_numbers = [
+            str(unit.get('apartment_number') or unit.get('unit_id') or 'N/D') for unit in resident_units
+        ]
+        detail = 'Balance por unidad: ' + '; '.join(
+            f"Apto {unit.get('apartment_number') or unit.get('unit_id') or 'N/D'} "
+            f"{_format_resident_currency(unit.get('balance'))}"
+            for unit in resident_units[:4]
+        )
+        return _build_resident_help_payload(
+            title='Tus unidades vinculadas',
+            body=(
+                f"Tienes {len(resident_units)} unidad(es) vinculada(s): "
+                f"{', '.join(apartment_numbers[:6])}."
+            ),
+            detail=detail,
+            tone='info',
+            link_url=url_for('resident_balances'),
+            link_label='Ver resumen por unidad',
+        )
+
+    def _build_resident_report_help_answer(normalized_question: str, context: dict) -> dict[str, str | None]:
+        from datetime import datetime
+        import reports as financial_reports
+
+        month_reference = _extract_resident_month_reference(normalized_question)
+        wants_expenses = _resident_question_has_any(normalized_question, ['gasto', 'gastos', 'egreso', 'egresos', 'costo'])
+        wants_collections = _resident_question_has_any(normalized_question, ['cobro', 'cobros', 'ingreso', 'ingresos', 'recaud'])
+        wants_balance = _resident_question_has_any(normalized_question, ['saldo', 'balance', 'cierre', 'resultado'])
+
+        if not month_reference:
+            latest_report = context['report_months'][0] if context.get('report_months') else None
+            if not latest_report:
+                return _build_resident_help_payload(
+                    title='Reportes mensuales',
+                    body='Todavia no hay reportes financieros publicados para tus consultas.',
+                    detail='Cuando existan cierres mensuales, podras revisarlos desde la seccion Reportes.',
+                    tone='info',
+                    link_url=url_for('resident_reports'),
+                    link_label='Abrir Reportes',
+                )
+            month_reference = {
+                'label': latest_report['label'],
+                'reference_date': latest_report['ref_date'],
+                'period_mode': 'previous_month',
+            }
+
+        reference_dt = datetime.strptime(month_reference['reference_date'], '%Y-%m-%d')
+        period_mode = month_reference.get('period_mode', 'previous_month')
+        report_data = financial_reports.get_monthly_financial_report_data(
+            reference_dt=reference_dt,
+            period_mode=period_mode,
+        )
+        report_url = url_for(
+            'reports.monthly_preview_pdf',
+            reference_date=month_reference['reference_date'],
+            period_mode=period_mode,
+        )
+
+        if wants_expenses and not wants_collections and not wants_balance:
+            return _build_resident_help_payload(
+                title=f"Gastos de {month_reference['label']}",
+                body=(
+                    f"Los gastos operativos publicados fueron "
+                    f"{_format_resident_currency(report_data.get('total_expenses'))}."
+                ),
+                detail=(
+                    f"Cobros reportados: {_format_resident_currency(report_data.get('total_collections'))}. "
+                    f"Balance de cierre: {_format_resident_currency(report_data.get('closing_balance'))}."
+                ),
+                tone='primary',
+                link_url=report_url,
+                link_label='Abrir reporte mensual',
+            )
+
+        if wants_collections and not wants_expenses and not wants_balance:
+            return _build_resident_help_payload(
+                title=f"Cobros de {month_reference['label']}",
+                body=(
+                    f"Los cobros publicados para ese periodo fueron "
+                    f"{_format_resident_currency(report_data.get('total_collections'))}."
+                ),
+                detail=(
+                    f"Gastos: {_format_resident_currency(report_data.get('total_expenses'))}. "
+                    f"Balance de cierre: {_format_resident_currency(report_data.get('closing_balance'))}."
+                ),
+                tone='primary',
+                link_url=report_url,
+                link_label='Ver PDF del reporte',
+            )
+
+        if wants_balance and month_reference:
+            return _build_resident_help_payload(
+                title=f"Balance del reporte de {month_reference['label']}",
+                body=(
+                    f"El balance de cierre publicado fue "
+                    f"{_format_resident_currency(report_data.get('closing_balance'))}."
+                ),
+                detail=(
+                    f"Cobros: {_format_resident_currency(report_data.get('total_collections'))}. "
+                    f"Gastos: {_format_resident_currency(report_data.get('total_expenses'))}."
+                ),
+                tone='primary',
+                link_url=report_url,
+                link_label='Ver PDF del reporte',
+            )
+
+        return _build_resident_help_payload(
+            title=f"Resumen del reporte de {month_reference['label']}",
+            body=(
+                f"El cierre publicado muestra balance "
+                f"{_format_resident_currency(report_data.get('closing_balance'))}, "
+                f"cobros {_format_resident_currency(report_data.get('total_collections'))} "
+                f"y gastos {_format_resident_currency(report_data.get('total_expenses'))}."
+            ),
+            detail='Puedes abrir el PDF para revisar el detalle completo del periodo.',
+            tone='primary',
+            link_url=report_url,
+            link_label='Abrir reporte mensual',
+        )
+
+    def _build_resident_contact_help_answer(context: dict) -> dict[str, str | None]:
+        company_info = context['company_info']
+        contact_lines = []
+        if company_info.get('phone'):
+            contact_lines.append(f"Telefono: {company_info['phone']}")
+        if company_info.get('email'):
+            contact_lines.append(f"Correo: {company_info['email']}")
+        if company_info.get('name'):
+            contact_lines.insert(0, f"Contacto principal: {company_info['name']}")
+        return _build_resident_help_payload(
+            title='Contacto de administracion',
+            body='Puedes comunicarte con la administracion usando los datos registrados en el portal.',
+            detail=' | '.join(contact_lines) if contact_lines else 'La administracion no tiene informacion de contacto completa en este momento.',
+            tone='info',
+            link_url=url_for('resident_help'),
+            link_label='Ver centro de ayuda',
+        )
+
+    def _build_resident_capabilities_help_answer(context: dict) -> dict[str, str | None]:
+        totals = context['resident_totals']
+        return _build_resident_help_payload(
+            title='Informacion disponible en tu portal',
+            body=(
+                'Puedo responder sobre saldo, facturas, pagos, unidades vinculadas, '
+                'reportes mensuales, perfil, clave y contacto de administracion usando solo la informacion de tu portal.'
+            ),
+            detail=(
+                f"Ahora mismo tu cuenta muestra {_format_resident_currency(totals.get('balance'))} pendiente, "
+                f"{int(totals.get('pending_invoices') or 0)} factura(s) pendiente(s) y "
+                f"{int(totals.get('apartments') or 0)} unidad(es) vinculada(s)."
+            ),
+            tone='info',
+            link_url=url_for('resident_balances'),
+            link_label='Abrir resumen del portal',
+        )
+
     def _get_resident_common_context():
         linked_apartments = residents.list_linked_apartments_for_user(
             current_user.id,
@@ -733,12 +1033,30 @@ def _register_routes(app: Flask) -> None:
 
     def _extract_resident_month_reference(question: str):
         import re
-        from datetime import datetime
+        from datetime import datetime, timedelta
 
-        year_match = re.search(r'(20\d{2})', question)
+        normalized_question = _normalize_resident_help_question(question)
+        now = datetime.now()
+
+        if any(fragment in normalized_question for fragment in ['este mes', 'mes actual', 'mes en curso', 'reporte actual']):
+            return {
+                'label': f"{resident_month_names[now.month]} {now.year}",
+                'reference_date': now.strftime('%Y-%m-%d'),
+                'period_mode': 'current_month_to_date',
+            }
+
+        if any(fragment in normalized_question for fragment in ['mes pasado', 'mes anterior', 'ultimo mes']):
+            previous_month_anchor = (now.replace(day=1) - timedelta(days=1))
+            return {
+                'label': f"{resident_month_names[previous_month_anchor.month]} {previous_month_anchor.year}",
+                'reference_date': now.strftime('%Y-%m-%d'),
+                'period_mode': 'previous_month',
+            }
+
+        year_match = re.search(r'(20\d{2})', normalized_question)
         year_value = int(year_match.group(1)) if year_match else datetime.now().year
         for month_name, month_number in resident_month_lookup.items():
-            if month_name in question:
+            if month_name in normalized_question:
                 reference_month = month_number + 1
                 reference_year = year_value
                 if reference_month == 13:
@@ -747,159 +1065,105 @@ def _register_routes(app: Flask) -> None:
                 return {
                     'label': f"{resident_month_names[month_number]} {year_value}",
                     'reference_date': f"{reference_year}-{reference_month:02d}-01",
+                    'period_mode': 'previous_month',
                 }
         return None
 
     def _build_resident_help_answer(question: str, context: dict):
-        from datetime import datetime
-        import reports as financial_reports
-
-        normalized_question = " ".join((question or '').strip().lower().split())
+        normalized_question = _normalize_resident_help_question(question)
         if not normalized_question:
             return None
 
-        month_reference = _extract_resident_month_reference(normalized_question)
-        totals = context['resident_totals']
-        company_info = context['company_info']
+        wants_profile = _resident_question_has_any(
+            normalized_question,
+            ['foto', 'perfil', 'avatar', 'imagen', 'editar perfil', 'actualizar perfil', 'mis datos'],
+        )
+        wants_password = _resident_question_has_any(
+            normalized_question,
+            ['contrasen', 'clave', 'password', 'cambiar acceso', 'credencial'],
+        )
+        wants_account = _resident_question_has_any(
+            normalized_question,
+            ['saldo', 'balance', 'deuda', 'adeud', 'debo', 'pendient', 'por pagar', 'vencid', 'mora', 'factura', 'recibo', 'cuenta'],
+        )
+        wants_payments = _resident_question_has_any(
+            normalized_question,
+            ['pago', 'pagos', 'abono', 'abonos', 'historial', 'movimiento', 'movimientos', 'pagado', 'transfer', 'deposit'],
+        )
+        wants_units = _resident_question_has_any(
+            normalized_question,
+            ['apartamento', 'apartamentos', 'apto', 'unidad', 'unidades', 'vinculad', 'inmueble', 'inmuebles', 'propiedad'],
+        )
+        wants_reports = bool(_extract_resident_month_reference(normalized_question)) or _resident_question_has_any(
+            normalized_question,
+            ['reporte', 'reportes', 'informe', 'informes', 'mensual', 'gasto', 'gastos', 'egreso', 'egresos', 'cobro', 'cobros', 'ingreso', 'ingresos'],
+        )
+        wants_contact = _resident_question_has_any(
+            normalized_question,
+            ['telefono', 'correo', 'email', 'contact', 'administracion', 'soporte', 'oficina', 'whatsapp'],
+        )
+        wants_capabilities = _resident_question_has_any(
+            normalized_question,
+            ['que puedes', 'que informacion', 'que sabes', 'que puedo preguntar', 'como me puedes ayudar', 'ayuda del portal'],
+        )
 
-        if 'foto' in normalized_question or 'perfil' in normalized_question:
-            return {
-                'tone': 'primary',
-                'title': 'Actualizar foto o perfil',
-                'body': 'Puedes actualizar tu foto, nombre y telefono desde Mi Perfil dentro del portal.',
-                'detail': 'Abre el editor de perfil, carga la imagen y guarda los cambios.',
-                'link_url': url_for('auth.edit_profile'),
-                'link_label': 'Abrir Mi Perfil',
-            }
+        sections = []
 
-        if 'contrase' in normalized_question or 'clave' in normalized_question:
-            return {
-                'tone': 'warning',
-                'title': 'Cambiar contrasena',
-                'body': 'El cambio de contrasena se realiza desde la opcion de seguridad del portal.',
-                'detail': 'Debes confirmar tu contrasena actual antes de guardar la nueva.',
-                'link_url': url_for('auth.change_password'),
-                'link_label': 'Cambiar contrasena',
-            }
+        if wants_profile:
+            sections.append(_build_resident_help_payload(
+                title='Actualizar foto o perfil',
+                body='Puedes actualizar tu foto, nombre y telefono desde Mi Perfil dentro del portal.',
+                detail='Abre el editor de perfil, carga la imagen y guarda los cambios.',
+                tone='primary',
+                link_url=url_for('auth.edit_profile'),
+                link_label='Abrir Mi Perfil',
+            ))
 
-        if 'factura' in normalized_question and ('pendient' in normalized_question or 'debo' in normalized_question or 'por pagar' in normalized_question):
-            pending_count = int(totals.get('pending_invoices') or 0)
-            pending_balance = totals.get('balance') or 0
-            if pending_count == 0:
-                body = 'No tienes facturas pendientes en este momento.'
-                detail = 'Tu cuenta se encuentra al dia en las unidades vinculadas.'
-            else:
-                body = f"Tienes {pending_count} factura(s) pendiente(s) por {_format_resident_currency(pending_balance)}."
-                detail = 'En la seccion Facturas y pagos puedes revisar conceptos, fechas y descargar PDFs.'
-            return {
-                'tone': 'success' if pending_count == 0 else 'warning',
-                'title': 'Estado de facturas pendientes',
-                'body': body,
-                'detail': detail,
-                'link_url': url_for('resident_billing_overview'),
-                'link_label': 'Ir a Facturas y pagos',
-            }
+        if wants_password:
+            sections.append(_build_resident_help_payload(
+                title='Cambiar contrasena',
+                body='El cambio de contrasena se realiza desde la opcion de seguridad del portal.',
+                detail='Debes confirmar tu contrasena actual antes de guardar la nueva.',
+                tone='warning',
+                link_url=url_for('auth.change_password'),
+                link_label='Cambiar contrasena',
+            ))
 
-        if month_reference and ('gasto' in normalized_question or 'gastos' in normalized_question):
-            reference_dt = datetime.strptime(month_reference['reference_date'], '%Y-%m-%d')
-            report_data = financial_reports.get_monthly_financial_report_data(
-                reference_dt=reference_dt,
-                period_mode='previous_month',
-            )
-            return {
-                'tone': 'primary',
-                'title': f"Gastos de {month_reference['label']}",
-                'body': f"Los gastos operativos publicados fueron {_format_resident_currency(report_data.get('total_expenses'))}.",
-                'detail': (
-                    f"Cobros reportados: {_format_resident_currency(report_data.get('total_collections'))}. "
-                    f"Balance de cierre: {_format_resident_currency(report_data.get('closing_balance'))}."
-                ),
-                'link_url': url_for(
-                    'reports.monthly_preview_pdf',
-                    reference_date=month_reference['reference_date'],
-                    period_mode='previous_month',
-                ),
-                'link_label': 'Abrir reporte mensual',
-            }
+        if wants_units:
+            sections.append(_build_resident_units_help_answer(context))
 
-        if month_reference and ('balance' in normalized_question or 'saldo' in normalized_question or 'reporte' in normalized_question):
-            reference_dt = datetime.strptime(month_reference['reference_date'], '%Y-%m-%d')
-            report_data = financial_reports.get_monthly_financial_report_data(
-                reference_dt=reference_dt,
-                period_mode='previous_month',
-            )
-            return {
-                'tone': 'primary',
-                'title': f"Balance del reporte de {month_reference['label']}",
-                'body': f"El balance de cierre publicado fue {_format_resident_currency(report_data.get('closing_balance'))}.",
-                'detail': (
-                    f"Ingresos cobrados: {_format_resident_currency(report_data.get('total_collections'))}. "
-                    f"Gastos: {_format_resident_currency(report_data.get('total_expenses'))}."
-                ),
-                'link_url': url_for(
-                    'reports.monthly_preview_pdf',
-                    reference_date=month_reference['reference_date'],
-                    period_mode='previous_month',
-                ),
-                'link_label': 'Ver PDF del reporte',
-            }
+        if wants_payments:
+            sections.append(_build_resident_payments_help_answer(context))
 
-        if 'saldo actual' in normalized_question or 'balance actual' in normalized_question or (
-            ('saldo' in normalized_question or 'balance' in normalized_question) and not month_reference
-        ):
-            return {
-                'tone': 'primary',
-                'title': 'Balance actual de tu cuenta',
-                'body': f"Tu balance pendiente actual es {_format_resident_currency(totals.get('balance'))}.",
-                'detail': (
-                    f"Pagos registrados: {_format_resident_currency(totals.get('total_paid'))}. "
-                    f"Facturas pendientes: {int(totals.get('pending_invoices') or 0)}."
-                ),
-                'link_url': url_for('resident_balances'),
-                'link_label': 'Abrir Balances',
-            }
+        if wants_account:
+            sections.append(_build_resident_account_help_answer(normalized_question, context))
 
-        if 'reporte' in normalized_question:
-            latest_report = context['report_months'][0] if context['report_months'] else None
-            if latest_report:
-                return {
-                    'tone': 'primary',
-                    'title': 'Ultimo reporte disponible',
-                    'body': f"El ultimo reporte mensual completo disponible es {latest_report['label']}.",
-                    'detail': 'Tambien tienes disponible un reporte actualizado del mes en curso dentro de la seccion Reportes.',
-                    'link_url': url_for(
-                        'reports.monthly_preview_pdf',
-                        reference_date=latest_report['ref_date'],
-                        period_mode='previous_month',
-                    ),
-                    'link_label': 'Abrir ultimo reporte',
-                }
+        if wants_reports:
+            sections.append(_build_resident_report_help_answer(normalized_question, context))
 
-        if 'telefono' in normalized_question or 'correo' in normalized_question or 'contact' in normalized_question or 'administracion' in normalized_question:
-            contact_lines = []
-            if company_info.get('phone'):
-                contact_lines.append(f"Telefono: {company_info['phone']}")
-            if company_info.get('email'):
-                contact_lines.append(f"Correo: {company_info['email']}")
-            if company_info.get('name'):
-                contact_lines.insert(0, f"Contacto principal: {company_info['name']}")
-            return {
-                'tone': 'info',
-                'title': 'Contacto de administracion',
-                'body': 'Puedes comunicarte con la administracion usando los datos registrados en el portal.',
-                'detail': ' | '.join(contact_lines) if contact_lines else 'La administracion no tiene informacion de contacto completa en este momento.',
-                'link_url': url_for('resident_help'),
-                'link_label': 'Ver centro de ayuda',
-            }
+        if wants_contact:
+            sections.append(_build_resident_contact_help_answer(context))
 
-        return {
-            'tone': 'secondary',
-            'title': 'Pregunta lista para responderse',
-            'body': 'Todavia no tengo una respuesta automatica para esa consulta dentro del portal.',
-            'detail': 'Prueba preguntas sobre perfil, facturas pendientes, saldo actual, balance de un mes o gastos publicados.',
-            'link_url': url_for('resident_help'),
-            'link_label': 'Intentar otra pregunta',
-        }
+        if wants_capabilities and not sections:
+            sections.append(_build_resident_capabilities_help_answer(context))
+
+        if not sections:
+            return _build_resident_capabilities_help_answer(context)
+
+        if len(sections) == 1:
+            return sections[0]
+
+        detail_parts = [section.get('detail') for section in sections[:3] if section.get('detail')]
+        tone = 'warning' if any(section.get('tone') == 'warning' for section in sections) else sections[0].get('tone', 'primary')
+        primary_link = next((section for section in sections if section.get('link_url')), sections[0])
+        return _build_resident_help_payload(
+            title='Resumen de tu consulta',
+            body=' '.join(section.get('body', '') for section in sections[:3] if section.get('body')),
+            detail=' | '.join(detail_parts),
+            tone=tone,
+            link_url=primary_link.get('link_url'),
+            link_label=primary_link.get('link_label') or 'Abrir detalle',
+        )
 
     def _sanitize_resident_help_text(value: Any, max_length: int = 700) -> str:
         normalized = " ".join(str(value or '').strip().split())
@@ -1142,6 +1406,12 @@ def _register_routes(app: Flask) -> None:
     def _build_resident_help_context(question: str = '', thread: Optional[list[dict[str, str]]] = None):
         context = _get_resident_common_context()
         resident_help_thread = thread if thread is not None else _get_resident_help_thread()
+        ai_enabled = _resident_ai_enabled()
+        recent_payment_history: dict[str, Any] = residents.get_resident_payment_history_for_user(
+            current_user.id,
+            fallback_email=current_user.email,
+            limit=3,
+        )
         latest_answer = next(
             (message for message in reversed(resident_help_thread) if message.get('role') == 'assistant'),
             None,
@@ -1153,24 +1423,42 @@ def _register_routes(app: Flask) -> None:
                 paid=False,
                 limit=3,
             ),
+            'recent_payments': list(recent_payment_history.get('items') or []),
             'resident_help_question': question,
             'resident_help_answer': latest_answer,
             'resident_help_thread': resident_help_thread,
-            'resident_ai_enabled': _resident_ai_enabled(),
-            'resident_ai_status_label': 'IA conectada' if _resident_ai_enabled() else 'Asistente guiado',
+            'resident_ai_enabled': ai_enabled,
+            'resident_ai_status_label': 'IA conectada' if ai_enabled else 'Asistente guiado',
             'resident_ai_status_detail': (
                 'Usa un modelo externo con contexto validado del portal y reportes publicados.'
-                if _resident_ai_enabled()
+                if ai_enabled
                 else 'Responde con logica del portal y datos verificados hasta que configures la IA externa.'
             ),
-            'resident_help_suggestions': [
-                'Donde puedo actualizar mi foto de perfil?',
-                'Cuantas facturas pendientes tengo?',
-                'Cual es mi saldo actual?',
-                'Cuales fueron los gastos de abril 2026?',
-                'Cual fue el balance del reporte de mayo 2026?',
-                'Resumeme mis pagos mas recientes y dime si tengo deuda activa.',
-            ],
+            'resident_help_suggestions_label': 'Ejemplos de preguntas' if ai_enabled else 'Ejemplos que el portal ya responde bien',
+            'resident_help_suggestions_hint': (
+                'Puedes escribir cualquier pregunta sobre tu cuenta o los reportes; estas tarjetas son solo ideas.'
+                if ai_enabled
+                else 'Ahora mismo estas sugerencias coinciden con las categorias soportadas sin IA externa.'
+            ),
+            'resident_help_suggestions': (
+                [
+                    'Explicame mi balance actual.',
+                    'Resumeme mis pagos mas recientes.',
+                    'Tengo deuda activa este mes?',
+                    'Que dice el ultimo reporte del residencial?',
+                    'Como contacto a la administracion?',
+                    'Donde cambio mi foto o mi clave?',
+                ]
+                if ai_enabled
+                else [
+                    'Donde puedo actualizar mi foto de perfil?',
+                    'Cuantas facturas pendientes tengo?',
+                    'Cual es mi saldo actual?',
+                    'Cuales fueron los gastos de abril 2026?',
+                    'Cual fue el balance del reporte de mayo 2026?',
+                    'Como contacto a la administracion?',
+                ]
+            ),
         })
         return context
 
