@@ -44,8 +44,74 @@
 
     {% block resident_content %}{% endblock %}
 </div>
+
+{# ── Floating Assistant ─────────────────────────────────────────── #}
+<div class="rp-fab-wrap" id="rpFabWrap">
+    <div class="rp-fab-panel" id="rpFabPanel" role="dialog" aria-modal="true" aria-label="Asistente Toscana">
+        <div class="rp-fab-panel__head">
+            <div class="d-flex align-items-center gap-2">
+                <span class="rp-fab-avatar"><i class="bi bi-cpu-fill"></i></span>
+                <div>
+                    <strong class="rp-fab-panel__name">Asistente Toscana</strong>
+                    <span class="rp-fab-panel__sub">Consulta tu cuenta, pagos y reportes</span>
+                </div>
+            </div>
+            <button class="rp-fab-panel__close" id="rpFabClose" type="button" aria-label="Cerrar">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <form method="get" action="{{ url_for('resident_help') }}" class="rp-fab-panel__form">
+            <textarea name="q" rows="2" class="form-control rp-fab-panel__textarea"
+                      placeholder="¿En qué te ayudo hoy?"></textarea>
+            <button type="submit" class="rp-fab-panel__submit">
+                <i class="bi bi-send-fill me-1"></i> Consultar
+            </button>
+        </form>
+        <div class="rp-fab-chips">
+            <a href="{{ url_for('resident_help', q='¿Tengo balance pendiente?') }}" class="rp-fab-chip">Balance</a>
+            <a href="{{ url_for('resident_help', q='Mis últimos pagos') }}" class="rp-fab-chip">Pagos</a>
+            <a href="{{ url_for('resident_help', q='Apartamentos vinculados') }}" class="rp-fab-chip">Apartamentos</a>
+            <a href="{{ url_for('resident_help', q='Reporte del mes actual') }}" class="rp-fab-chip">Reporte</a>
+        </div>
+    </div>
+    <button class="rp-fab-btn" id="rpFabBtn" type="button" aria-label="Abrir asistente" aria-expanded="false">
+        <i class="bi bi-cpu-fill rp-fab-btn__icon"></i>
+        <i class="bi bi-x-lg rp-fab-btn__icon--close"></i>
+        <span class="rp-fab-pulse" aria-hidden="true"></span>
+    </button>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 {% block resident_page_js %}{% endblock %}
+<script>
+(function () {
+    var btn   = document.getElementById('rpFabBtn');
+    var panel = document.getElementById('rpFabPanel');
+    var wrap  = document.getElementById('rpFabWrap');
+    var closeBtn = document.getElementById('rpFabClose');
+    if (!btn || !panel) return;
+
+    function open() {
+        btn.classList.add('is-open');
+        btn.setAttribute('aria-expanded', 'true');
+        panel.classList.add('is-open');
+        var ta = panel.querySelector('textarea');
+        if (ta) setTimeout(function(){ ta.focus(); }, 200);
+    }
+    function close() {
+        btn.classList.remove('is-open');
+        btn.setAttribute('aria-expanded', 'false');
+        panel.classList.remove('is-open');
+    }
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        btn.classList.contains('is-open') ? close() : open();
+    });
+    if (closeBtn) closeBtn.addEventListener('click', function(e) { e.stopPropagation(); close(); });
+    panel.addEventListener('click', function(e) { e.stopPropagation(); });
+    document.addEventListener('click', function() { close(); });
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') close(); });
+})();
+</script>
 {% endblock %}
