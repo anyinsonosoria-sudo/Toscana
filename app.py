@@ -597,6 +597,62 @@ def _register_routes(app: Flask) -> None:
     def _resident_question_has_any(normalized_question: str, fragments: list[str]) -> bool:
         return any(fragment in normalized_question for fragment in fragments)
 
+    def _is_followup_question(normalized_question: str) -> bool:
+        """Returns True when the question references a previous answer rather than introducing a new topic."""
+        followup_signals = [
+            'ese', 'eso', 'esa', 'esos', 'esas',
+            'desglos', 'detalla', 'detalle de', 'dame mas', 'ampliar',
+            'mas detalle', 'mas informacion', 'con mas detalle',
+            'que incluye', 'que contiene', 'como se compone', 'que hay ahi',
+            'del total', 'de eso', 'de ese', 'de esa', 'de esas', 'de esos',
+            'por categoria', 'por concepto', 'en que consiste',
+            'puedes desglosar', 'puedes explicar', 'puedes ampliar',
+            'y cuanto', 'y cuales', 'cuales son esos', 'cuales fueron',
+        ]
+        return _resident_question_has_any(normalized_question, followup_signals)
+
+    def _extract_last_assistant_topic(thread: list) -> Optional[dict]:
+        """Extracts the conversation topic and month reference from the last assistant message."""
+        last_assistant = next(
+            (msg for msg in reversed(thread) if msg.get('role') == 'assistant'),
+            None,
+        )
+        if not last_assistant:
+            return None
+
+        raw_text = ' '.join(filter(None, [
+            last_assistant.get('title', ''),
+            last_assistant.get('content', ''),
+            last_assistant.get('detail', ''),
+        ]))
+        norm = _normalize_resident_help_question(raw_text)
+
+        topic: dict[str, Any] = {
+            'type': None,
+            'month_reference': None,
+            'was_expenses': False,
+            'was_collections': False,
+        }
+
+        month_ref = _extract_resident_month_reference(norm)
+        if month_ref:
+            topic['month_reference'] = month_ref
+
+        if _resident_question_has_any(norm, ['gasto', 'egreso', 'cobro', 'ingreso', 'reporte', 'cierre', 'mensual', 'operativo']):
+            topic['type'] = 'report'
+            topic['was_expenses'] = _resident_question_has_any(norm, ['gasto', 'gastos', 'egreso', 'operativo'])
+            topic['was_collections'] = _resident_question_has_any(norm, ['cobro', 'cobros', 'ingreso', 'ingresos', 'recaud'])
+        elif _resident_question_has_any(norm, ['pago', 'abono', 'historial', 'movimiento']):
+            topic['type'] = 'payments'
+        elif _resident_question_has_any(norm, ['factura', 'balance', 'saldo', 'deuda', 'pendient']):
+            topic['type'] = 'account'
+        elif _resident_question_has_any(norm, ['apartamento', 'unidad', 'vinculad', 'inmueble']):
+            topic['type'] = 'units'
+        elif _resident_question_has_any(norm, ['contacto', 'telefono', 'correo', 'administracion']):
+            topic['type'] = 'contact'
+
+        return topic if topic['type'] else None
+
     def _format_resident_short_date(date_value: str | None) -> str:
         from datetime import datetime
 
@@ -749,13 +805,13 @@ def _register_routes(app: Flask) -> None:
             link_label='Ver resumen por unidad',
         )
 
-    def _build_resident_report_help_answer(normalized_question: str, context: dict) -> dict[str, str | None]:
+    def _build_resident_report_help_answer(normalized_question: str, context: dict, wants_breakdown: bool = False, inherited_month: Optional[dict] = None, inherited_expenses: bool = False, inherited_collections: bool = False) -> dict[str, str | None]:
         from datetime import datetime
         import reports as financial_reports
 
-        month_reference = _extract_resident_month_reference(normalized_question)
-        wants_expenses = _resident_question_has_any(normalized_question, ['gasto', 'gastos', 'egreso', 'egresos', 'costo'])
-        wants_collections = _resident_question_has_any(normalized_question, ['cobro', 'cobros', 'ingreso', 'ingresos', 'recaud'])
+        month_reference = _extract_resident_month_reference(normalized_question) or inherited_month
+        wants_expenses = _resident_question_has_any(normalized_question, ['gasto', 'gastos', 'egreso', 'egresos', 'costo']) or inherited_expenses
+        wants_collections = _resident_question_has_any(normalized_question, ['cobro', 'cobros', 'ingreso', 'ingresos', 'recaud']) or inherited_collections
         wants_balance = _resident_question_has_any(normalized_question, ['saldo', 'balance', 'cierre', 'resultado'])
 
         if not month_reference:
@@ -788,32 +844,58 @@ def _register_routes(app: Flask) -> None:
         )
 
         if wants_expenses and not wants_collections and not wants_balance:
+            if wants_breakdown:
+                expense_items = report_data.get('expenses') or []
+                if expense_items:
+                    by_cat: dict[str, float] = {}
+                    for item in expense_items:
+                        cat = item.get('category') or 'Sin categoría'
+                        by_cat[cat] = by_cat.get(cat, 0) + float(item.get('amount') or 0)
+                    lines = [f"- {cat}: {_format_resident_currency(total)}" for cat, total in sorted(by_cat.items(), key=lambda x: -x[1])]
+                    breakdown_detail = 'Desglose por categoría: ' + ' | '.join(lines[:8])
+                else:
+                    breakdown_detail = 'No hay ítems de gasto registrados para ese período.'
+            else:
+                breakdown_detail = (
+                    f"Cobros reportados: {_format_resident_currency(report_data.get('total_collections'))}. "
+                    f"Balance de cierre: {_format_resident_currency(report_data.get('closing_balance'))}."
+                )
             return _build_resident_help_payload(
                 title=f"Gastos de {month_reference['label']}",
                 body=(
                     f"Los gastos operativos publicados fueron "
                     f"{_format_resident_currency(report_data.get('total_expenses'))}."
                 ),
-                detail=(
-                    f"Cobros reportados: {_format_resident_currency(report_data.get('total_collections'))}. "
-                    f"Balance de cierre: {_format_resident_currency(report_data.get('closing_balance'))}."
-                ),
+                detail=breakdown_detail,
                 tone='primary',
                 link_url=report_url,
                 link_label='Abrir reporte mensual',
             )
 
         if wants_collections and not wants_expenses and not wants_balance:
+            if wants_breakdown:
+                collection_items = report_data.get('collections') or []
+                if collection_items:
+                    by_cat: dict[str, float] = {}
+                    for item in collection_items:
+                        cat = item.get('category') or item.get('payment_method') or 'Sin categoría'
+                        by_cat[cat] = by_cat.get(cat, 0) + float(item.get('amount') or 0)
+                    lines = [f"- {cat}: {_format_resident_currency(total)}" for cat, total in sorted(by_cat.items(), key=lambda x: -x[1])]
+                    coll_detail = 'Desglose por categoría: ' + ' | '.join(lines[:8])
+                else:
+                    coll_detail = 'No hay cobros registrados para ese período.'
+            else:
+                coll_detail = (
+                    f"Gastos: {_format_resident_currency(report_data.get('total_expenses'))}. "
+                    f"Balance de cierre: {_format_resident_currency(report_data.get('closing_balance'))}."
+                )
             return _build_resident_help_payload(
                 title=f"Cobros de {month_reference['label']}",
                 body=(
                     f"Los cobros publicados para ese periodo fueron "
                     f"{_format_resident_currency(report_data.get('total_collections'))}."
                 ),
-                detail=(
-                    f"Gastos: {_format_resident_currency(report_data.get('total_expenses'))}. "
-                    f"Balance de cierre: {_format_resident_currency(report_data.get('closing_balance'))}."
-                ),
+                detail=coll_detail,
                 tone='primary',
                 link_url=report_url,
                 link_label='Ver PDF del reporte',
@@ -1069,7 +1151,7 @@ def _register_routes(app: Flask) -> None:
                 }
         return None
 
-    def _build_resident_help_answer(question: str, context: dict):
+    def _build_resident_help_answer(question: str, context: dict, thread: Optional[list] = None):
         normalized_question = _normalize_resident_help_question(question)
         if not normalized_question:
             return None
@@ -1146,6 +1228,32 @@ def _register_routes(app: Flask) -> None:
 
         if wants_capabilities and not sections:
             sections.append(_build_resident_capabilities_help_answer(context))
+
+        # ── Follow-up inference ────────────────────────────────────────
+        # When no direct intent matched and the question references a previous answer,
+        # inherit the topic from the last assistant message.
+        if not sections and thread and _is_followup_question(normalized_question):
+            last_topic = _extract_last_assistant_topic(thread)
+            if last_topic:
+                wants_breakdown = True  # follow-up always implies more detail
+                if last_topic['type'] == 'report':
+                    sections.append(_build_resident_report_help_answer(
+                        normalized_question,
+                        context,
+                        wants_breakdown=wants_breakdown,
+                        inherited_month=last_topic.get('month_reference'),
+                        inherited_expenses=last_topic.get('was_expenses', False),
+                        inherited_collections=last_topic.get('was_collections', False),
+                    ))
+                elif last_topic['type'] == 'payments':
+                    sections.append(_build_resident_payments_help_answer(context))
+                elif last_topic['type'] == 'account':
+                    sections.append(_build_resident_account_help_answer(normalized_question, context))
+                elif last_topic['type'] == 'units':
+                    sections.append(_build_resident_units_help_answer(context))
+                elif last_topic['type'] == 'contact':
+                    sections.append(_build_resident_contact_help_answer(context))
+        # ── End follow-up inference ────────────────────────────────────
 
         if not sections:
             return _build_resident_capabilities_help_answer(context)
@@ -1385,7 +1493,7 @@ def _register_routes(app: Flask) -> None:
         }
 
     def _compose_resident_help_answer(question: str, context: dict, thread: list[dict[str, str]]) -> Optional[dict]:
-        deterministic_answer = _build_resident_help_answer(question, context)
+        deterministic_answer = _build_resident_help_answer(question, context, thread=thread)
         ai_answer = _build_resident_ai_answer(question, context, thread, deterministic_answer)
         return ai_answer or deterministic_answer
 
