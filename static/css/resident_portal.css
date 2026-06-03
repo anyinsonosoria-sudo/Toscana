@@ -291,7 +291,7 @@
 
 .resident-link-btn,
 .resident-solid-btn {
-    background: linear-gradient(135deg, #8b5e4c 0%, #6f4e37 100%);
+    background: var(--primary);
     color: white;
 }
 
@@ -485,8 +485,8 @@
     gap: 0.35rem;
     padding: 0.65rem 0.85rem;
     border-radius: 999px;
-    background: #eef2ff;
-    color: #3730a3;
+    background: color-mix(in srgb, var(--primary) 12%, white);
+    color: var(--primary);
     text-decoration: none;
     font-weight: 700;
     font-size: 0.86rem;
@@ -505,8 +505,8 @@
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    background: #eff6ff;
-    color: #2563eb;
+    background: color-mix(in srgb, var(--primary) 12%, white);
+    color: var(--primary);
     font-size: 1.8rem;
     margin-bottom: 0.75rem;
 }
@@ -561,10 +561,11 @@
     border-radius: 28px;
     padding: 1.5rem;
     background:
-        radial-gradient(circle at top right, rgba(244, 196, 48, 0.18), transparent 30%),
-        linear-gradient(135deg, #132238 0%, #5b4638 100%);
+        radial-gradient(ellipse at top right, rgba(255, 230, 160, 0.30), transparent 45%),
+        linear-gradient(150deg, rgba(30, 10, 5, 0.30) 0%, rgba(30, 10, 5, 0.04) 75%),
+        var(--primary);
     color: #fff;
-    box-shadow: 0 18px 40px rgba(19, 34, 56, 0.18);
+    box-shadow: 0 18px 40px rgba(30, 10, 5, 0.18);
 }
 
 .resident-hero::after {
@@ -671,8 +672,10 @@
 }
 
 .resident-switcher__item.active {
-    background: #132238;
+    background: var(--primary);
     color: #fff;
+    border-color: transparent;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
 }
 
 .resident-switcher__item:hover {
@@ -954,7 +957,10 @@
 .resident-help-card {
     padding: 1.25rem;
     border-radius: 26px;
-    background: linear-gradient(145deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.3) 100%), var(--primary);
+    background:
+        radial-gradient(ellipse at top left, rgba(255, 230, 160, 0.22), transparent 52%),
+        linear-gradient(145deg, rgba(30, 10, 5, 0.25) 0%, rgba(30, 10, 5, 0.03) 100%),
+        var(--primary);
     color: #fff;
 }
 
@@ -1041,8 +1047,8 @@
     padding: 0.6rem 0.85rem;
     border-radius: 999px;
     text-decoration: none;
-    background: #eff6ff;
-    color: #1d4ed8;
+    background: color-mix(in srgb, var(--primary) 12%, white);
+    color: var(--primary);
     font-weight: 700;
     font-size: 0.85rem;
 }
@@ -1059,7 +1065,7 @@
 .resident-shortcut-link:hover,
 .resident-report-item a:hover,
 .resident-suggestion-chip:hover {
-    color: inherit;
+    color: var(--primary);
 }
 
 @media (max-width: 992px) {
