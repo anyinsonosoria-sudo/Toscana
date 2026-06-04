@@ -1350,6 +1350,27 @@ body {
     }
 }
 
+@supports (padding: env(safe-area-inset-top)) {
+    @media (max-width: 992px) {
+        .mobile-header {
+            height: calc(56px + env(safe-area-inset-top));
+            padding-top: env(safe-area-inset-top);
+        }
+        .main-content {
+            padding-top: calc(56px + env(safe-area-inset-top) + 1rem);
+        }
+    }
+    @media (max-width: 768px) {
+        .main-content {
+            padding-top: calc(56px + env(safe-area-inset-top) + 0.75rem);
+        }
+    }
+    /* Sidebar: padding-top for notch on all sizes */
+    .sidebar {
+        padding-top: env(safe-area-inset-top);
+    }
+}
+
 /* ========================
    PRINT
    ======================== */

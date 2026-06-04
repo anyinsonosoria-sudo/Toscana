@@ -1566,3 +1566,256 @@
         width: calc(100vw - 2.4rem);
     }
 }
+
+/* ================================================================
+   MOBILE OPTIMIZATIONS — comprehensive responsive overrides
+   These are appended last so they win via the CSS cascade.
+   ================================================================ */
+
+/* ── Tablet (≤992px): hero stays 3-col, metric grid goes 2-col ── */
+@media (max-width: 992px) {
+    /* Restore hero summary to 3 compact columns on tablet */
+    .resident-hero__summary {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.65rem;
+    }
+
+    /* Metric grid: 3→2 columns on tablet */
+    .resident-metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    /* Help grid: always 1-col from tablet down */
+    .resident-help-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Filter form: 4→2 columns on tablet */
+    .resident-filter-form {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* ── Phone (≤768px): compact hero, 2-col grids, filter grid ──── */
+@media (max-width: 768px) {
+    /* Shell gap */
+    .resident-shell { gap: 0.6rem; }
+
+    /* Hero: compact, hide subtitle, smaller title */
+    .resident-hero {
+        padding: 1rem;
+        border-radius: 20px;
+    }
+    .resident-hero__eyebrow {
+        font-size: 0.72rem;
+        padding: 0.3rem 0.6rem;
+    }
+    .resident-hero__title {
+        margin: 0.5rem 0 0.15rem;
+        font-size: clamp(1.2rem, 7vw, 1.6rem);
+        letter-spacing: -0.035em;
+    }
+    .resident-hero__subtitle { display: none; }
+
+    /* Hero summary: 2 compact columns */
+    .resident-hero__summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.45rem;
+        margin-top: 0.8rem;
+    }
+    .resident-hero__summary-item,
+    .resident-hero__summary-card {
+        padding: 0.65rem 0.7rem;
+        border-radius: 14px;
+    }
+    .resident-hero__summary-value { font-size: 0.93rem; }
+    .resident-hero__summary-label { font-size: 0.67rem; margin-bottom: 0.15rem; }
+
+    /* Switcher: compact with scroll snap */
+    .resident-switcher {
+        gap: 0.45rem;
+        scroll-snap-type: x proximity;
+    }
+    .resident-switcher__item {
+        padding: 0.65rem 0.85rem;
+        font-size: 0.86rem;
+        border-radius: 14px;
+        scroll-snap-align: start;
+    }
+
+    /* Metric grid: keep 2-col (override the 1-col from earlier rules) */
+    .resident-metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.55rem;
+    }
+    .resident-metric-card {
+        padding: 0.9rem;
+        min-height: auto;
+        border-radius: 20px;
+    }
+    .resident-metric-card__icon {
+        width: 44px;
+        height: 44px;
+        font-size: 1.1rem;
+        border-radius: 14px;
+        margin-bottom: 0.6rem;
+    }
+    .resident-metric-card__value {
+        font-size: clamp(1.15rem, 5.5vw, 1.85rem);
+        margin-top: 0.35rem;
+    }
+    .resident-metric-card__hint { font-size: 0.84rem; }
+
+    /* KPI strip: keep 2-col (override 1-col) */
+    .resident-kpi-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.45rem;
+    }
+
+    /* Panels */
+    .resident-panel, .resident-help-card {
+        padding: 0.9rem;
+        border-radius: 20px;
+    }
+    .resident-panel__header { gap: 0.6rem; margin-bottom: 0.8rem; }
+    .resident-panel__title { font-size: 1.02rem; }
+    .resident-panel__subtitle { font-size: 0.85rem; }
+
+    /* Filter bar: 2-col grid (selects side by side, buttons full-width) */
+    .resident-filter-bar {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+    }
+    .resident-filter-bar > button,
+    .resident-filter-bar > a.btn {
+        grid-column: span 2;
+    }
+    .resident-filter-bar .form-select,
+    .resident-filter-bar .form-control {
+        min-width: 0;
+        width: 100%;
+    }
+
+    /* Filter form: keep 2-col */
+    .resident-filter-form {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+
+    /* List item rows: wrap but stay horizontal (override flex-direction:column) */
+    .resident-unit-card__row,
+    .resident-list-item__row,
+    .resident-report-item__row {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    /* Amount column: left-align on narrow screens */
+    .resident-unit-card__row .text-end,
+    .resident-list-item__row .text-end {
+        text-align: left !important;
+    }
+
+    /* Chart */
+    .resident-chart-wrap { min-height: 230px; }
+
+    /* Chat: no max-height cap on mobile */
+    .resident-chat-thread { max-height: none; padding-right: 0; }
+    .resident-chat-message { max-width: 100%; border-radius: 16px; }
+
+    /* Suggestion chips: horizontal scroll row */
+    .resident-suggestion-list {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 0.15rem;
+        scrollbar-width: none;
+    }
+    .resident-suggestion-list::-webkit-scrollbar { display: none; }
+
+    /* Pagination: wrap  */
+    .resident-pagination {
+        flex-wrap: wrap;
+        gap: 0.6rem;
+    }
+}
+
+/* ── Small phone (≤480px): 1-col grids, very compact hero ──────── */
+@media (max-width: 480px) {
+    .resident-shell { gap: 0.45rem; }
+
+    /* Hero: extra compact */
+    .resident-hero {
+        padding: 0.85rem;
+        border-radius: 16px;
+    }
+    .resident-hero__eyebrow { font-size: 0.68rem; }
+    .resident-hero__title {
+        font-size: clamp(1.05rem, 7.5vw, 1.3rem);
+        margin: 0.35rem 0 0;
+    }
+
+    /* Hero summary: 1-col, each item displayed as a horizontal strip */
+    .resident-hero__summary {
+        grid-template-columns: 1fr;
+        gap: 0.35rem;
+        margin-top: 0.65rem;
+    }
+    .resident-hero__summary-item,
+    .resident-hero__summary-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0.7rem;
+        border-radius: 12px;
+    }
+    .resident-hero__summary-label { margin-bottom: 0; font-size: 0.68rem; }
+    .resident-hero__summary-value { font-size: 0.9rem; }
+
+    /* Metric grid: 1-col */
+    .resident-metric-grid { grid-template-columns: 1fr; }
+    .resident-metric-card__value { font-size: 1.35rem; }
+
+    /* KPI strip: 1-col */
+    .resident-kpi-strip { grid-template-columns: 1fr; }
+
+    /* Filter form: 1-col */
+    .resident-filter-form { grid-template-columns: 1fr; }
+
+    /* Filter bar: 1-col */
+    .resident-filter-bar { grid-template-columns: 1fr; }
+    .resident-filter-bar > button,
+    .resident-filter-bar > a.btn { grid-column: span 1; }
+
+    /* Switcher items: smaller */
+    .resident-switcher__item { font-size: 0.82rem; padding: 0.58rem 0.75rem; }
+
+    /* Panels */
+    .resident-panel__title { font-size: 0.97rem; }
+    .resident-panel, .resident-help-card { padding: 0.8rem; }
+
+    /* Chat */
+    .resident-chat-message__title { font-size: 0.95rem; }
+    .resident-ai-status { padding: 0.72rem 0.85rem; }
+
+    /* FAB: compact, tighter corners */
+    .rp-fab-btn { width: 52px; height: 52px; font-size: 1.15rem; }
+    .rp-fab-wrap { bottom: 1rem; right: 1rem; }
+    .rp-fab-panel { width: calc(100vw - 2rem); }
+    .rp-fab-panel__form { padding: 0.85rem; }
+    .rp-fab-chips { padding: 0 0.85rem 0.8rem; }
+}
+
+/* ── iOS / Android safe area (notch + bottom browser nav bar) ─── */
+@supports (padding: env(safe-area-inset-bottom)) {
+    .rp-fab-wrap {
+        bottom: calc(1.75rem + env(safe-area-inset-bottom));
+    }
+
+    @media (max-width: 480px) {
+        .rp-fab-wrap {
+            bottom: calc(1rem + env(safe-area-inset-bottom));
+        }
+    }
+}
