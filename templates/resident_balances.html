@@ -4,7 +4,7 @@
 
 {% block resident_heading %}Balance y estado actual{% endblock %}
 
-{% block resident_subtitle %}Una vista corta para revisar deuda, aportes acumulados y el estado por unidad sin tener que bajar por todo el portal.{% endblock %}
+{% block resident_subtitle %}Una vista corta para revisar deuda, aportes acumulados y el estado por apartamento sin tener que bajar por todo el portal.{% endblock %}
 
 {% block resident_content %}
 <div class="row g-3">
@@ -13,7 +13,7 @@
             <div class="resident-metric-card__icon"><i class="bi bi-cash-stack"></i></div>
             <span class="resident-metric-card__label">Balance pendiente</span>
             <span class="resident-metric-card__value">RD$ {{ '{:,.2f}'.format(resident_totals.balance or 0) }}</span>
-            <p class="resident-metric-card__hint">Monto acumulado pendiente para todas tus unidades vinculadas.</p>
+            <p class="resident-metric-card__hint">Monto acumulado pendiente para todos tus apartamentos vinculados.</p>
         </div>
     </div>
     <div class="col-md-4">
@@ -27,7 +27,7 @@
     <div class="col-md-4">
         <div class="resident-metric-card is-info">
             <div class="resident-metric-card__icon"><i class="bi bi-buildings"></i></div>
-            <span class="resident-metric-card__label">Unidades vinculadas</span>
+            <span class="resident-metric-card__label">Apartamentos vinculados</span>
             <span class="resident-metric-card__value">{{ resident_totals.apartments or 0 }}</span>
             <p class="resident-metric-card__hint">Accede a estados de cuenta y resumen por apartamento desde aquí.</p>
         </div>
@@ -39,7 +39,7 @@
         <section class="resident-panel h-100">
             <div class="resident-panel__header">
                 <div>
-                    <h2 class="resident-panel__title">Resumen por unidad</h2>
+                    <h2 class="resident-panel__title">Resumen por apartamento</h2>
                     <p class="resident-panel__subtitle">Estado de cuenta puntual para cada apartamento vinculado.</p>
                 </div>
                 <span class="resident-badge {% if (resident_totals.balance or 0) > 0 %}is-warning{% else %}is-success{% endif %}">
@@ -67,7 +67,7 @@
                 {% else %}
                 <div class="resident-empty">
                     <i class="bi bi-house-door"></i>
-                    <p>No hay unidades vinculadas todavía.</p>
+                    <p>No hay apartamentos vinculados todavía.</p>
                 </div>
                 {% endfor %}
             </div>

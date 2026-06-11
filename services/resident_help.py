@@ -138,7 +138,7 @@ def extract_last_assistant_topic(thread: list) -> Optional[dict]:
         topic['type'] = 'payments'
     elif question_has_any(norm, ['factura', 'balance', 'saldo', 'deuda', 'pendient']):
         topic['type'] = 'account'
-    elif question_has_any(norm, ['apartamento', 'unidad', 'vinculad', 'inmueble']):
+    elif question_has_any(norm, ['apartamento', 'apartamento', 'vinculad', 'inmueble']):
         topic['type'] = 'units'
     elif question_has_any(norm, ['contacto', 'telefono', 'correo', 'administracion']):
         topic['type'] = 'contact'
@@ -217,7 +217,7 @@ def build_account_help_answer(normalized_question: str, context: dict) -> dict[s
         body = 'No tienes balance pendiente ni facturas vencidas en este momento.'
         detail = (
             f"Pagos registrados: {format_currency(totals.get('total_paid'))}. "
-            'Tu cuenta se encuentra al dia en las unidades vinculadas.'
+            'Tu cuenta se encuentra al dia en los apartamentos vinculados.'
         )
         tone = 'success'
     else:
@@ -266,7 +266,7 @@ def build_payments_help_answer(context: dict) -> dict[str, str | None]:
     if not recent_payments:
         return build_help_payload(
             title='Pagos recientes',
-            body='Todavia no hay pagos registrados en tus unidades vinculadas.',
+            body='Todavia no hay pagos registrados en tus apartamentos vinculados.',
             detail='Cuando registres pagos, aqui podras resumir los movimientos mas recientes y revisar el historial.',
             tone='info',
             link_url=url_for('resident_billing_overview'),
@@ -302,8 +302,8 @@ def build_units_help_answer(context: dict) -> dict[str, str | None]:
     resident_units = list(context.get('resident_units') or [])
     if not resident_units:
         return build_help_payload(
-            title='Unidades vinculadas',
-            body='No se encontraron unidades vinculadas a tu usuario en este momento.',
+            title='Apartamentos vinculados',
+            body='No se encontraron apartamentos vinculados a tu usuario en este momento.',
             detail='Si esperabas ver un apartamento aqui, revisa con administracion la vinculacion del residente.',
             tone='warning',
             link_url=url_for('resident_balances'),
@@ -313,20 +313,20 @@ def build_units_help_answer(context: dict) -> dict[str, str | None]:
     apartment_numbers = [
         str(unit.get('apartment_number') or unit.get('unit_id') or 'N/D') for unit in resident_units
     ]
-    detail = 'Balance por unidad: ' + '; '.join(
+    detail = 'Balance por apartamento: ' + '; '.join(
         f"Apto {unit.get('apartment_number') or unit.get('unit_id') or 'N/D'} "
         f"{format_currency(unit.get('balance'))}"
         for unit in resident_units[:4]
     )
     return build_help_payload(
-        title='Tus unidades vinculadas',
+        title='Tus apartamentos vinculados',
         body=(
-            f"Tienes {len(resident_units)} unidad(es) vinculada(s): "
+            f"Tienes {len(resident_units)} apartamento(es) vinculada(s): "
             f"{', '.join(apartment_numbers[:6])}."
         ),
         detail=detail, tone='info',
         link_url=url_for('resident_balances'),
-        link_label='Ver resumen por unidad',
+        link_label='Ver resumen por apartamento',
     )
 
 
@@ -470,13 +470,13 @@ def build_capabilities_help_answer(context: dict) -> dict[str, str | None]:
     return build_help_payload(
         title='Informacion disponible en tu portal',
         body=(
-            'Puedo responder sobre saldo, facturas, pagos, unidades vinculadas, '
+            'Puedo responder sobre saldo, facturas, pagos, apartamentos vinculados, '
             'reportes mensuales, perfil, clave y contacto de administracion usando solo la informacion de tu portal.'
         ),
         detail=(
             f"Ahora mismo tu cuenta muestra {format_currency(totals.get('balance'))} pendiente, "
             f"{int(totals.get('pending_invoices') or 0)} factura(s) pendiente(s) y "
-            f"{int(totals.get('apartments') or 0)} unidad(es) vinculada(s)."
+            f"{int(totals.get('apartments') or 0)} apartamento(es) vinculada(s)."
         ),
         tone='info',
         link_url=url_for('resident_balances'),
@@ -636,9 +636,7 @@ def ai_enabled() -> bool:
     cfg = current_app.config
     return bool(
         cfg.get('RESIDENT_AI_CHAT_ENABLED')
-        and cfg.get('RESIDENT_AI_API_URL')
         and cfg.get('RESIDENT_AI_API_KEY')
-        and cfg.get('RESIDENT_AI_MODEL')
     )
 
 
@@ -650,7 +648,14 @@ def _build_ai_context_text(question: str, context: dict, deterministic_answer: O
     company_info = context.get('company_info') or {}
     report_months = context.get('report_months') or []
     pending_preview = context.get('pending_preview') or []
-    month_reference = extract_month_reference(question.lower())
+    
+    # Combinar preguntas anteriores para entender el contexto de tiempo en seguimientos
+    thread = context.get('resident_help_thread') or []
+    recent_user_messages = [msg.get('content', '') for msg in thread[-3:] if msg.get('role') == 'user']
+    recent_user_messages.append(question)
+    combined_question = " ".join(recent_user_messages).lower()
+    
+    month_reference = extract_month_reference(combined_question)
 
     lines = [
         f"Residente: {current_user.full_name or current_user.username}",
@@ -694,6 +699,15 @@ def _build_ai_context_text(question: str, context: dict, deterministic_answer: O
                 f"gastos {format_currency(report_data.get('total_expenses'))}, "
                 f"balance {format_currency(report_data.get('closing_balance'))}."
             )
+            
+            expenses = report_data.get('expenses', [])
+            if expenses:
+                lines.append(f"Detalle de los gastos de {month_reference['label']}:")
+                for exp in expenses:
+                    lines.append(
+                        f"  - {exp.get('category') or 'Gasto'}: {exp.get('description') or ''} "
+                        f"({format_currency(exp.get('amount') or 0)})"
+                    )
         except Exception as exc:
             current_app.logger.warning(f"No se pudo preparar contexto de reporte para residente: {exc}")
 
@@ -727,67 +741,60 @@ def _build_ai_answer(
     if not ai_enabled():
         return None
 
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        current_app.logger.error("google-generativeai is not installed")
+        return None
+
     cfg = current_app.config
+    genai.configure(api_key=cfg['RESIDENT_AI_API_KEY'])
+    
     context_block = _build_ai_context_text(question, context, deterministic_answer)
-    messages = [
-        {
-            'role': 'system',
-            'content': (
-                'Eres el asistente del portal residente Toscana. Responde solo con la informacion proporcionada, '
-                'sin inventar datos, montos ni estados. Si falta informacion, dilo claramente y sugiere contactar '
-                'a la administracion. Responde en espanol, con tono claro, concreto y en maximo 4 frases.'
-            ),
-        },
-        {
-            'role': 'system',
-            'content': f'Contexto verificado del residente:\n{context_block}',
-        },
-    ]
-
-    for item in thread[-4:]:
-        role = 'assistant' if item.get('role') == 'assistant' else 'user'
-        content_parts = []
-        if role == 'assistant' and item.get('title'):
-            content_parts.append(item['title'])
-        if item.get('content'):
-            content_parts.append(item['content'])
-        if item.get('detail'):
-            content_parts.append(item['detail'])
-        content = "\n".join(content_parts).strip()
-        if content:
-            messages.append({'role': role, 'content': content[:700]})
-
-    messages.append({'role': 'user', 'content': question})
+    system_instruction = (
+        'Eres el asistente virtual del portal residente Toscana. '
+        'Debes ser conversacional, amable y usar Markdown para formatear tus respuestas (listas, negritas, etc.). '
+        'NO uses títulos como "Respuesta del asistente", sé natural. '
+        f'Aquí está el contexto validado del residente actual:\n{context_block}\n'
+        'Responde basándote estrictamente en este contexto. Si te piden un desglose o detalle, usa la información de los reportes.'
+    )
 
     try:
-        response = http_requests.post(
-            cfg['RESIDENT_AI_API_URL'],
-            headers={
-                'Authorization': f"Bearer {cfg['RESIDENT_AI_API_KEY']}",
-                'Content-Type': 'application/json',
-            },
-            json={
-                'model': cfg['RESIDENT_AI_MODEL'],
-                'messages': messages,
-                'temperature': 0.2,
-                'max_tokens': 280,
-            },
-            timeout=cfg['RESIDENT_AI_TIMEOUT_SECONDS'],
+        # Usamos el modelo Gemini
+        model_name = cfg.get('RESIDENT_AI_MODEL') or 'gemini-1.5-flash'
+        if 'gpt' in model_name: 
+            model_name = 'gemini-1.5-flash' # fallback if the env still has gpt-4
+            
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=system_instruction
         )
-        response.raise_for_status()
-        payload = response.json()
-        choices = payload.get('choices') or []
-        ai_text = ''
-        if choices:
-            ai_text = ((choices[0].get('message') or {}).get('content') or '').strip()
-        ai_text = sanitize_help_text(ai_text, 900)
+        
+        # Construir historial de chat para Gemini
+        history = []
+        for item in thread:
+            role = 'model' if item.get('role') == 'assistant' else 'user'
+            content_parts = []
+            if role == 'model' and item.get('title'):
+                content_parts.append(item['title'])
+            if item.get('content'):
+                content_parts.append(item['content'])
+            if item.get('detail'):
+                content_parts.append(item['detail'])
+            
+            content = "\n".join(content_parts).strip()
+            if content:
+                history.append({"role": role, "parts": [content]})
+                
+        chat = model.start_chat(history=history)
+        response = chat.send_message(question)
+        
+        ai_text = sanitize_help_text(response.text, 2000)
         if not ai_text:
             return None
-    except http_requests.RequestException as exc:
-        current_app.logger.warning(f"Asistente IA residente no disponible: {exc}")
-        return None
-    except ValueError as exc:
-        current_app.logger.warning(f"Respuesta invalida del asistente IA residente: {exc}")
+            
+    except Exception as exc:
+        current_app.logger.warning(f"Asistente IA residente (Gemini) falló: {exc}")
         return None
 
     answer_title = 'Respuesta del asistente Toscana IA'

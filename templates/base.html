@@ -22,6 +22,8 @@
         const savedTheme = localStorage.getItem('theme') || 'light';
         document.documentElement.setAttribute('data-theme', savedTheme);
     </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile_app.css') }}">
+    <script src="{{ url_for('static', filename='js/mobile_app.js') }}"></script>
     {% block extra_css %}{% endblock %}
 </head>
 <body>

@@ -1,7 +1,12 @@
-const CACHE_NAME = 'aosys-pwa-v4';
+const CACHE_NAME = 'aosys-pwa-v5';
 const STATIC_ASSETS = [
   '/static/css/app.css',
+  '/static/css/mobile_app.css',
+  '/static/css/resident_portal.css',
+  '/static/css/resident_chat.css',
+  '/static/js/mobile_app.js',
   '/static/js/wizard.js',
+  '/static/offline.html',
   '/static/manifest.json',
   '/static/icons/aosys-icon-72.png',
   '/static/icons/aosys-icon-96.png',
@@ -63,7 +68,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // HTML pages: network-first with fallback
+  // HTML pages: network-first with fallback to offline.html
   if (event.request.headers.get('accept')?.includes('text/html')) {
     event.respondWith(
       fetch(event.request)
@@ -74,7 +79,12 @@ self.addEventListener('fetch', event => {
           }
           return response;
         })
-        .catch(() => caches.match(event.request))
+        .catch(() => {
+          return caches.match(event.request).then(cachedResponse => {
+             // Return cached page if available, else return offline.html
+             return cachedResponse || caches.match('/static/offline.html');
+          });
+        })
     );
     return;
   }

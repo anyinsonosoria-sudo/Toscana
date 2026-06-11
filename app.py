@@ -14,7 +14,7 @@ import requests
 # Cargar variables de entorno desde .env
 load_dotenv()
 
-from flask import Flask, redirect, url_for, render_template, jsonify, request, session
+from flask import Flask, redirect, url_for, render_template, jsonify, request, session, flash
 from flask_login import current_user, login_required
 
 import db
@@ -611,6 +611,39 @@ def _register_routes(app: Flask) -> None:
             build_help_context('', resident_thread),
         )
 
+    @app.route("/dashboard/reportar_pago/<int:invoice_id>", methods=['POST'])
+    @login_required
+    def resident_report_payment(invoice_id):
+        if current_user.role != 'resident':
+            return redirect(url_for('dashboard'))
+        
+        from data_models.models import Invoice, ReportedPayment
+        from extensions import db as sa_db
+        
+        invoice = sa_db.session.get(Invoice, invoice_id)
+        if not invoice:
+            flash("Factura no encontrada.", "error")
+            return redirect(url_for('resident_billing_overview'))
+            
+        amount = request.form.get('amount', type=float)
+        reference = request.form.get('reference', '').strip()
+        
+        if not amount or amount <= 0:
+            flash("El monto debe ser mayor a 0.", "error")
+            return redirect(url_for('resident_billing_overview'))
+            
+        reported_payment = ReportedPayment()
+        reported_payment.invoice_id = invoice.id
+        reported_payment.resident_id = current_user.id
+        reported_payment.amount = amount
+        reported_payment.reference = reference
+        reported_payment.status = 'pending'
+        sa_db.session.add(reported_payment)
+        sa_db.session.commit()
+        
+        flash("Pago reportado exitosamente. Está pendiente de validación.", "success")
+        return redirect(url_for('resident_billing_overview'))
+
     # ── Dashboard & Health ──────────────────────────────────────────
     @app.route("/dashboard")
     @login_required
@@ -733,6 +766,16 @@ def _register_routes(app: Flask) -> None:
         
         stats['now'] = datetime.now().strftime('%Y-%m-%d')
         return render_template("index.html", **stats)
+
+    resident_month_names = {
+        1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
+        7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+    }
+    resident_month_short_names = {
+        1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun',
+        7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'
+    }
+    resident_month_lookup = {v.lower(): k for k, v in resident_month_names.items()}
 
     def _build_resident_report_months():
         """Genera el histórico de reportes mensuales completos visibles para residentes."""
@@ -863,7 +906,7 @@ def _register_routes(app: Flask) -> None:
             topic['type'] = 'payments'
         elif _resident_question_has_any(norm, ['factura', 'balance', 'saldo', 'deuda', 'pendient']):
             topic['type'] = 'account'
-        elif _resident_question_has_any(norm, ['apartamento', 'unidad', 'vinculad', 'inmueble']):
+        elif _resident_question_has_any(norm, ['apartamento', 'apartamento', 'vinculad', 'inmueble']):
             topic['type'] = 'units'
         elif _resident_question_has_any(norm, ['contacto', 'telefono', 'correo', 'administracion']):
             topic['type'] = 'contact'
@@ -907,7 +950,7 @@ def _register_routes(app: Flask) -> None:
             body = 'No tienes balance pendiente ni facturas vencidas en este momento.'
             detail = (
                 f"Pagos registrados: {_format_resident_currency(totals.get('total_paid'))}. "
-                'Tu cuenta se encuentra al dia en las unidades vinculadas.'
+                'Tu cuenta se encuentra al dia en los apartamentos vinculados.'
             )
             tone = 'success'
         else:
@@ -958,7 +1001,7 @@ def _register_routes(app: Flask) -> None:
         if not recent_payments:
             return _build_resident_help_payload(
                 title='Pagos recientes',
-                body='Todavia no hay pagos registrados en tus unidades vinculadas.',
+                body='Todavia no hay pagos registrados en tus apartamentos vinculados.',
                 detail='Cuando registres pagos, aqui podras resumir los movimientos mas recientes y revisar el historial.',
                 tone='info',
                 link_url=url_for('resident_billing_overview'),
@@ -994,8 +1037,8 @@ def _register_routes(app: Flask) -> None:
         resident_units = list(context.get('resident_units') or [])
         if not resident_units:
             return _build_resident_help_payload(
-                title='Unidades vinculadas',
-                body='No se encontraron unidades vinculadas a tu usuario en este momento.',
+                title='Apartamentos vinculados',
+                body='No se encontraron apartamentos vinculados a tu usuario en este momento.',
                 detail='Si esperabas ver un apartamento aqui, revisa con administracion la vinculacion del residente.',
                 tone='warning',
                 link_url=url_for('resident_balances'),
@@ -1005,21 +1048,21 @@ def _register_routes(app: Flask) -> None:
         apartment_numbers = [
             str(unit.get('apartment_number') or unit.get('unit_id') or 'N/D') for unit in resident_units
         ]
-        detail = 'Balance por unidad: ' + '; '.join(
+        detail = 'Balance por apartamento: ' + '; '.join(
             f"Apto {unit.get('apartment_number') or unit.get('unit_id') or 'N/D'} "
             f"{_format_resident_currency(unit.get('balance'))}"
             for unit in resident_units[:4]
         )
         return _build_resident_help_payload(
-            title='Tus unidades vinculadas',
+            title='Tus apartamentos vinculados',
             body=(
-                f"Tienes {len(resident_units)} unidad(es) vinculada(s): "
+                f"Tienes {len(resident_units)} apartamento(es) vinculada(s): "
                 f"{', '.join(apartment_numbers[:6])}."
             ),
             detail=detail,
             tone='info',
             link_url=url_for('resident_balances'),
-            link_label='Ver resumen por unidad',
+            link_label='Ver resumen por apartamento',
         )
 
     def _build_resident_report_help_answer(normalized_question: str, context: dict, wants_breakdown: bool = False, inherited_month: Optional[dict] = None, inherited_expenses: bool = False, inherited_collections: bool = False) -> dict[str, str | None]:
@@ -1171,13 +1214,13 @@ def _register_routes(app: Flask) -> None:
         return _build_resident_help_payload(
             title='Informacion disponible en tu portal',
             body=(
-                'Puedo responder sobre saldo, facturas, pagos, unidades vinculadas, '
+                'Puedo responder sobre saldo, facturas, pagos, apartamentos vinculados, '
                 'reportes mensuales, perfil, clave y contacto de administracion usando solo la informacion de tu portal.'
             ),
             detail=(
                 f"Ahora mismo tu cuenta muestra {_format_resident_currency(totals.get('balance'))} pendiente, "
                 f"{int(totals.get('pending_invoices') or 0)} factura(s) pendiente(s) y "
-                f"{int(totals.get('apartments') or 0)} unidad(es) vinculada(s)."
+                f"{int(totals.get('apartments') or 0)} apartamento(es) vinculada(s)."
             ),
             tone='info',
             link_url=url_for('resident_balances'),
@@ -1391,7 +1434,7 @@ def _register_routes(app: Flask) -> None:
         )
         wants_units = _resident_question_has_any(
             normalized_question,
-            ['apartamento', 'apartamentos', 'apto', 'unidad', 'unidades', 'vinculad', 'inmueble', 'inmuebles', 'propiedad'],
+            ['apartamento', 'apartamentos', 'apto', 'apartamento', 'apartamentoes', 'vinculad', 'inmueble', 'inmuebles', 'propiedad'],
         )
         wants_reports = bool(_extract_resident_month_reference(normalized_question)) or _resident_question_has_any(
             normalized_question,
@@ -1557,12 +1600,12 @@ def _register_routes(app: Flask) -> None:
             f"Balance actual: {_format_resident_currency(totals.get('balance'))}",
             f"Pagos registrados: {_format_resident_currency(totals.get('total_paid'))}",
             f"Facturas pendientes: {int(totals.get('pending_invoices') or 0)}",
-            f"Unidades vinculadas: {int(totals.get('apartments') or 0)}",
+            f"Apartamentos vinculados: {int(totals.get('apartments') or 0)}",
         ]
 
         resident_units = context.get('resident_units') or []
         if resident_units:
-            lines.append('Resumen por unidad:')
+            lines.append('Resumen por apartamento:')
             for unit in resident_units[:4]:
                 apartment_number = unit.get('apartment_number') or unit.get('unit_id') or 'N/D'
                 lines.append(

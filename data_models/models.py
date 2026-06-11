@@ -104,6 +104,21 @@ class Payment(db.Model):
     notes = db.Column(db.Text)
 
 
+class ReportedPayment(db.Model):
+    """Pagos reportados por los residentes, pendientes de validación por admin."""
+    __tablename__ = 'reported_payments'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id', ondelete='CASCADE'))
+    resident_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'))
+    amount = db.Column(db.Float)
+    reference = db.Column(db.String(120))
+    date_reported = db.Column(db.String(50), default=lambda: datetime.now(timezone.utc).isoformat())
+    status = db.Column(db.String(20), default='pending') # pending, approved, rejected
+    
+    invoice = db.relationship('Invoice', backref='reported_payments')
+    resident = db.relationship('User', backref='reported_payments')
+
+
 class Supplier(db.Model):
     __tablename__ = 'suppliers'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)

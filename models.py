@@ -732,7 +732,7 @@ def add_recurring_sale(unit_id: int, service_id: int, amount: float, frequency: 
     
     try:
         from data_models.models import RecurringSale
-        from extensions import db
+
         import db as legacy_db
         from datetime import datetime, timezone
         
@@ -796,7 +796,7 @@ def list_recurring_sales() -> List[Dict]:
 def toggle_recurring_sale(sale_id: int) -> bool:
     """Activar/desactivar una venta recurrente (ORM + Dual-Write)"""
     from data_models.models import RecurringSale
-    from extensions import db
+
     import db as legacy_db
     
     rs = db.session.get(RecurringSale, sale_id)
@@ -820,7 +820,7 @@ def toggle_recurring_sale(sale_id: int) -> bool:
 def duplicate_recurring_sale(sale_id: int) -> int:
     """Duplicar una venta recurrente"""
     from data_models.models import RecurringSale
-    from extensions import db
+
     import db as legacy_db
     
     rs = db.session.get(RecurringSale, sale_id)
@@ -871,7 +871,7 @@ def update_recurring_sale(sale_id: int, **fields) -> None:
         return
         
     from data_models.models import RecurringSale
-    from extensions import db
+
     import db as legacy_db
     
     rs = db.session.get(RecurringSale, sale_id)
@@ -973,7 +973,7 @@ def get_last_invoice_from_recurring(sale_id: int) -> int:
 def delete_recurring_sale(sale_id: int, confirmed: bool = False) -> Dict:
     """Eliminar una venta recurrente y todas sus facturas asociadas (ORM + Dual Write)"""
     from data_models.models import RecurringSale, Invoice, Payment, AccountingTransaction
-    from extensions import db
+
     import db as legacy_db
     from sqlalchemy import func
     

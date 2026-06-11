@@ -40,7 +40,7 @@
 <section class="resident-panel mt-4">
     <div class="resident-panel__header">
         <div>
-            <h2 class="resident-panel__title">Balance por unidad</h2>
+            <h2 class="resident-panel__title">Balance por apartamento</h2>
             <p class="resident-panel__subtitle">Detalle del saldo y de los pagos acumulados por apartamento.</p>
         </div>
     </div>
@@ -77,7 +77,7 @@
 {% endif %}
 {% endblock %}
 
-{% block resident_extra_js %}
+{% block resident_page_js %}
 {% if has_financial_activity %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {

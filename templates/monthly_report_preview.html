@@ -436,10 +436,14 @@ RD$ {{ "{:,.2f}".format(value or 0) }}
 {% endblock %}
 
 {% block extra_js %}
+<script type="application/json" id="emailHtmlData">
+{{ email_html | tojson | safe }}
+</script>
 <script>
 const emailPreviewFrame = document.getElementById('emailPreviewFrame');
-if (emailPreviewFrame) {
-    emailPreviewFrame.srcdoc = {{ email_html | tojson }};
+const emailData = document.getElementById('emailHtmlData');
+if (emailPreviewFrame && emailData) {
+    emailPreviewFrame.srcdoc = JSON.parse(emailData.textContent);
 }
 </script>
 {% endblock %}

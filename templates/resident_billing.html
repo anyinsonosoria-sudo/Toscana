@@ -30,12 +30,48 @@
                         </div>
                         <div class="text-end">
                             <div class="resident-list-item__value text-danger">RD$ {{ '{:,.2f}'.format(invoice.remaining or 0) }}</div>
-                            <a href="{{ url_for('billing.view_invoice_pdf', invoice_id=invoice.id) }}" target="_blank" class="btn btn-sm btn-outline-primary mt-2 rounded-pill">
-                                <i class="bi bi-file-earmark-pdf"></i> PDF
-                            </a>
+                            <div class="d-flex gap-2 justify-content-end mt-2">
+                                <a href="{{ url_for('billing.view_invoice_pdf', invoice_id=invoice.id) }}" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill">
+                                    <i class="bi bi-file-earmark-pdf"></i> PDF
+                                </a>
+                                <button type="button" class="btn btn-sm btn-primary rounded-pill" data-bs-toggle="modal" data-bs-target="#reportPaymentModal{{ invoice.id }}">
+                                    <i class="bi bi-wallet2"></i> Reportar Pago
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </article>
+
+                <!-- Modal Reportar Pago -->
+                <div class="modal fade" id="reportPaymentModal{{ invoice.id }}" tabindex="-1" aria-labelledby="reportPaymentModalLabel{{ invoice.id }}" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content" style="border-radius: 24px; border: none; box-shadow: 0 24px 50px rgba(0,0,0,0.1);">
+                            <div class="modal-header border-0 pb-0">
+                                <h5 class="modal-title fw-bold" id="reportPaymentModalLabel{{ invoice.id }}">Reportar Pago de Factura</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <form action="{{ url_for('resident_report_payment', invoice_id=invoice.id) }}" method="POST">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <div class="modal-body">
+                                    <p class="text-muted small mb-4">Estás reportando el pago para: <strong>{{ invoice.description }}</strong></p>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted text-uppercase">Monto pagado (RD$)</label>
+                                        <input type="number" step="0.01" class="form-control" name="amount" value="{{ invoice.remaining }}" max="{{ invoice.remaining }}" required style="border-radius: 12px;">
+                                    </div>
+                                    <div class="mb-4">
+                                        <label class="form-label fw-bold small text-muted text-uppercase">Referencia / Comprobante</label>
+                                        <input type="text" class="form-control" name="reference" placeholder="Ej. Transferencia BHD #123456" required style="border-radius: 12px;">
+                                    </div>
+                                </div>
+                                <div class="modal-footer border-0 pt-0">
+                                    <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">Cancelar</button>
+                                    <button type="submit" class="btn btn-primary rounded-pill px-4">Enviar reporte</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
                 {% endfor %}
             </div>
             {% else %}
@@ -83,7 +119,7 @@
                         <tr>
                             <th>Concepto</th>
                             <th>Método</th>
-                            <th>Unidad</th>
+                            <th>Apartamento</th>
                             <th>Fecha</th>
                             <th class="text-end">Monto</th>
                             <th class="text-end">Recibo</th>
@@ -97,7 +133,7 @@
                                 {% if pay.notes %}<div class="text-muted small mt-1">{{ pay.notes }}</div>{% endif %}
                             </td>
                             <td data-label="Método">{{ pay.method }}</td>
-                            <td data-label="Unidad">Apto {{ pay.apt_number }}</td>
+                            <td data-label="Apartamento">Apto {{ pay.apt_number }}</td>
                             <td data-label="Fecha">{{ pay.paid_date or 'N/D' }}</td>
                             <td data-label="Monto" class="text-end text-success fw-bold">RD$ {{ '{:,.2f}'.format(pay.amount or 0) }}</td>
                             <td data-label="Recibo" class="text-end">

@@ -74,9 +74,9 @@ def _normalize_payment_datetime(value, fallback=None):
 def _load_payment_bundle(payment_id):
     """Obtiene pago, factura y unidad relacionados para edición o borrado."""
     from data_models.models import Payment, Invoice, Apartment
-    from extensions import db
+    from extensions import db as sa_db
     
-    p = db.session.get(Payment, payment_id)
+    p = sa_db.session.get(Payment, payment_id)
     if not p:
         return None
         
@@ -109,10 +109,10 @@ def _load_payment_bundle(payment_id):
 def _get_payment_edit_limit(payment_id, invoice_id, invoice_amount):
     """Calcula el máximo permitido al editar un pago sin sobrepasar la factura."""
     from data_models.models import Payment
-    from extensions import db
+    from extensions import db as sa_db
     from sqlalchemy import func
     
-    other_paid = db.session.query(func.sum(Payment.amount)).filter(
+    other_paid = sa_db.session.query(func.sum(Payment.amount)).filter(
         Payment.invoice_id == invoice_id, 
         Payment.id != payment_id
     ).scalar() or 0.0
@@ -124,21 +124,21 @@ def _get_payment_edit_limit(payment_id, invoice_id, invoice_amount):
 def _sync_invoice_payment_state(invoice_id):
     """Recalcula el estado de la factura según sus pagos actuales (ORM + Dual-Write)."""
     from data_models.models import Invoice, Payment
-    from extensions import db
+    from extensions import db as sa_db
     from sqlalchemy import func
     
-    inv = db.session.get(Invoice, invoice_id)
+    inv = sa_db.session.get(Invoice, invoice_id)
     if not inv:
         return None, 0
 
-    total_paid = db.session.query(func.sum(Payment.amount)).filter(Payment.invoice_id == invoice_id).scalar() or 0.0
+    total_paid = sa_db.session.query(func.sum(Payment.amount)).filter(Payment.invoice_id == invoice_id).scalar() or 0.0
     pending_amount = max(float(inv.amount) - float(total_paid), 0)
     is_paid = 1 if float(total_paid) >= float(inv.amount) else 0
 
     # ORM Update
     inv.paid = bool(is_paid)
     inv.pending_amount = pending_amount
-    db.session.commit()
+    sa_db.session.commit()
 
     # Dual-Write
     import db as legacy_db
@@ -167,10 +167,10 @@ def _sync_invoice_payment_state(invoice_id):
 def _sync_payment_accounting_entries(invoice_id):
     """Sincroniza los asientos contables asociados a los pagos de una factura."""
     from data_models.models import Invoice, Payment, AccountingTransaction
-    from extensions import db
+    from extensions import db as sa_db
     import db as legacy_db
     
-    inv = db.session.get(Invoice, invoice_id)
+    inv = sa_db.session.get(Invoice, invoice_id)
     if not inv:
         return
         
@@ -204,8 +204,8 @@ def _sync_payment_accounting_entries(invoice_id):
             reference=ref_str,
             date=payment_date
         )
-        db.session.add(txn)
-        db.session.flush()
+        sa_db.session.add(txn)
+        sa_db.session.flush()
         
         # Dual-Write Re-Insert
         if conn:
@@ -220,7 +220,7 @@ def _sync_payment_accounting_entries(invoice_id):
             except Exception as e:
                 logger.error(f"Dual write insert failed in _sync_payment_accounting_entries: {e}")
     
-    db.session.commit()
+    sa_db.session.commit()
     if conn:
         conn.commit()
         conn.close()
@@ -998,13 +998,13 @@ def update_payment(payment_id):
 
         # ORM Update
         from data_models.models import Payment
-        from extensions import db
-        p = db.session.get(Payment, payment_id)
+        from extensions import db as sa_db
+        p = sa_db.session.get(Payment, payment_id)
         p.amount = amount
         p.method = method
         p.notes = notes
         p.paid_date = normalized_paid_date
-        db.session.commit()
+        sa_db.session.commit()
         
         # Dual-Write
         import db as legacy_db
@@ -1026,7 +1026,7 @@ def update_payment(payment_id):
         updated_bundle = _load_payment_bundle(payment_id)
         cache.clear()
     except Exception as exc:
-        db.session.rollback()
+        sa_db.session.rollback()
         logger.error(f"Error editando pago #{payment_id}: {exc}")
         flash(f'Error al editar pago: {exc}', 'error')
         return redirect(edit_url)
@@ -1056,11 +1056,11 @@ def delete_payment(payment_id):
         if payment_bundle:
             # ORM Delete
             from data_models.models import Payment
-            from extensions import db
-            p = db.session.get(Payment, payment_id)
+            from extensions import db as sa_db
+            p = sa_db.session.get(Payment, payment_id)
             if p:
-                db.session.delete(p)
-                db.session.commit()
+                sa_db.session.delete(p)
+                sa_db.session.commit()
                 
             # Dual-Write
             import db as legacy_db
@@ -1089,7 +1089,7 @@ def delete_payment(payment_id):
             flash(f"Pago #{payment_id} no encontrado", "error")
 
     except Exception as e:
-        db.session.rollback()
+        sa_db.session.rollback()
         flash(f"Error al eliminar pago: {str(e)}", "error")
 
     return redirect(next_url)
@@ -1626,16 +1626,16 @@ def api_pending_invoices():
         client_id = request.args.get('client_id', type=int)
         
         from data_models.models import Invoice, Apartment, Payment
-        from extensions import db
+        from extensions import db as sa_db
         from sqlalchemy import func
         
         # Subquery for total_paid
-        paid_subq = db.session.query(
+        paid_subq = sa_db.session.query(
             Payment.invoice_id,
             func.sum(Payment.amount).label('total_paid')
         ).group_by(Payment.invoice_id).subquery()
         
-        query = db.session.query(
+        query = sa_db.session.query(
             Invoice.id,
             Invoice.description,
             Invoice.amount,
@@ -1693,10 +1693,10 @@ def view_receipt_pdf(payment_id):
         import receipt_pdf
         
         from data_models.models import Payment, Invoice
-        from extensions import db
+        from extensions import db as sa_db
         
         # 1. Obtener datos del pago y su factura
-        p_obj = db.session.get(Payment, payment_id)
+        p_obj = sa_db.session.get(Payment, payment_id)
         
         if p_obj:
             payment = {
@@ -1757,7 +1757,7 @@ def view_receipt_pdf(payment_id):
                 
                 # Obtener total pagado histórico en esa factura
                 from sqlalchemy import func
-                total_paid = db.session.query(func.sum(Payment.amount)).filter_by(invoice_id=invoice_num).scalar() or 0.0
+                total_paid = sa_db.session.query(func.sum(Payment.amount)).filter_by(invoice_id=invoice_num).scalar() or 0.0
                 
                 payment_data = {
                     'id': payment['id'],
@@ -1844,7 +1844,7 @@ def download_statement_pdf(unit_id):
             pdf_dir.mkdir(parents=True, exist_ok=True)
             
             from data_models.models import Invoice, Payment
-            from extensions import db
+            from extensions import db as sa_db
             
             # Obtener facturas para el apartamento (hasta las últimas 20)
             invoices_orm = Invoice.query.filter_by(unit_id=unit_id).order_by(Invoice.issued_date.desc()).limit(20).all()

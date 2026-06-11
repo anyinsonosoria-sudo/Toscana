@@ -63,63 +63,75 @@
     </div>
 
     <div class="col-lg-7">
-        <section class="resident-panel h-100">
-            <div class="resident-panel__header">
+        <section class="resident-panel h-100 p-0 resident-chat-container">
+            <div class="resident-panel__header px-4 pt-4 pb-2 m-0 border-bottom">
                 <div>
-                    <h2 class="resident-panel__title">Chat del asistente Toscana</h2>
-                    <p class="resident-panel__subtitle">
+                    <h2 class="resident-panel__title"><i class="bi bi-robot text-primary me-2"></i>Asistente Toscana</h2>
+                    <p class="resident-panel__subtitle mb-0">
                         {% if resident_ai_enabled %}
-                        Consulta libremente sobre tu cuenta, tus pagos y los reportes del residencial sin salir del portal.
+                        Consulta libremente sobre tu cuenta, pagos y reportes sin salir del portal.
                         {% else %}
-                        Puedes escribir libremente, pero en este momento responde mejor sobre balance, facturas, pagos, reportes, perfil y contacto.
+                        Escribe sobre balance, facturas, pagos, reportes, perfil o contacto.
                         {% endif %}
                     </p>
                 </div>
-                <a href="{{ url_for('resident_help', action='reset') }}" class="btn btn-outline-secondary rounded-pill px-3">Nueva conversación</a>
             </div>
 
-            <div class="resident-chat-thread mb-4">
+            <div class="resident-chat-thread" id="chatThread">
                 {% if resident_help_thread %}
                     {% for message in resident_help_thread %}
-                    <article class="resident-chat-message is-{{ message.role }} tone-{{ message.tone }}">
-                        <div class="resident-chat-message__meta">
-                            {% if message.role == 'assistant' %}
-                                <span>{% if message.source == 'ai' %}Toscana IA{% else %}Asistente Toscana{% endif %}</span>
-                                {% if message.source == 'ai' %}<span class="resident-chat-message__pill">IA</span>{% endif %}
-                            {% else %}
-                                <span>Tu consulta</span>
+                    <div class="resident-chat-bubble-wrap {% if message.role == 'user' %}is-user{% else %}is-assistant{% endif %}">
+                        <div class="resident-chat-bubble">
+                            <div class="resident-chat-meta">
+                                {% if message.role == 'assistant' %}
+                                    <i class="bi bi-cpu-fill"></i> {% if message.source == 'ai' %}Toscana IA{% else %}Asistente{% endif %}
+                                {% else %}
+                                    <i class="bi bi-person-fill"></i> Tú
+                                {% endif %}
+                            </div>
+                            
+                            {% if message.title and message.role == 'assistant' %}
+                            <h3 class="mb-2" style="font-size: 0.95rem; font-weight: 700;">{{ message.title }}</h3>
+                            {% endif %}
+                            
+                            {% if message.content %}
+                            <div style="font-size: 0.95rem;">{{ message.content | safe }}</div>
+                            {% endif %}
+                            
+                            {% if message.detail %}
+                            <div class="mt-2 pt-2" style="font-size: 0.85rem; border-top: 1px solid rgba(128,128,128,0.2); opacity: 0.9;">
+                                {{ message.detail }}
+                            </div>
+                            {% endif %}
+                            
+                            {% if message.link_url %}
+                            <div class="mt-3">
+                                <a href="{{ message.link_url }}" {% if 'http' not in message.link_url and '.pdf' not in message.link_url %}{% else %}target="_blank"{% endif %} class="btn btn-sm rounded-pill shadow-sm" style="font-size: 0.8rem; font-weight: 600; padding: 6px 14px; background: {% if message.role == 'user' %}rgba(255,255,255,0.25){% else %}var(--primary){% endif %}; color: white; border: none;">
+                                    <i class="bi bi-box-arrow-up-right me-1"></i> {{ message.link_label }}
+                                </a>
+                            </div>
                             {% endif %}
                         </div>
-                        {% if message.title and message.role == 'assistant' %}
-                        <h3 class="resident-chat-message__title">{{ message.title }}</h3>
-                        {% endif %}
-                        {% if message.content %}
-                        <p class="resident-chat-message__body">{{ message.content }}</p>
-                        {% endif %}
-                        {% if message.detail %}
-                        <p class="resident-chat-message__detail">{{ message.detail }}</p>
-                        {% endif %}
-                        {% if message.link_url %}
-                        <a href="{{ message.link_url }}" {% if 'http' not in message.link_url and '.pdf' not in message.link_url %}{% else %}target="_blank"{% endif %} class="btn btn-sm rounded-pill mt-2" style="border: 1px solid var(--primary); color: var(--primary);">
-                            {{ message.link_label }}
-                        </a>
-                        {% endif %}
-                    </article>
+                    </div>
                     {% endfor %}
                 {% else %}
-                <div class="resident-empty resident-empty--chat">
-                    <i class="bi bi-chat-square-dots"></i>
-                    <p>Inicia una conversación con una pregunta sobre tu cuenta o sobre los reportes mensuales publicados.</p>
+                <div class="resident-empty resident-empty--chat w-100 h-100 d-flex flex-column align-items-center justify-content-center">
+                    <i class="bi bi-chat-heart" style="font-size: 3rem; color: var(--primary); opacity: 0.8;"></i>
+                    <p class="mt-3 text-muted fw-bold">¿En qué puedo ayudarte hoy?</p>
                 </div>
                 {% endif %}
             </div>
 
-            <form method="post" action="{{ url_for('resident_help') }}" class="resident-help-form resident-chat-composer mb-4">
+            <form method="post" action="{{ url_for('resident_help') }}" class="resident-chat-composer">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <textarea class="form-control" name="question" rows="3" placeholder="Ejemplo: Resúmeme mis pagos recientes y dime si tengo balance pendiente">{{ resident_help_question }}</textarea>
-                <div class="d-flex gap-2 flex-wrap">
-                    <button type="submit" class="btn btn-primary rounded-pill px-4">Enviar</button>
-                    <a href="{{ url_for('resident_help', action='reset') }}" class="btn btn-outline-secondary rounded-pill px-4">Limpiar chat</a>
+                <textarea class="form-control shadow-sm" id="chatInput" name="question" rows="2" placeholder="Escribe tu mensaje aquí..." required></textarea>
+                <div class="resident-chat-action-bar">
+                    <a href="{{ url_for('resident_help', action='reset') }}" class="btn btn-link text-muted text-decoration-none p-0" title="Nueva conversación">
+                        <i class="bi bi-trash3"></i> Limpiar
+                    </a>
+                    <button type="submit" class="btn btn-primary rounded-pill px-4 py-2 shadow-sm fw-bold">
+                        <i class="bi bi-send-fill me-1"></i> Enviar
+                    </button>
                 </div>
             </form>
 
@@ -140,4 +152,34 @@
         </section>
     </div>
 </div>
+{% endblock %}
+
+{% block resident_page_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const chatThread = document.getElementById('chatThread');
+    const chatInput = document.getElementById('chatInput');
+    const form = document.querySelector('.resident-chat-composer');
+    
+    // Auto-scroll to bottom
+    if (chatThread) {
+        chatThread.scrollTop = chatThread.scrollHeight;
+    }
+    
+    // Auto-focus input on load
+    if (chatInput) {
+        chatInput.focus();
+        
+        // Enter to submit (Shift+Enter for newline)
+        chatInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (this.value.trim() !== '') {
+                    form.submit();
+                }
+            }
+        });
+    }
+});
+</script>
 {% endblock %}
