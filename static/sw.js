@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aosys-pwa-v5';
+const CACHE_NAME = 'toscana-pwa-v2';
 const STATIC_ASSETS = [
   '/static/css/app.css',
   '/static/css/mobile_app.css',
@@ -47,10 +47,15 @@ self.addEventListener('activate', event => {
 
 // Fetch: network-first for HTML, cache-first for static assets
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-
   // Skip non-GET and API requests
   if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+
+  // Bypass Service Worker for PDF endpoints to fix Safari iOS PWA bug
+  if (url.pathname.includes('/pdf') || url.pathname.endsWith('.pdf')) {
+      return;
+  }
 
   // Static assets: cache-first
   if (url.pathname.startsWith('/static/') || url.hostname.includes('cdn.jsdelivr.net')) {
