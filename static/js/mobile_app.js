@@ -11,15 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupHaptics() {
-    const navItems = document.querySelectorAll('.resident-bottom-nav__item, .btn');
-    navItems.forEach(item => {
-        item.addEventListener('touchstart', () => {
-            if (navigator.vibrate) {
-                // Short, subtle vibration
-                navigator.vibrate(15);
-            }
-        }, { passive: true });
-    });
+    // Removed because calling navigator.vibrate on touchstart cancels click events on some Android devices
 }
 
 function setupPwaInstallPrompt() {
