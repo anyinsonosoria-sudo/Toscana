@@ -128,7 +128,7 @@
 
 {% block content %}
 {% macro money(value) -%}
-RD$ {{ "{:,.2f}".format(value or 0).replace(",", "X").replace(".", ",").replace("X", ".") }}
+RD$ {{ "{:,.2f}".format(value or 0) }}
 {%- endmacro %}
 
 <div class="d-flex flex-column gap-4">

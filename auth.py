@@ -57,6 +57,18 @@ def _get_resident_link_context(user) -> dict:
 
 logger = logging.getLogger(__name__)
 
+
+def validate_password_strength(password: str) -> Optional[str]:
+    """Valida la robustez de una contraseña."""
+    if len(password) < 8:
+        return 'La contraseña debe tener al menos 8 caracteres'
+    if not any(c.isupper() for c in password):
+        return 'La contraseña debe contener al menos una letra mayúscula'
+    if not any(c.isdigit() for c in password):
+        return 'La contraseña debe contener al menos un número'
+    return None
+
+
 # Crear blueprint
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
@@ -105,8 +117,10 @@ def login():
         
         # Redirigir a la página solicitada o al dashboard
         next_page = request.args.get('next')
-        if next_page and next_page.startswith('/'):
-            return redirect(next_page)
+        if next_page:
+            # Prevenir redirecciones abiertas (Open Redirect)
+            if next_page.startswith('/') and not next_page.startswith('//') and '://' not in next_page:
+                return redirect(next_page)
         
         return redirect(url_for('index'))
     
@@ -163,8 +177,9 @@ def register():
         if not email or '@' not in email:
             errors.append('Email inválido')
         
-        if not password or len(password) < 6:
-            errors.append('La contraseña debe tener al menos 6 caracteres')
+        pw_err = validate_password_strength(password)
+        if pw_err:
+            errors.append(pw_err)
         
         if password != password_confirm:
             errors.append('Las contraseñas no coinciden')
@@ -308,8 +323,9 @@ def change_password():
             flash('Contraseña actual incorrecta', 'error')
             return render_template('change_password.html')
         
-        if len(new_password) < 6:
-            flash('La nueva contraseña debe tener al menos 6 caracteres', 'error')
+        pw_err = validate_password_strength(new_password)
+        if pw_err:
+            flash(pw_err, 'error')
             return render_template('change_password.html')
         
         if new_password != confirm_password:
@@ -519,6 +535,10 @@ def delete_user(user_id):
     try:
         conn = user_model.get_conn()
         cursor = conn.cursor()
+        # Eliminar explícitamente registros relacionados para evitar huérfanos
+        cursor.execute("DELETE FROM user_permissions WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM resident_api_refresh_tokens WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM resident_user_units WHERE user_id = ?", (user_id,))
         cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
         conn.commit()
         conn.close()

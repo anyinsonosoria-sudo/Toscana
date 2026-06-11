@@ -71,127 +71,159 @@ def _normalize_payment_datetime(value, fallback=None):
     return normalized
 
 
-def _load_payment_bundle(payment_id, conn):
+def _load_payment_bundle(payment_id):
     """Obtiene pago, factura y unidad relacionados para edición o borrado."""
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT p.id,
-               p.invoice_id,
-               p.amount,
-               p.paid_date,
-               p.method,
-               p.notes,
-               i.description AS invoice_desc,
-               i.amount AS invoice_amount,
-               i.unit_id,
-               a.number AS apartment_number,
-               a.resident_name AS client_name
-        FROM payments p
-        JOIN invoices i ON p.invoice_id = i.id
-        LEFT JOIN apartments a ON i.unit_id = a.id
-        WHERE p.id = ?
-        """,
-        (payment_id,)
-    )
-    row = cur.fetchone()
-    if not row:
+    from data_models.models import Payment, Invoice, Apartment
+    from extensions import db
+    
+    p = db.session.get(Payment, payment_id)
+    if not p:
         return None
-
-    row = dict(row)
+        
+    i = p.invoice
+    a = i.apartment
+    
     return {
         'payment': {
-            'id': row['id'],
-            'invoice_id': row['invoice_id'],
-            'amount': row['amount'],
-            'paid_date': row['paid_date'],
-            'method': row['method'],
-            'notes': row.get('notes') or '',
+            'id': p.id,
+            'invoice_id': p.invoice_id,
+            'amount': p.amount,
+            'paid_date': p.paid_date,
+            'method': p.method,
+            'notes': p.notes or '',
         },
         'invoice': {
-            'id': row['invoice_id'],
-            'description': row['invoice_desc'],
-            'amount': row['invoice_amount'],
-            'unit_id': row['unit_id'],
+            'id': i.id,
+            'description': i.description,
+            'amount': i.amount,
+            'unit_id': i.unit_id,
         },
         'unit': {
-            'id': row['unit_id'],
-            'number': row['apartment_number'] or 'N/A',
-            'resident_name': row.get('client_name') or 'N/A',
+            'id': a.id if a else i.unit_id,
+            'number': a.number if a else 'N/A',
+            'resident_name': a.resident_name if a else 'N/A',
         },
     }
 
 
-def _get_payment_edit_limit(payment_id, invoice_id, invoice_amount, conn):
+def _get_payment_edit_limit(payment_id, invoice_id, invoice_amount):
     """Calcula el máximo permitido al editar un pago sin sobrepasar la factura."""
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT COALESCE(SUM(amount), 0) AS total_paid FROM payments WHERE invoice_id = ? AND id != ?",
-        (invoice_id, payment_id)
-    )
-    row = cur.fetchone()
-    other_paid = row['total_paid'] if row else 0
+    from data_models.models import Payment
+    from extensions import db
+    from sqlalchemy import func
+    
+    other_paid = db.session.query(func.sum(Payment.amount)).filter(
+        Payment.invoice_id == invoice_id, 
+        Payment.id != payment_id
+    ).scalar() or 0.0
+    
     max_amount = max(float(invoice_amount) - float(other_paid), 0)
     return max_amount, float(other_paid)
 
 
-def _sync_invoice_payment_state(invoice_id, conn):
-    """Recalcula el estado de la factura según sus pagos actuales."""
-    cur = conn.cursor()
-    cur.execute("SELECT id, unit_id, description, amount FROM invoices WHERE id = ?", (invoice_id,))
-    invoice_row = cur.fetchone()
-    if not invoice_row:
+def _sync_invoice_payment_state(invoice_id):
+    """Recalcula el estado de la factura según sus pagos actuales (ORM + Dual-Write)."""
+    from data_models.models import Invoice, Payment
+    from extensions import db
+    from sqlalchemy import func
+    
+    inv = db.session.get(Invoice, invoice_id)
+    if not inv:
         return None, 0
 
-    invoice = dict(invoice_row)
-    cur.execute("SELECT COALESCE(SUM(amount), 0) AS total_paid FROM payments WHERE invoice_id = ?", (invoice_id,))
-    paid_row = cur.fetchone()
-    total_paid = float(paid_row['total_paid'] if paid_row else 0)
-    pending_amount = max(float(invoice['amount']) - total_paid, 0)
-    is_paid = 1 if total_paid >= float(invoice['amount']) else 0
+    total_paid = db.session.query(func.sum(Payment.amount)).filter(Payment.invoice_id == invoice_id).scalar() or 0.0
+    pending_amount = max(float(inv.amount) - float(total_paid), 0)
+    is_paid = 1 if float(total_paid) >= float(inv.amount) else 0
 
-    cur.execute(
-        "UPDATE invoices SET paid = ?, pending_amount = ? WHERE id = ?",
-        (is_paid, pending_amount, invoice_id)
-    )
+    # ORM Update
+    inv.paid = bool(is_paid)
+    inv.pending_amount = pending_amount
+    db.session.commit()
 
-    invoice['paid'] = is_paid
-    invoice['pending_amount'] = pending_amount
-    return invoice, total_paid
-
-
-def _sync_payment_accounting_entries(invoice_id, conn):
-    """Sincroniza los asientos contables asociados a los pagos de una factura."""
-    cur = conn.cursor()
-    cur.execute("SELECT description FROM invoices WHERE id = ?", (invoice_id,))
-    invoice_row = cur.fetchone()
-    description = invoice_row['description'] if invoice_row else f'Factura #{invoice_id}'
-
-    cur.execute(
-        "DELETE FROM accounting_transactions WHERE reference = ? AND type = ? AND category = ?",
-        (f'INV-{invoice_id}', 'income', 'Ventas/Facturas')
-    )
-
-    cur.execute(
-        "SELECT amount, paid_date FROM payments WHERE invoice_id = ? ORDER BY id",
-        (invoice_id,)
-    )
-    for payment_row in cur.fetchall():
-        payment_date = payment_row['paid_date'] or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # Dual-Write
+    import db as legacy_db
+    try:
+        conn = legacy_db.get_conn()
+        cur = conn.cursor()
         cur.execute(
-            """
-            INSERT INTO accounting_transactions(type, description, amount, category, reference, date)
-            VALUES(?, ?, ?, ?, ?, ?)
-            """,
-            (
-                'income',
-                f'Pago recibido: {description}',
-                payment_row['amount'],
-                'Ventas/Facturas',
-                f'INV-{invoice_id}',
-                payment_date,
-            )
+            "UPDATE invoices SET paid = ?, pending_amount = ? WHERE id = ?",
+            (is_paid, pending_amount, invoice_id)
         )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Dual write failed for _sync_invoice_payment_state: {e}")
+
+    return {
+        'id': inv.id,
+        'unit_id': inv.unit_id,
+        'description': inv.description,
+        'amount': inv.amount,
+        'paid': is_paid,
+        'pending_amount': pending_amount
+    }, float(total_paid)
+
+
+def _sync_payment_accounting_entries(invoice_id):
+    """Sincroniza los asientos contables asociados a los pagos de una factura."""
+    from data_models.models import Invoice, Payment, AccountingTransaction
+    from extensions import db
+    import db as legacy_db
+    
+    inv = db.session.get(Invoice, invoice_id)
+    if not inv:
+        return
+        
+    description = inv.description or f'Factura #{invoice_id}'
+    ref_str = f'INV-{invoice_id}'
+
+    # 1. ORM Delete
+    AccountingTransaction.query.filter_by(reference=ref_str, type='income', category='Ventas/Facturas').delete()
+    
+    # 1.5. Dual-Write Delete
+    try:
+        conn = legacy_db.get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM accounting_transactions WHERE reference = ? AND type = ? AND category = ?",
+            (ref_str, 'income', 'Ventas/Facturas')
+        )
+    except Exception as e:
+        logger.error(f"Dual write delete failed in _sync_payment_accounting_entries: {e}")
+        conn = None
+
+    # 2. ORM Re-Insert
+    payments = Payment.query.filter_by(invoice_id=invoice_id).order_by(Payment.id).all()
+    for p in payments:
+        payment_date = p.paid_date or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        txn = AccountingTransaction(
+            type='income',
+            description=f'Pago recibido: {description}',
+            amount=p.amount,
+            category='Ventas/Facturas',
+            reference=ref_str,
+            date=payment_date
+        )
+        db.session.add(txn)
+        db.session.flush()
+        
+        # Dual-Write Re-Insert
+        if conn:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO accounting_transactions(id, type, description, amount, category, reference, date)
+                    VALUES(?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (txn.id, 'income', txn.description, txn.amount, 'Ventas/Facturas', ref_str, payment_date)
+                )
+            except Exception as e:
+                logger.error(f"Dual write insert failed in _sync_payment_accounting_entries: {e}")
+    
+    db.session.commit()
+    if conn:
+        conn.commit()
+        conn.close()
 
 
 def _get_admin_email():
@@ -764,7 +796,6 @@ def duplicate_invoice(invoice_id):
 
 
 @billing_bp.route('/facturas/partial-payment/<int:invoice_id>', methods=['POST'])
-@csrf.exempt
 @login_required
 @permission_required('facturacion.create')
 @audit_log('facturacion.pago_parcial', 'Registrar pago parcial')
@@ -944,12 +975,8 @@ def update_payment(payment_id):
         flash('El monto del pago debe ser mayor a cero.', 'error')
         return redirect(edit_url)
 
-    conn = None
-    updated_bundle = None
-    previous_payment = None
     try:
-        conn = db.get_conn()
-        payment_bundle = _load_payment_bundle(payment_id, conn)
+        payment_bundle = _load_payment_bundle(payment_id)
         if not payment_bundle:
             flash(f'Pago #{payment_id} no encontrado', 'error')
             return redirect(next_url)
@@ -957,8 +984,7 @@ def update_payment(payment_id):
         max_amount, _ = _get_payment_edit_limit(
             payment_id,
             payment_bundle['invoice']['id'],
-            payment_bundle['invoice']['amount'],
-            conn,
+            payment_bundle['invoice']['amount']
         )
         if amount > max_amount:
             flash(
@@ -970,27 +996,40 @@ def update_payment(payment_id):
         previous_payment = dict(payment_bundle['payment'])
         normalized_paid_date = _normalize_payment_datetime(paid_date, previous_payment.get('paid_date'))
 
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE payments SET amount = ?, method = ?, notes = ?, paid_date = ? WHERE id = ?",
-            (amount, method, notes, normalized_paid_date, payment_id),
-        )
+        # ORM Update
+        from data_models.models import Payment
+        from extensions import db
+        p = db.session.get(Payment, payment_id)
+        p.amount = amount
+        p.method = method
+        p.notes = notes
+        p.paid_date = normalized_paid_date
+        db.session.commit()
+        
+        # Dual-Write
+        import db as legacy_db
+        try:
+            conn = legacy_db.get_conn()
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE payments SET amount = ?, method = ?, notes = ?, paid_date = ? WHERE id = ?",
+                (amount, method, notes, normalized_paid_date, payment_id),
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Dual write failed for edit_payment: {e}")
 
-        _sync_invoice_payment_state(payment_bundle['invoice']['id'], conn)
-        _sync_payment_accounting_entries(payment_bundle['invoice']['id'], conn)
-        conn.commit()
+        _sync_invoice_payment_state(payment_bundle['invoice']['id'])
+        _sync_payment_accounting_entries(payment_bundle['invoice']['id'])
 
-        updated_bundle = _load_payment_bundle(payment_id, conn)
+        updated_bundle = _load_payment_bundle(payment_id)
         cache.clear()
     except Exception as exc:
-        if conn:
-            conn.rollback()
+        db.session.rollback()
         logger.error(f"Error editando pago #{payment_id}: {exc}")
         flash(f'Error al editar pago: {exc}', 'error')
         return redirect(edit_url)
-    finally:
-        if conn:
-            conn.close()
 
     if updated_bundle:
         _notify_admin_payment_change(
@@ -1011,17 +1050,31 @@ def update_payment(payment_id):
 def delete_payment(payment_id):
     """Eliminar un pago registrado"""
     next_url = _get_safe_next_url(request.form.get('next'))
-    conn = None
     try:
-        conn = db.get_conn()
-        payment_bundle = _load_payment_bundle(payment_id, conn)
+        payment_bundle = _load_payment_bundle(payment_id)
 
         if payment_bundle:
-            cur = conn.cursor()
-            cur.execute("DELETE FROM payments WHERE id = ?", (payment_id,))
-            _sync_invoice_payment_state(payment_bundle['invoice']['id'], conn)
-            _sync_payment_accounting_entries(payment_bundle['invoice']['id'], conn)
-            conn.commit()
+            # ORM Delete
+            from data_models.models import Payment
+            from extensions import db
+            p = db.session.get(Payment, payment_id)
+            if p:
+                db.session.delete(p)
+                db.session.commit()
+                
+            # Dual-Write
+            import db as legacy_db
+            try:
+                conn = legacy_db.get_conn()
+                cur = conn.cursor()
+                cur.execute("DELETE FROM payments WHERE id = ?", (payment_id,))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.error(f"Dual write failed for delete_payment: {e}")
+
+            _sync_invoice_payment_state(payment_bundle['invoice']['id'])
+            _sync_payment_accounting_entries(payment_bundle['invoice']['id'])
 
             _notify_admin_payment_change(
                 'deleted',
@@ -1036,12 +1089,8 @@ def delete_payment(payment_id):
             flash(f"Pago #{payment_id} no encontrado", "error")
 
     except Exception as e:
-        if conn:
-            conn.rollback()
+        db.session.rollback()
         flash(f"Error al eliminar pago: {str(e)}", "error")
-    finally:
-        if conn:
-            conn.close()
 
     return redirect(next_url)
 
@@ -1072,20 +1121,21 @@ def create_recurring():
             return redirect(url_for("billing.invoices", tab="recurring"))
         
         # Obtener unit_id del resident_id (que en realidad es el apartamento)
-        conn = db.get_conn()
-        cur = conn.cursor()
+        # Crear venta recurrente usando models.add_recurring_sale
+        sale_id = models.add_recurring_sale(
+            unit_id=resident_id,
+            service_id=service_id,
+            amount=amount,
+            frequency=frequency,
+            billing_day=billing_day,
+            start_date=start_date,
+            description=description,
+            active=active
+        )
         
-        # Crear venta recurrente (usar unit_id en lugar de resident_id)
-        cur.execute("""
-            INSERT INTO recurring_sales 
-            (unit_id, service_id, amount, frequency, billing_day, billing_time, start_date, end_date, 
-             description, active, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """, (resident_id, service_id, amount, frequency, billing_day, billing_time, start_date, 
-              end_date if end_date else None, description, active))
-        sale_id = cur.lastrowid
-        conn.commit()
-        conn.close()
+        # Update extra fields if needed
+        if end_date or billing_time != "08:00":
+            models.update_recurring_sale(sale_id, end_date=end_date if end_date else None, billing_time=billing_time)
         
         # Generar la primera factura automáticamente
         try:
@@ -1536,7 +1586,6 @@ def edit_invoice_redirect(invoice_id):
 
 @billing_bp.route('/api/clients', methods=['GET'])
 @login_required
-@csrf.exempt
 def api_clients():
     """Devuelve lista de clientes (apartamentos con residentes) como JSON."""
     try:
@@ -1558,7 +1607,6 @@ def api_clients():
 
 @billing_bp.route('/api/services', methods=['GET'])
 @login_required
-@csrf.exempt
 def api_services():
     """Devuelve lista de servicios/productos activos como JSON."""
     try:
@@ -1572,31 +1620,54 @@ def api_services():
 
 @billing_bp.route('/api/pending-invoices', methods=['GET'])
 @login_required
-@csrf.exempt
 def api_pending_invoices():
     """Devuelve facturas pendientes con balance, opcionalmente filtradas por client_id."""
     try:
         client_id = request.args.get('client_id', type=int)
-        conn = db.get_conn()
-        cur = conn.cursor()
-        query = """
-            SELECT i.id, i.description, i.amount, i.issued_date, i.due_date,
-                   a.resident_name as client_name, a.number as apartment_number,
-                   COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) as total_paid
-            FROM invoices i
-            LEFT JOIN apartments a ON i.unit_id = a.id
-            WHERE i.paid = 0
-        """
-        params = []
+        
+        from data_models.models import Invoice, Apartment, Payment
+        from extensions import db
+        from sqlalchemy import func
+        
+        # Subquery for total_paid
+        paid_subq = db.session.query(
+            Payment.invoice_id,
+            func.sum(Payment.amount).label('total_paid')
+        ).group_by(Payment.invoice_id).subquery()
+        
+        query = db.session.query(
+            Invoice.id,
+            Invoice.description,
+            Invoice.amount,
+            Invoice.issued_date,
+            Invoice.due_date,
+            Apartment.resident_name.label('client_name'),
+            Apartment.number.label('apartment_number'),
+            func.coalesce(paid_subq.c.total_paid, 0).label('total_paid')
+        ).outerjoin(Apartment, Invoice.unit_id == Apartment.id)\
+         .outerjoin(paid_subq, Invoice.id == paid_subq.c.invoice_id)\
+         .filter(Invoice.paid == False)
+         
         if client_id:
-            query += " AND i.unit_id = ?"
-            params.append(client_id)
-        query += " ORDER BY i.id DESC"
-        cur.execute(query, params)
-        rows = [dict(r) for r in cur.fetchall()]
-        conn.close()
-        for r in rows:
-            r['remaining'] = max(r['amount'] - r['total_paid'], 0)
+            query = query.filter(Invoice.unit_id == client_id)
+            
+        query = query.order_by(Invoice.id.desc())
+        
+        results = query.all()
+        rows = []
+        for r in results:
+            rows.append({
+                'id': r.id,
+                'description': r.description,
+                'amount': r.amount,
+                'issued_date': r.issued_date,
+                'due_date': r.due_date,
+                'client_name': r.client_name,
+                'apartment_number': r.apartment_number,
+                'total_paid': r.total_paid,
+                'remaining': max(r.amount - r.total_paid, 0)
+            })
+            
         return jsonify({'success': True, 'invoices': rows})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1621,17 +1692,26 @@ def view_receipt_pdf(payment_id):
         import company
         import receipt_pdf
         
+        from data_models.models import Payment, Invoice
+        from extensions import db
+        
         # 1. Obtener datos del pago y su factura
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT p.*, i.unit_id, i.description as invoice_desc, i.amount as invoice_amount
-            FROM payments p
-            JOIN invoices i ON p.invoice_id = i.id
-            WHERE p.id = ?
-        """, (payment_id,))
-        payment = cur.fetchone()
-        conn.close()
+        p_obj = db.session.get(Payment, payment_id)
+        
+        if p_obj:
+            payment = {
+                'id': p_obj.id,
+                'amount': p_obj.amount,
+                'method': p_obj.method,
+                'paid_date': p_obj.paid_date,
+                'notes': p_obj.notes,
+                'invoice_id': p_obj.invoice_id,
+                'unit_id': p_obj.invoice.unit_id,
+                'invoice_desc': p_obj.invoice.description,
+                'invoice_amount': p_obj.invoice.amount
+            }
+        else:
+            payment = None
         
         if not payment:
             flash("Pago no encontrado", "error")
@@ -1676,11 +1756,8 @@ def view_receipt_pdf(payment_id):
                 company_info = company.get_company_info() or {}
                 
                 # Obtener total pagado histórico en esa factura
-                conn = get_conn()
-                cur = conn.cursor()
-                cur.execute("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE invoice_id = ?", (invoice_num,))
-                total_paid = cur.fetchone()[0]
-                conn.close()
+                from sqlalchemy import func
+                total_paid = db.session.query(func.sum(Payment.amount)).filter_by(invoice_id=invoice_num).scalar() or 0.0
                 
                 payment_data = {
                     'id': payment['id'],
@@ -1766,29 +1843,26 @@ def download_statement_pdf(unit_id):
         try:
             pdf_dir.mkdir(parents=True, exist_ok=True)
             
+            from data_models.models import Invoice, Payment
+            from extensions import db
+            
             # Obtener facturas para el apartamento (hasta las últimas 20)
-            conn = get_conn()
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT id, description, amount, issued_date, due_date, paid
-                FROM invoices 
-                WHERE unit_id = ?
-                ORDER BY issued_date DESC
-                LIMIT 20
-            """, (unit_id,))
-            invoices = [dict(row) for row in cur.fetchall()]
+            invoices_orm = Invoice.query.filter_by(unit_id=unit_id).order_by(Invoice.issued_date.desc()).limit(20).all()
+            invoices = [{
+                'id': i.id, 'description': i.description, 'amount': i.amount,
+                'issued_date': i.issued_date, 'due_date': i.due_date, 'paid': 1 if i.paid else 0
+            } for i in invoices_orm]
             
             # Obtener cobros y abonos para el apartamento (hasta los últimos 20)
-            cur.execute("""
-                SELECT p.id, p.amount, p.paid_date, p.method, p.invoice_id
-                FROM payments p
-                JOIN invoices i ON p.invoice_id = i.id
-                WHERE i.unit_id = ?
-                ORDER BY p.paid_date DESC
-                LIMIT 20
-            """, (unit_id,))
-            payments = [dict(row) for row in cur.fetchall()]
-            conn.close()
+            payments_orm = Payment.query.join(Invoice).filter(Invoice.unit_id == unit_id).order_by(Payment.paid_date.desc()).limit(20).all()
+            payments = [{
+                'id': p.id, 'amount': p.amount, 'paid_date': p.paid_date,
+                'method': p.method, 'invoice_id': p.invoice_id
+            } for p in payments_orm]
+            
+            # Calcular balance
+            from models import get_balance
+            balance = get_balance(unit_id)
             
             company_info = company.get_company_info() or {}
             

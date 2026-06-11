@@ -18,7 +18,7 @@ def test_payment_notification():
     print("=== Probando Envío de Notificaciones de Pago ===\n")
     
     # Obtener información de la empresa
-    company_info = company.get_company_info()
+    company_info = company.get_company_info() or {}
     print(f"✓ Empresa: {company_info.get('name', 'N/A')}")
     print(f"✓ Email Admin: {company_info.get('email', 'N/A')}\n")
     

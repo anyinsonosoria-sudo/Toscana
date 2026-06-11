@@ -137,7 +137,6 @@ def delete(id):
 
 @expenses_bp.route('/upload-recibo', methods=['POST'])
 @login_required
-@csrf.exempt
 @permission_required('gastos.create')
 def upload_receipt_ocr():
     """Carga imagen de recibo y extrae info con OCR"""

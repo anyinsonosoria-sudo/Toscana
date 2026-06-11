@@ -2,362 +2,129 @@
 User Model - Sistema de Autenticación
 Maneja usuarios, roles y autenticación del sistema
 
-NOTA: Usa db.get_conn() centralizado para conexión a BD
+Refactorizado para usar SQLAlchemy (ORM).
 """
 
-from datetime import datetime
-from flask_login import UserMixin, AnonymousUserMixin
-import bcrypt
+from datetime import datetime, timezone
+from flask_login import AnonymousUserMixin
+from extensions import db
+from data_models.models import User
 
-# Usar conexión centralizada de db.py
-import db
+class AnonymousUser(AnonymousUserMixin):
+    """Usuario anónimo para Flask-Login.
 
-
-class User(UserMixin):
+    Provee atributos de rol que los templates esperan para que
+    no fallen cuando el usuario no está autenticado.
     """
-    Modelo de Usuario compatible con Flask-Login
-    """
-    
-    def __init__(self, id, username, email, password_hash, full_name, role, is_active, created_at, last_login, photo_url=None, phone=None):
-        self.id = id
-        self.username = username
-        self.email = email
-        self.password_hash = password_hash
-        self.full_name = full_name
-        self.role = role
-        self._is_active = bool(is_active)  # Usar atributo privado
-        self.created_at = created_at
-        self.last_login = last_login
-        self.photo_url = photo_url
-        self.phone = phone
-    
-    def check_password(self, password):
-        """Verifica la contraseña"""
-        if not self.password_hash:
-            return False
-        # Convertir a bytes si es necesario
-        password_bytes = password.encode('utf-8') if isinstance(password, str) else password
-        hash_bytes = self.password_hash.encode('utf-8') if isinstance(self.password_hash, str) else self.password_hash
-        return bcrypt.checkpw(password_bytes, hash_bytes)
-    
-    def set_password(self, password):
-        """Establece una nueva contraseña hasheada"""
-        password_bytes = password.encode('utf-8') if isinstance(password, str) else password
-        salt = bcrypt.gensalt()
-        hash_bytes = bcrypt.hashpw(password_bytes, salt)
-        self.password_hash = hash_bytes.decode('utf-8')
-    
+
+    @property
+    def role(self):
+        return None
+
     def is_admin(self):
-        """Verifica si el usuario es administrador"""
-        return self.role == 'admin'
-    
-    def is_operator(self):
-        """Verifica si el usuario es operador"""
-        return self.role == 'operator'
-    
-    def is_resident(self):
-        """Verifica si el usuario es residente"""
-        return self.role == 'resident'
-    
-    def get_id(self):
-        """Requerido por Flask-Login"""
-        return str(self.id)
-    
-    @property
-    def is_active(self):
-        """Requerido por Flask-Login - indica si el usuario está activo"""
-        return self._is_active
-    
-    @property
-    def is_authenticated(self):
-        """Requerido por Flask-Login"""
-        return True
-    
-    @property
-    def is_anonymous(self):
-        """Requerido por Flask-Login"""
         return False
-    
-    def __repr__(self):
-        return f"<User {self.username} ({self.role})>"
+
+    def is_operator(self):
+        return False
+
+    def is_resident(self):
+        return False
 
 
 # ==========================================
-# FUNCIONES DE GESTIÓN DE USUARIOS
+# FUNCIONES DE GESTIÓN DE USUARIOS (ORM wrapper)
 # ==========================================
-
-def get_conn():
-    """Obtiene conexión centralizada a la base de datos.
-    
-    DEPRECATED: Usar db.get_conn() directamente.
-    Esta función se mantiene por compatibilidad.
-    """
-    return db.get_conn()
-
 
 def get_user_by_id(user_id):
-    """
-    Obtiene un usuario por ID
-    
-    Args:
-        user_id: ID del usuario
-        
-    Returns:
-        User object o None
-    """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT id, username, email, password_hash, full_name, role, is_active, created_at, last_login, photo_url, phone
-            FROM users 
-            WHERE id = ?
-        """, (user_id,))
-        
-        row = cur.fetchone()
-        if row:
-            return User(
-                id=row['id'],
-                username=row['username'],
-                email=row['email'],
-                password_hash=row['password_hash'],
-                full_name=row['full_name'],
-                role=row['role'],
-                is_active=row['is_active'],
-                created_at=row['created_at'],
-                last_login=row['last_login'],
-                photo_url=row['photo_url'] if 'photo_url' in row.keys() else None,
-                phone=row['phone'] if 'phone' in row.keys() else None
-            )
-        return None
-    finally:
-        conn.close()
-
+    """Obtiene un usuario por ID"""
+    return db.session.get(User, user_id)
 
 def get_user_by_username(username):
-    """
-    Obtiene un usuario por nombre de usuario
-    
-    Args:
-        username: Nombre de usuario
-        
-    Returns:
-        User object o None
-    """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT id, username, email, password_hash, full_name, role, is_active, created_at, last_login, photo_url, phone
-            FROM users 
-            WHERE username = ?
-        """, (username,))
-        
-        row = cur.fetchone()
-        if row:
-            return User(
-                id=row['id'],
-                username=row['username'],
-                email=row['email'],
-                password_hash=row['password_hash'],
-                full_name=row['full_name'],
-                role=row['role'],
-                is_active=row['is_active'],
-                created_at=row['created_at'],
-                last_login=row['last_login'],
-                photo_url=row['photo_url'] if 'photo_url' in row.keys() else None,
-                phone=row['phone'] if 'phone' in row.keys() else None
-            )
-        return None
-    finally:
-        conn.close()
-
+    """Obtiene un usuario por nombre de usuario"""
+    return User.query.filter_by(username=username).first()
 
 def get_user_by_email(email):
-    """
-    Obtiene un usuario por email
-    
-    Args:
-        email: Email del usuario
-        
-    Returns:
-        User object o None
-    """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT id, username, email, password_hash, full_name, role, is_active, created_at, last_login, photo_url, phone
-            FROM users 
-            WHERE email = ?
-        """, (email,))
-        
-        row = cur.fetchone()
-        if row:
-            return User(
-                id=row['id'],
-                username=row['username'],
-                email=row['email'],
-                password_hash=row['password_hash'],
-                full_name=row['full_name'],
-                role=row['role'],
-                is_active=row['is_active'],
-                created_at=row['created_at'],
-                last_login=row['last_login'],
-                photo_url=row['photo_url'] if 'photo_url' in row.keys() else None,
-                phone=row['phone'] if 'phone' in row.keys() else None
-            )
-        return None
-    finally:
-        conn.close()
-
+    """Obtiene un usuario por email"""
+    return User.query.filter_by(email=email).first()
 
 def create_user(username, email, password, full_name, role='operator'):
-    """
-    Crea un nuevo usuario
+    """Crea un nuevo usuario (dual-write: ORM + legacy DB durante migración)"""
+    if get_user_by_username(username):
+        raise ValueError(f"El usuario '{username}' ya existe")
     
-    Args:
-        username: Nombre de usuario (único)
-        email: Email (único)
-        password: Contraseña en texto plano (se hasheará)
-        full_name: Nombre completo
-        role: Rol del usuario (admin, operator, resident)
-        
-    Returns:
-        ID del usuario creado o None si hay error
-    """
-    conn = get_conn()
-    try:
-        # Verificar si ya existe
-        if get_user_by_username(username):
-            raise ValueError(f"El usuario '{username}' ya existe")
-        
-        if get_user_by_email(email):
-            raise ValueError(f"El email '{email}' ya está registrado")
-        
-        # Hashear contraseña con bcrypt
-        password_bytes = password.encode('utf-8') if isinstance(password, str) else password
-        salt = bcrypt.gensalt()
-        hash_bytes = bcrypt.hashpw(password_bytes, salt)
-        password_hash = hash_bytes.decode('utf-8')
-        
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO users (username, email, password_hash, full_name, role, is_active)
-            VALUES (?, ?, ?, ?, ?, 1)
-        """, (username, email, password_hash, full_name, role))
-        
-        conn.commit()
-        return cur.lastrowid
-    except Exception as e:
-        conn.rollback()
-        raise e
-    finally:
-        conn.close()
+    if get_user_by_email(email):
+        raise ValueError(f"El email '{email}' ya está registrado")
+    
+    new_user = User(
+        username=username,
+        email=email,
+        full_name=full_name,
+        role=role,
+        is_active=True
+    )
+    new_user.set_password(password)
+    
+    db.session.add(new_user)
+    db.session.commit()
 
+    # Dual-write: sincronizar con BD legacy (sqlite3) para que
+    # los módulos no migrados (residents, etc.) no fallen por FK.
+    try:
+        import db as legacy_db
+        conn = legacy_db.get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT OR IGNORE INTO users "
+            "(id, username, email, password_hash, full_name, role, is_active) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (new_user.id, new_user.username, new_user.email,
+             new_user.password_hash, new_user.full_name, new_user.role, 1),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # No bloquear si la BD legacy falla
+
+    return new_user.id
 
 def update_last_login(user_id):
-    """
-    Actualiza la fecha del último login
-    
-    Args:
-        user_id: ID del usuario
-    """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE users 
-            SET last_login = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (user_id,))
-        conn.commit()
-    finally:
-        conn.close()
-
+    """Actualiza la fecha del último login"""
+    user = get_user_by_id(user_id)
+    if user:
+        user.last_login = datetime.now(timezone.utc)
+        db.session.commit()
 
 def update_password(user_id, new_password):
-    """
-    Actualiza la contraseña de un usuario
-    
-    Args:
-        user_id: ID del usuario
-        new_password: Nueva contraseña en texto plano
-    """
-    conn = get_conn()
-    try:
-        # Hashear nueva contraseña con bcrypt
-        password_bytes = new_password.encode('utf-8') if isinstance(new_password, str) else new_password
-        salt = bcrypt.gensalt()
-        hash_bytes = bcrypt.hashpw(password_bytes, salt)
-        password_hash = hash_bytes.decode('utf-8')
-        
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE users 
-            SET password_hash = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (password_hash, user_id))
-        conn.commit()
-    finally:
-        conn.close()
-
+    """Actualiza la contraseña de un usuario"""
+    user = get_user_by_id(user_id)
+    if user:
+        user.set_password(new_password)
+        db.session.commit()
 
 def list_users():
-    """
-    Lista todos los usuarios
-    
-    Returns:
-        Lista de diccionarios con información de usuarios (sin password_hash)
-    """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT id, username, email, full_name, role, is_active, created_at, last_login
-            FROM users
-            ORDER BY created_at DESC
-        """)
-        return [dict(row) for row in cur.fetchall()]
-    finally:
-        conn.close()
-
+    """Lista todos los usuarios (Retorna diccionarios para compatibilidad retroactiva)"""
+    users = User.query.order_by(User.created_at.desc()).all()
+    return [{
+        'id': u.id,
+        'username': u.username,
+        'email': u.email,
+        'full_name': u.full_name,
+        'role': u.role,
+        'is_active': u.is_active,
+        'created_at': u.created_at.isoformat() if u.created_at else None,
+        'last_login': u.last_login.isoformat() if u.last_login else None
+    } for u in users]
 
 def deactivate_user(user_id):
-    """
-    Desactiva un usuario (soft delete)
-    
-    Args:
-        user_id: ID del usuario
-    """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE users 
-            SET is_active = 0, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (user_id,))
-        conn.commit()
-    finally:
-        conn.close()
-
+    """Desactiva un usuario (soft delete)"""
+    user = get_user_by_id(user_id)
+    if user:
+        user.is_active = False
+        db.session.commit()
 
 def activate_user(user_id):
-    """
-    Activa un usuario desactivado
-    
-    Args:
-        user_id: ID del usuario
-    """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE users 
-            SET is_active = 1, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (user_id,))
-        conn.commit()
-    finally:
-        conn.close()
+    """Activa un usuario desactivado"""
+    user = get_user_by_id(user_id)
+    if user:
+        user.is_active = True
+        db.session.commit()

@@ -110,7 +110,9 @@ class Config:
     # ==========================================
     # BASE DE DATOS
     # ==========================================
-    DATABASE_PATH = BASE_DIR / "data.db"
+    DATABASE_PATH = BASE_DIR / "data" / "data.db"
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URI", f"sqlite:///{DATABASE_PATH}")
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # ==========================================
     # EMAIL (SMTP)
@@ -183,7 +185,8 @@ class TestingConfig(Config):
     """Configuración para testing"""
     TESTING = True
     WTF_CSRF_ENABLED = False  # Desactivar CSRF en tests
-    DATABASE_PATH = ":memory:"  # Base de datos en memoria para tests
+    DATABASE_PATH = os.getenv('BUILDING_MAINTENANCE_DB', 'test_data.db')
+    SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATABASE_PATH}"
 
 
 # Diccionario de configuraciones

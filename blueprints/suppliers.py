@@ -155,7 +155,6 @@ def delete(id):
 
 @suppliers_bp.route("/api/list", methods=["GET"])
 @login_required
-@csrf.exempt
 def api_list():
     """Devuelve lista de proveedores como JSON."""
     try:
@@ -171,7 +170,6 @@ def api_list():
 
 @suppliers_bp.route("/api/create", methods=["POST"])
 @login_required
-@csrf.exempt
 @permission_required('proveedores.create')
 def api_create():
     """Crea un proveedor via JSON y devuelve su ID."""

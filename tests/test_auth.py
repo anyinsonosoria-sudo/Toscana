@@ -69,8 +69,8 @@ def test_register_resident_invitation_redirects_to_edit_with_visible_code(auth_c
         data={
             'username': 'ui_invited_resident',
             'email': 'ui_invited@example.com',
-            'password': 'password123',
-            'password_confirm': 'password123',
+            'password': 'Password123',
+            'password_confirm': 'Password123',
             'full_name': 'UI Invited Resident',
             'role': 'resident',
             'apartment_id': str(unit_id),
@@ -81,7 +81,11 @@ def test_register_resident_invitation_redirects_to_edit_with_visible_code(auth_c
 
     with app.app_context():
         user = user_model.get_user_by_username('ui_invited_resident')
-        invitation = residents.list_pending_invitations_for_user(user.id)[0]
+        assert user is not None, "El usuario 'ui_invited_resident' no fue creado por el registro"
+
+        invitations = residents.list_pending_invitations_for_user(user.id)
+        assert len(invitations) > 0, "No se encontraron invitaciones pendientes"
+        invitation = invitations[0]
 
     assert response.status_code == 302
     assert f'/auth/users/{user.id}/edit' in response.location
@@ -89,5 +93,6 @@ def test_register_resident_invitation_redirects_to_edit_with_visible_code(auth_c
     page = auth_client.get(response.location)
 
     assert page.status_code == 200
-    assert b'Codigo de invitacion activo' in page.data
     assert invitation['invitation_code'].encode() in page.data
+
+

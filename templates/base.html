@@ -174,7 +174,8 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
-
+        
+        {% from 'macros.html' import money %}
         {% block content %}{% endblock %}
     </main>
 

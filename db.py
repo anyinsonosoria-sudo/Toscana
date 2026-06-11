@@ -81,8 +81,8 @@ def init_db():
         
         conn.commit()
     
-    # Aplicar migraciones
-    _apply_migrations()
+    # Aplicar migraciones manuales (Deshabilitado en favor de Flask-Migrate)
+    # _apply_migrations()
     
     _initialized = True
 
@@ -246,10 +246,24 @@ def _create_default_admin(cur):
     
     try:
         import bcrypt
+        import secrets
         
         admin_username = os.environ.get('ADMIN_USERNAME', 'admin')
         admin_email = os.environ.get('ADMIN_EMAIL', 'admin@building.local')
-        admin_password = os.environ.get('ADMIN_PASSWORD', 'admin123')
+        
+        # Verificar si ya existe para evitar regenerar y mostrar contraseña
+        cur.execute("SELECT 1 FROM users WHERE username = ? OR email = ?", (admin_username, admin_email))
+        if cur.fetchone():
+            return
+            
+        admin_password = os.environ.get('ADMIN_PASSWORD')
+        if not admin_password:
+            admin_password = secrets.token_urlsafe(12)
+            print("============================================================")
+            print("⚠️ CONTRASENA ADMIN GENERADA AUTOMATICAMENTE:")
+            print(f"  Usuario: {admin_username}")
+            print(f"  Contrasena: {admin_password}")
+            print("============================================================")
         
         admin_hash = bcrypt.hashpw(
             admin_password.encode('utf-8'), 

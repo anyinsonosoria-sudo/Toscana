@@ -5,11 +5,8 @@ Funciones de acceso a datos para el sistema de facturación.
 """
 import logging
 import os
+from db import get_conn, get_db
 from typing import List, Dict, Optional
-
-from extensions import db
-from data_models.models import Invoice, Payment, RecurringSale, AccountingTransaction, Apartment, Resident
-import db as legacy_db
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +59,7 @@ def _log_notification(msg: str):
 def add_unit(number: str, owner: str, email: str = "", phone: str = "") -> int:
     """Agrega una unidad (legacy, usar apartments.add_apartment)"""
     try:
-        with legacy_db.get_db() as conn:
+        with get_db() as conn:
             cur = conn.cursor()
             cur.execute("INSERT INTO units(number, owner, email, phone) VALUES(?,?,?,?)",
                         (number, owner, email, phone))
@@ -74,7 +71,7 @@ def add_unit(number: str, owner: str, email: str = "", phone: str = "") -> int:
 
 def list_units() -> List[Dict]:
     """Lista unidades (legacy)"""
-    with legacy_db.get_db() as conn:
+    with get_db() as conn:
         cur = conn.cursor()
         cur.execute("SELECT id, number, owner, email FROM units ORDER BY number")
         rows = cur.fetchall()
@@ -82,7 +79,7 @@ def list_units() -> List[Dict]:
 
 def add_charge(unit_id: int, description: str, amount: float, due_date: Optional[str] = None) -> int:
     """Agrega un cargo"""
-    with legacy_db.get_db() as conn:
+    with get_db() as conn:
         cur = conn.cursor()
         cur.execute("INSERT INTO charges(unit_id, description, amount, due_date) VALUES(?,?,?,?)",
                     (unit_id, description, amount, due_date))
@@ -96,65 +93,30 @@ def create_invoice(unit_id: int, description: str, amount: float, due_date: Opti
     if amount <= 0:
         raise ValueError(f"El monto de la factura debe ser mayor a cero (recibido: {amount})")
     
-    # 1. ORM Insert
     try:
-        from datetime import datetime, timezone
-        issued_date = datetime.now(timezone.utc).isoformat()
-        new_inv = Invoice(
-            unit_id=unit_id,
-            description=description,
-            amount=amount,
-            due_date=due_date,
-            recurring_sale_id=recurring_sale_id,
-            issued_date=issued_date,
-            paid=False,
-            pending_amount=amount
-        )
-        db.session.add(new_inv)
-        db.session.flush() # Para obtener el ID
-        rid = new_inv.id
-        
-        # Obtener información adicional usando ORM
-        apartment = db.session.get(Apartment, unit_id)
-        resident = Resident.query.filter_by(unit_id=unit_id).first()
-        
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        _log(f"create_invoice ORM insert failed: {e}")
-        raise
-        
-    # 2. Dual-Write to legacy SQLite
-    try:
-        conn = legacy_db.get_conn()
+        conn = get_conn()
         cur = conn.cursor()
-        cur.execute("""
-            INSERT OR IGNORE INTO invoices
-            (id, unit_id, description, amount, due_date, recurring_sale_id, issued_date, paid, pending_amount) 
-            VALUES(?,?,?,?,?,?,?,?,?)
-        """, (rid, unit_id, description, amount, due_date, recurring_sale_id, issued_date, 0, amount))
+        cur.execute("INSERT INTO invoices(unit_id, description, amount, due_date, recurring_sale_id) VALUES(?,?,?,?,?)",
+                    (unit_id, description, amount, due_date, recurring_sale_id))
         conn.commit()
+        rid = cur.lastrowid
+        # fetch created invoice and apartment info for notification
+        cur.execute("SELECT * FROM invoices WHERE id=?", (rid,))
+        inv_row = cur.fetchone()
+        cur.execute("SELECT * FROM apartments WHERE id=?", (unit_id,))
+        unit_row = cur.fetchone()
+        # Get resident info
+        cur.execute("SELECT * FROM residents WHERE unit_id=? LIMIT 1", (unit_id,))
+        resident_row = cur.fetchone()
         conn.close()
     except Exception as e:
-        _log(f"create_invoice dual-write failed: {e}")
+        _log(f"create_invoice DB insert/fetch failed: {e}")
+        raise
 
-    # prepare dicts for PDF/email (similar to legacy output)
-    inv_row = {
-        'id': rid, 'unit_id': unit_id, 'description': description, 
-        'amount': amount, 'due_date': due_date, 'issued_date': issued_date,
-        'paid': 0, 'pending_amount': amount, 'recurring_sale_id': recurring_sale_id
-    }
-    
-    invoice = inv_row
-    unit = {
-        'id': apartment.id if apartment else unit_id,
-        'number': apartment.number if apartment else str(unit_id)
-    }
-    resident_dict = {
-        'name': resident.name if resident else (apartment.resident_name if apartment else ''),
-        'phone': resident.phone if resident else (apartment.resident_phone if apartment else ''),
-        'email': resident.email if resident else (apartment.resident_email if apartment else '')
-    }
+    # prepare dicts
+    invoice = dict(inv_row) if inv_row else {}
+    unit = dict(unit_row) if unit_row else {"id": unit_id}
+    resident = dict(resident_row) if resident_row else {}
     
     # Generate PDF if available
     pdf_filename = None
@@ -174,9 +136,9 @@ def create_invoice(unit_id: int, description: str, amount: float, due_date: Opti
                 'issued_date': dt.fromisoformat(invoice.get('issued_date', dt.now().isoformat())).strftime('%B %d, %Y'),
                 'due_date': dt.fromisoformat(invoice.get('due_date', dt.now().isoformat())).strftime('%B %d, %Y') if invoice.get('due_date') else 'N/A',
                 'apartment_number': unit.get('number', ''),
-                'resident_name': resident_dict.get('name', ''),
-                'resident_phone': resident_dict.get('phone', ''),
-                'resident_email': resident_dict.get('email', '')
+                'resident_name': resident.get('name', ''),
+                'resident_phone': resident.get('phone', ''),
+                'resident_email': resident.get('email', '')
             }
             
             # Create invoices directory
@@ -238,43 +200,22 @@ def create_invoice(unit_id: int, description: str, amount: float, due_date: Opti
 
 def list_invoices(unit_id: Optional[int] = None) -> List[Dict]:
     """Lista todas las facturas, opcionalmente filtradas por unidad"""
-    query = Invoice.query
-    if unit_id:
-        query = query.filter_by(unit_id=unit_id)
-    
-    invoices = query.order_by(Invoice.id.desc()).all()
-    
-    # Return as dict for compatibility
-    return [{
-        'id': i.id,
-        'unit_id': i.unit_id,
-        'description': i.description,
-        'amount': i.amount,
-        'issued_date': i.issued_date,
-        'due_date': i.due_date,
-        'paid': 1 if i.paid else 0,
-        'pending_amount': i.pending_amount,
-        'recurring_sale_id': i.recurring_sale_id,
-        'notes': i.notes
-    } for i in invoices]
+    with get_db() as conn:
+        cur = conn.cursor()
+        if unit_id:
+            cur.execute("SELECT id, unit_id, description, amount, issued_date, due_date, paid FROM invoices WHERE unit_id=? ORDER BY id DESC", (unit_id,))
+        else:
+            cur.execute("SELECT id, unit_id, description, amount, issued_date, due_date, paid FROM invoices ORDER BY id DESC")
+        rows = cur.fetchall()
+        return [dict(r) for r in rows]
 
 def get_invoice(invoice_id: int):
     """Obtiene una factura por su ID"""
-    i = db.session.get(Invoice, invoice_id)
-    if not i:
-        return None
-    return {
-        'id': i.id,
-        'unit_id': i.unit_id,
-        'description': i.description,
-        'amount': i.amount,
-        'issued_date': i.issued_date,
-        'due_date': i.due_date,
-        'paid': 1 if i.paid else 0,
-        'pending_amount': i.pending_amount,
-        'recurring_sale_id': i.recurring_sale_id,
-        'notes': i.notes
-    }
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM invoices WHERE id=?", (invoice_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
 
 # Alias para compatibilidad
 get_invoice_by_id = get_invoice
@@ -286,9 +227,18 @@ def get_invoice_paid_amount(invoice_id: int) -> float:
     Retorna 0 si no hay pagos.
     """
     try:
-        from sqlalchemy import func
-        total = db.session.query(func.sum(Payment.amount)).filter(Payment.invoice_id == invoice_id).scalar()
-        return float(total) if total else 0.0
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT IFNULL(SUM(amount), 0) as total_paid
+                FROM payments
+                WHERE invoice_id = ?
+            """, (invoice_id,))
+            row = cur.fetchone()
+            if row:
+                row_dict = dict(row)
+                return float(row_dict.get('total_paid', 0))
+            return 0.0
     except Exception as e:
         logger.error(f"Error getting paid amount for invoice {invoice_id}: {e}")
         return 0.0
@@ -296,77 +246,95 @@ def get_invoice_paid_amount(invoice_id: int) -> float:
 
 # ========== FUNCIONES AUXILIARES PARA PAGOS ==========
 
-def _validate_payment(invoice_id: int, amount: float) -> Invoice:
+def _validate_payment(invoice_id: int, amount: float, conn) -> Dict:
     """
-    Valida que el pago sea valido usando ORM.
-    Retorna objeto Invoice si es valido, lanza excepcion si no.
+    Valida que el pago sea valido.
+    Retorna dict con datos de la factura si es valido, lanza excepcion si no.
     """
     if amount <= 0:
         raise ValueError(f"El monto del pago debe ser mayor a cero (recibido: {amount})")
     
-    invoice = db.session.get(Invoice, invoice_id)
-    if not invoice:
+    cur = conn.cursor()
+    
+    # Verificar que la factura existe
+    cur.execute("SELECT id, amount, unit_id, description FROM invoices WHERE id=?", (invoice_id,))
+    invoice_row = cur.fetchone()
+    if not invoice_row:
         raise ValueError(f"La factura #{invoice_id} no existe")
     
-    # Calcular pagado total actual
-    from sqlalchemy import func
-    current_paid = db.session.query(func.sum(Payment.amount)).filter(Payment.invoice_id == invoice_id).scalar() or 0.0
+    invoice_dict = dict(invoice_row)
     
-    if current_paid + amount > invoice.amount:
+    # Verificar sobrepago
+    cur.execute("SELECT IFNULL(SUM(amount),0) as paid_sum FROM payments WHERE invoice_id=?", (invoice_id,))
+    current_paid = dict(cur.fetchone())["paid_sum"]
+    invoice_amount = invoice_dict["amount"]
+    
+    if current_paid + amount > invoice_amount:
         raise ValueError(
-            f"El pago de RD$ {amount:,.2f} excede el saldo pendiente de RD$ {(invoice.amount - current_paid):,.2f}"
+            f"El pago de RD$ {amount:,.2f} excede el saldo pendiente de RD$ {(invoice_amount - current_paid):,.2f}"
         )
     
-    return invoice
+    invoice_dict['current_paid'] = current_paid
+    return invoice_dict
 
-def _insert_payment_record(invoice_id: int, amount: float, method: str, notes: str) -> Payment:
-    """Inserta el registro de pago usando ORM. Retorna objeto Payment."""
-    from datetime import datetime, timezone
-    p = Payment(
-        invoice_id=invoice_id,
-        amount=amount,
-        method=method,
-        notes=notes,
-        paid_date=datetime.now(timezone.utc).isoformat()
+
+def _insert_payment_record(invoice_id: int, amount: float, method: str, notes: str, conn) -> int:
+    """Inserta el registro de pago en la BD. Retorna payment_id."""
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO payments(invoice_id, amount, method, notes) VALUES(?,?,?,?)",
+        (invoice_id, amount, method, notes)
     )
-    db.session.add(p)
-    db.session.flush() # obtener ID
-    return p
+    return cur.lastrowid
 
-def _update_invoice_status(invoice: Invoice) -> float:
+
+def _update_invoice_status(invoice_id: int, conn) -> float:
     """
     Actualiza el estado de la factura basado en pagos totales.
     Retorna el total pagado.
     """
-    from sqlalchemy import func
-    total_paid = db.session.query(func.sum(Payment.amount)).filter(Payment.invoice_id == invoice.id).scalar() or 0.0
+    cur = conn.cursor()
     
-    pending_amount = max(invoice.amount - total_paid, 0)
-    is_paid = total_paid >= invoice.amount
+    # Calcular total pagado
+    cur.execute("""
+        SELECT 
+            i.amount as invoice_amount,
+            IFNULL((SELECT SUM(amount) FROM payments WHERE invoice_id = i.id), 0) as total_paid
+        FROM invoices i WHERE i.id = ?
+    """, (invoice_id,))
+    row = cur.fetchone()
     
-    invoice.paid = is_paid
-    invoice.pending_amount = pending_amount
-    db.session.flush()
-    return float(total_paid)
-
-def _create_accounting_entry(invoice_id: int, amount: float, description: str) -> AccountingTransaction:
-    """Crea entrada contable para el pago usando ORM."""
-    from datetime import datetime
-    payment_date = datetime.now().strftime("%Y-%m-%d")
+    if not row:
+        raise ValueError(f"Error al obtener datos de la factura #{invoice_id}")
     
-    txn = AccountingTransaction(
-        type='income',
-        description=f'Pago recibido: {description}',
-        amount=amount,
-        category='Ventas/Facturas',
-        reference=f'INV-{invoice_id}',
-        date=payment_date
+    row_dict = dict(row)
+    invoice_amount = row_dict["invoice_amount"]
+    total_paid = row_dict["total_paid"]
+    
+    # Actualizar estado
+    pending_amount = max(invoice_amount - total_paid, 0)
+    is_paid = total_paid >= invoice_amount
+    cur.execute(
+        "UPDATE invoices SET paid=?, pending_amount=? WHERE id=?",
+        (is_paid, pending_amount, invoice_id)
     )
-    db.session.add(txn)
-    db.session.flush()
-    return txn
+    
+    return total_paid
 
-def _generate_account_statement_pdf(apt: Dict, invoice_dict: Dict) -> Optional[str]:
+
+def _create_accounting_entry(invoice_id: int, amount: float, description: str, conn) -> None:
+    """Crea entrada contable para el pago."""
+    from datetime import datetime as dt_now
+    cur = conn.cursor()
+    payment_date = dt_now.now().strftime("%Y-%m-%d")
+    
+    cur.execute("""
+        INSERT INTO accounting_transactions(type, description, amount, category, reference, date)
+        VALUES(?, ?, ?, ?, ?, ?)
+    """, ('income', f'Pago recibido: {description}', amount, 'Ventas/Facturas', f'INV-{invoice_id}', payment_date))
+
+
+def _generate_account_statement_pdf(apt: Dict, invoice: Dict) -> Optional[str]:
     """
     Genera PDF del estado de cuenta.
     Retorna la ruta del archivo o None si falla.
@@ -378,18 +346,29 @@ def _generate_account_statement_pdf(apt: Dict, invoice_dict: Dict) -> Optional[s
         # Obtener todas las facturas y pagos del apartamento
         unit_id = apt.get('id')
         
-        # ORM Queries
-        invoices_orm = Invoice.query.filter_by(unit_id=unit_id).order_by(Invoice.issued_date.desc()).limit(10).all()
-        invoices = [{
-            'id': i.id, 'description': i.description, 'amount': i.amount, 
-            'issued_date': i.issued_date, 'due_date': i.due_date, 'paid': 1 if i.paid else 0
-        } for i in invoices_orm]
-        
-        payments_orm = Payment.query.join(Invoice).filter(Invoice.unit_id == unit_id).order_by(Payment.paid_date.desc()).limit(10).all()
-        payments = [{
-            'id': p.id, 'amount': p.amount, 'paid_date': p.paid_date, 
-            'method': p.method, 'invoice_id': p.invoice_id
-        } for p in payments_orm]
+        with get_db() as conn:
+            cur = conn.cursor()
+            
+            # Obtener facturas
+            cur.execute("""
+                SELECT id, description, amount, issued_date, due_date, paid
+                FROM invoices 
+                WHERE unit_id = ?
+                ORDER BY issued_date DESC
+                LIMIT 10
+            """, (unit_id,))
+            invoices = [dict(row) for row in cur.fetchall()]
+            
+            # Obtener pagos
+            cur.execute("""
+                SELECT p.id, p.amount, p.paid_date, p.method, p.invoice_id
+                FROM payments p
+                JOIN invoices i ON p.invoice_id = i.id
+                WHERE i.unit_id = ?
+                ORDER BY p.paid_date DESC
+                LIMIT 10
+            """, (unit_id,))
+            payments = [dict(row) for row in cur.fetchall()]
         
         # Calcular balance
         balance = get_balance(unit_id)
@@ -500,7 +479,7 @@ def _get_client_contact_info(invoice: Dict) -> Dict:
     # Si no hay email en apartments, buscar en residents
     if not client_email and apt and apt.get('id'):
         try:
-            with legacy_db.get_db() as conn:
+            with get_db() as conn:
                 cur = conn.cursor()
                 cur.execute("SELECT email FROM residents WHERE unit_id=? LIMIT 1", (apt['id'],))
                 res_row = cur.fetchone()
@@ -599,62 +578,51 @@ def record_payment(invoice_id: int, amount: float, method: str = "unknown",
                    generate_receipt: bool = True, send_notifications: bool = True, notes: str = "") -> int:
     """
     Registra un pago y opcionalmente genera recibo PDF y envia notificaciones.
+    
+    Args:
+        invoice_id: ID de la factura
+        amount: Monto del pago
+        method: Metodo de pago (efectivo, transferencia, etc.)
+        generate_receipt: Si True, genera recibo PDF
+        send_notifications: Si True, envia notificaciones al cliente
+        notes: Notas adicionales del pago
+    
+    Returns:
+        ID del pago registrado
+    
+    Raises:
+        ValueError: Si los datos son invalidos o hay sobrepago
     """
     payment_id = None
     total_paid = 0
-    invoice_dict = None
+    invoice_data = None
     
-    # Fase 1: Operaciones ORM
-    try:
-        # Validar pago
-        invoice_orm = _validate_payment(invoice_id, amount)
-        description = invoice_orm.description or f'Pago de Factura #{invoice_id}'
-        
-        # Insertar pago
-        payment_orm = _insert_payment_record(invoice_id, amount, method, notes)
-        payment_id = payment_orm.id
-        
-        # Actualizar estado de factura
-        total_paid = _update_invoice_status(invoice_orm)
-        
-        # Crear entrada contable
-        txn_orm = _create_accounting_entry(invoice_id, amount, description)
-        txn_id = txn_orm.id
-        
-        db.session.commit()
-        _log(f"Payment {payment_id} recorded: ${amount} for invoice {invoice_id}")
-        
-    except Exception as e:
-        db.session.rollback()
-        _log(f"Error recording payment for invoice {invoice_id}: {e}")
-        raise
-        
-    # Fase 1.5: Dual-Write
-    try:
-        conn = legacy_db.get_conn()
-        cur = conn.cursor()
-        
-        # 1. Update Invoices
-        inv = db.session.get(Invoice, invoice_id)
-        cur.execute("UPDATE invoices SET paid=?, pending_amount=? WHERE id=?", 
-                   (1 if inv.paid else 0, inv.pending_amount, inv.id))
-                   
-        # 2. Insert Payment
-        p = db.session.get(Payment, payment_id)
-        cur.execute("INSERT OR IGNORE INTO payments(id, invoice_id, amount, method, notes, paid_date) VALUES(?,?,?,?,?,?)",
-                   (p.id, p.invoice_id, p.amount, p.method, p.notes, p.paid_date))
-                   
-        # 3. Insert Txn
-        t = db.session.get(AccountingTransaction, txn_id)
-        cur.execute("INSERT OR IGNORE INTO accounting_transactions(id, type, description, amount, category, reference, date) VALUES(?,?,?,?,?,?,?)",
-                   (t.id, t.type, t.description, t.amount, t.category, t.reference, t.date))
-                   
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        _log(f"Dual-write failed for record_payment {payment_id}: {e}")
-
-    # Fase 2: Operaciones externas
+    # Fase 1: Operaciones de base de datos (transaccional)
+    with get_db() as conn:
+        try:
+            # Validar pago
+            invoice_data = _validate_payment(invoice_id, amount, conn)
+            description = invoice_data.get('description', f'Pago de Factura #{invoice_id}')
+            
+            # Insertar pago
+            payment_id = _insert_payment_record(invoice_id, amount, method, notes, conn)
+            
+            # Actualizar estado de factura
+            total_paid = _update_invoice_status(invoice_id, conn)
+            
+            # Crear entrada contable
+            _create_accounting_entry(invoice_id, amount, description, conn)
+            
+            # Commit
+            conn.commit()
+            _log(f"Payment {payment_id} recorded: ${amount} for invoice {invoice_id}")
+            
+        except Exception as e:
+            conn.rollback()
+            _log(f"Error recording payment for invoice {invoice_id}: {e}")
+            raise
+    
+    # Fase 2: Operaciones externas (no transaccionales, pueden fallar sin afectar el pago)
     receipt_path = None
     
     if generate_receipt:
@@ -663,6 +631,7 @@ def record_payment(invoice_id: int, amount: float, method: str = "unknown",
     if send_notifications:
         invoice = get_invoice(invoice_id)
         if invoice:
+            # Generar estado de cuenta para adjuntar
             statement_path = None
             try:
                 from apartments import get_apartment
@@ -678,19 +647,26 @@ def record_payment(invoice_id: int, amount: float, method: str = "unknown",
 
 def get_balance(unit_id: int) -> float:
     """Calcula el balance pendiente de una unidad"""
-    from sqlalchemy import func
-    total_invoiced = db.session.query(func.sum(Invoice.amount)).filter(Invoice.unit_id == unit_id).scalar() or 0.0
-    
-    total_paid = db.session.query(func.sum(Payment.amount)).join(Invoice).filter(Invoice.unit_id == unit_id).scalar() or 0.0
-    
-    return float(total_invoiced) - float(total_paid)
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT IFNULL(SUM(amount),0) as total_invoiced FROM invoices WHERE unit_id=?", (unit_id,))
+        total_invoiced_row = cur.fetchone()
+        total_invoiced = dict(total_invoiced_row)["total_invoiced"] or 0
+        cur.execute("""
+            SELECT IFNULL(SUM(p.amount),0) as total_paid FROM payments p
+            JOIN invoices i ON p.invoice_id=i.id
+            WHERE i.unit_id=?
+        """, (unit_id,))
+        total_paid_row = cur.fetchone()
+        total_paid = dict(total_paid_row)["total_paid"] or 0
+        return float(total_invoiced) - float(total_paid)
 
 
 # ========== VENTAS RECURRENTES ==========
 
 def create_recurring_sales_table():
     """Crear tabla de ventas recurrentes si no existe"""
-    conn = legacy_db.get_conn()
+    conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS recurring_sales (
@@ -726,57 +702,30 @@ def create_recurring_sales_table():
 
 def add_recurring_sale(unit_id: int, service_id: int, amount: float, frequency: str,
                        billing_day: int, start_date: str, description: str = "", active: bool = True) -> int:
-    """Crear una venta recurrente usando ORM + Dual-Write"""
+    """Crear una venta recurrente
+    
+    Args:
+        unit_id: ID del apartamento (unit_id referencia a apartments.id)
+    """
+    # Validar monto positivo
     if amount <= 0:
         raise ValueError(f"El monto de la venta recurrente debe ser mayor a cero (recibido: {amount})")
     
-    try:
-        from data_models.models import RecurringSale
-        from extensions import db
-        import db as legacy_db
-        from datetime import datetime, timezone
-        
-        # ORM Insert
-        rs = RecurringSale(
-            unit_id=unit_id,
-            service_id=service_id,
-            amount=amount,
-            frequency=frequency,
-            billing_day=billing_day,
-            start_date=start_date,
-            description=description,
-            active=bool(active),
-            created_at=datetime.now(timezone.utc).isoformat(),
-            billing_time='08:00'
-        )
-        db.session.add(rs)
-        db.session.commit()
-        
-        sale_id = rs.id
-        
-        # Dual-Write
-        try:
-            conn = legacy_db.get_conn()
-            cur = conn.cursor()
-            cur.execute("""
-                INSERT OR IGNORE INTO recurring_sales (id, unit_id, service_id, amount, frequency, billing_day, 
-                                             start_date, description, active, billing_time, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (rs.id, rs.unit_id, rs.service_id, rs.amount, rs.frequency, rs.billing_day, rs.start_date, 
-                  rs.description, 1 if rs.active else 0, rs.billing_time, rs.created_at))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            _log(f"Dual write failed for add_recurring_sale: {e}")
-            
-        return sale_id
-    except Exception as e:
-        db.session.rollback()
-        raise e
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO recurring_sales (unit_id, service_id, amount, frequency, billing_day, 
+                                     start_date, description, active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (unit_id, service_id, amount, frequency, billing_day, start_date, description, 1 if active else 0))
+    conn.commit()
+    rowid = cur.lastrowid
+    conn.close()
+    return rowid
 
 def list_recurring_sales() -> List[Dict]:
     """Listar todas las ventas recurrentes con info de apartamento y servicio"""
-    conn = legacy_db.get_conn()
+    conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
         SELECT rs.*,
@@ -794,128 +743,93 @@ def list_recurring_sales() -> List[Dict]:
     return [dict(r) for r in rows]
 
 def toggle_recurring_sale(sale_id: int) -> bool:
-    """Activar/desactivar una venta recurrente (ORM + Dual-Write)"""
-    from data_models.models import RecurringSale
-    from extensions import db
-    import db as legacy_db
-    
-    rs = db.session.get(RecurringSale, sale_id)
-    if not rs:
-        return False
-        
-    rs.active = not rs.active
-    db.session.commit()
-    
-    try:
-        conn = legacy_db.get_conn()
-        cur = conn.cursor()
-        cur.execute("UPDATE recurring_sales SET active = ? WHERE id = ?", (1 if rs.active else 0, sale_id))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        _log(f"Dual write failed for toggle_recurring_sale: {e}")
-        
+    """Activar/desactivar una venta recurrente"""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE recurring_sales SET active = NOT active WHERE id = ?", (sale_id,))
+    conn.commit()
+    conn.close()
     return True
 
 def duplicate_recurring_sale(sale_id: int) -> int:
-    """Duplicar una venta recurrente"""
-    from data_models.models import RecurringSale
-    from extensions import db
-    import db as legacy_db
+    """Duplicar una venta recurrente
     
-    rs = db.session.get(RecurringSale, sale_id)
-    if not rs:
-        raise Exception(f"Venta recurrente #{sale_id} no encontrada")
+    Args:
+        sale_id: ID de la venta recurrente a duplicar
         
-    from datetime import datetime, timezone
-    new_rs = RecurringSale(
-        unit_id=rs.unit_id,
-        service_id=rs.service_id,
-        amount=rs.amount,
-        frequency=rs.frequency,
-        billing_day=rs.billing_day,
-        billing_time=rs.billing_time,
-        start_date=rs.start_date,
-        end_date=rs.end_date,
-        description=(rs.description or "") + " (Copia)",
-        active=rs.active,
-        created_at=datetime.now(timezone.utc).isoformat()
-    )
-    db.session.add(new_rs)
-    db.session.commit()
+    Returns:
+        ID de la nueva venta recurrente creada
+    """
+    conn = get_conn()
+    cur = conn.cursor()
     
-    new_id = new_rs.id
+    # Obtener datos de la venta recurrente original
+    cur.execute("SELECT * FROM recurring_sales WHERE id = ?", (sale_id,))
+    sale_row = cur.fetchone()
     
-    try:
-        conn = legacy_db.get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT OR IGNORE INTO recurring_sales (id, unit_id, service_id, amount, frequency, billing_day, 
-                billing_time, start_date, end_date, description, active, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (new_rs.id, new_rs.unit_id, new_rs.service_id, new_rs.amount, new_rs.frequency, new_rs.billing_day,
-              new_rs.billing_time, new_rs.start_date, new_rs.end_date, new_rs.description, 
-              1 if new_rs.active else 0, new_rs.created_at))
-        conn.commit()
+    if not sale_row:
         conn.close()
-    except Exception as e:
-        _log(f"Dual write failed for duplicate_recurring_sale: {e}")
-        
+        raise Exception(f"Venta recurrente #{sale_id} no encontrada")
+    
+    sale = dict(sale_row)
+    
+    # Crear nueva venta recurrente con los mismos datos (usando solo columnas existentes)
+    cur.execute("""
+        INSERT INTO recurring_sales (
+            unit_id, service_id, amount, frequency, billing_day, start_date, 
+            end_date, description, active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        sale['unit_id'], 
+        sale['service_id'], 
+        sale['amount'], 
+        sale['frequency'], 
+        sale.get('billing_day', 1),
+        sale['start_date'], 
+        sale['end_date'], 
+        sale['description'] + " (Copia)",  # Agregar "(Copia)" al nombre
+        sale['active']
+    ))
+    
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    
     _log(f"Venta recurrente {sale_id} duplicada como {new_id}")
     return new_id
 
 
 def update_recurring_sale(sale_id: int, **fields) -> None:
-    """Actualizar una venta recurrente existente (ORM + Dual Write)"""
+    """Actualizar una venta recurrente existente"""
     if not fields:
         return
-        
-    from data_models.models import RecurringSale
-    from extensions import db
-    import db as legacy_db
     
-    rs = db.session.get(RecurringSale, sale_id)
-    if not rs:
-        return
-        
     ALLOWED = {'unit_id', 'service_id', 'amount', 'frequency', 'billing_day',
                'billing_time', 'start_date', 'end_date', 'description', 'active'}
-               
-    for k, v in fields.items():
-        if k in ALLOWED:
-            if k == 'active':
-                setattr(rs, k, bool(v))
-            else:
-                setattr(rs, k, v)
-                
-    db.session.commit()
     
-    # Dual-Write
-    try:
-        keys = []
-        vals = []
-        for k, v in fields.items():
-            if k not in ALLOWED:
-                continue
-            keys.append(f"{k}=?")
-            vals.append(v)
-            
-        if keys:
-            vals.append(sale_id)
-            conn = legacy_db.get_conn()
-            cur = conn.cursor()
-            cur.execute(f"UPDATE recurring_sales SET {', '.join(keys)} WHERE id=?", vals)
-            conn.commit()
-            conn.close()
-    except Exception as e:
-        _log(f"Dual write failed for update_recurring_sale: {e}")
-        
+    keys = []
+    vals = []
+    for k, v in fields.items():
+        if k not in ALLOWED:
+            continue
+        keys.append(f"{k}=?")
+        vals.append(v)
+    
+    if not keys:
+        return
+    
+    vals.append(sale_id)
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"UPDATE recurring_sales SET {', '.join(keys)} WHERE id=?", vals)
+    conn.commit()
+    conn.close()
     _log(f"Venta recurrente {sale_id} actualizada: {list(fields.keys())}")
 
 
 def get_recurring_sale(sale_id: int) -> Optional[Dict]:
     """Obtener una venta recurrente por ID"""
-    conn = legacy_db.get_conn()
+    conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
         SELECT rs.*, a.number AS apt_number, a.resident_name, ps.name AS service_name
@@ -938,7 +852,7 @@ def get_last_invoice_from_recurring(sale_id: int) -> int:
     Returns:
         ID de la última factura o None si no hay facturas
     """
-    conn = legacy_db.get_conn()
+    conn = get_conn()
     cur = conn.cursor()
     
     # Buscar facturas por recurring_sale_id (preferido)
@@ -971,20 +885,34 @@ def get_last_invoice_from_recurring(sale_id: int) -> int:
 
 
 def delete_recurring_sale(sale_id: int, confirmed: bool = False) -> Dict:
-    """Eliminar una venta recurrente y todas sus facturas asociadas (ORM + Dual Write)"""
-    from data_models.models import RecurringSale, Invoice, Payment, AccountingTransaction
-    from extensions import db
-    import db as legacy_db
-    from sqlalchemy import func
+    """Eliminar una venta recurrente y todas sus facturas asociadas
     
-    rs = db.session.get(RecurringSale, sale_id)
-    if not rs:
-        return {'requires_confirmation': False, 'deleted': False}
+    Args:
+        sale_id: ID de la venta recurrente
+        confirmed: Si True, procede con la eliminación sin verificar
         
-    invoices = Invoice.query.filter_by(recurring_sale_id=sale_id).all()
-    invoice_ids = [i.id for i in invoices]
-    paid_invoices = [i for i in invoices if i.paid]
-    total_paid_amount = sum(i.amount for i in paid_invoices)
+    Returns:
+        Dict con información sobre la operación:
+        - 'requires_confirmation': bool - Si requiere confirmación
+        - 'invoice_count': int - Número de facturas que se eliminarán
+        - 'paid_invoice_count': int - Número de facturas pagadas
+        - 'total_amount': float - Monto total de facturas pagadas
+        - 'deleted': bool - Si se completó la eliminación
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    # Obtener IDs de las facturas asociadas y su estado
+    cur.execute("""
+        SELECT id, paid, amount 
+        FROM invoices 
+        WHERE recurring_sale_id = ?
+    """, (sale_id,))
+    invoices = cur.fetchall()
+    
+    invoice_ids = [row['id'] for row in invoices]
+    paid_invoices = [row for row in invoices if row['paid'] == 1]
+    total_paid_amount = sum(row['amount'] for row in paid_invoices)
     
     result = {
         'requires_confirmation': False,
@@ -994,47 +922,38 @@ def delete_recurring_sale(sale_id: int, confirmed: bool = False) -> Dict:
         'deleted': False
     }
     
+    # Si hay facturas pagadas y no está confirmado, retornar información
     if len(paid_invoices) > 0 and not confirmed:
+        conn.close()
+        result['requires_confirmation'] = True
         return result
-        
-    # Eliminar PDF files
-    from pathlib import Path
+    
+    # Proceder con la eliminación
+    # Eliminar pagos asociados a cada factura
     for invoice_id in invoice_ids:
+        cur.execute("DELETE FROM payments WHERE invoice_id = ?", (invoice_id,))
+        cur.execute("DELETE FROM accounting_transactions WHERE reference = ?", (f'INV-{invoice_id}',))
+        
+        # Intentar eliminar PDF si existe
         try:
+            from pathlib import Path
             pdf_path = Path(__file__).parent / "static" / "invoices" / f"invoice_{invoice_id}.pdf"
             if pdf_path.exists():
                 pdf_path.unlink()
                 _log(f"PDF eliminado: invoice_{invoice_id}.pdf")
         except Exception as e:
             _log(f"Error eliminando PDF de factura {invoice_id}: {e}")
-            
-    # Eliminar Payments y Accounting Transactions para cada factura
-    for invoice_id in invoice_ids:
-        Payment.query.filter_by(invoice_id=invoice_id).delete()
-        AccountingTransaction.query.filter_by(reference=f'INV-{invoice_id}').delete()
-        
-    # Eliminar Invoices
-    Invoice.query.filter_by(recurring_sale_id=sale_id).delete()
     
-    # Eliminar RecurringSale
-    db.session.delete(rs)
-    db.session.commit()
+    # Eliminar todas las facturas asociadas
+    cur.execute("DELETE FROM invoices WHERE recurring_sale_id = ?", (sale_id,))
     
-    # Dual-Write
-    try:
-        conn = legacy_db.get_conn()
-        cur = conn.cursor()
-        for invoice_id in invoice_ids:
-            cur.execute("DELETE FROM payments WHERE invoice_id = ?", (invoice_id,))
-            cur.execute("DELETE FROM accounting_transactions WHERE reference = ?", (f'INV-{invoice_id}',))
-        cur.execute("DELETE FROM invoices WHERE recurring_sale_id = ?", (sale_id,))
-        cur.execute("DELETE FROM recurring_sales WHERE id = ?", (sale_id,))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        _log(f"Dual write failed for delete_recurring_sale: {e}")
-        
+    # Eliminar la venta recurrente
+    cur.execute("DELETE FROM recurring_sales WHERE id = ?", (sale_id,))
+    
+    conn.commit()
+    conn.close()
     _log(f"Venta recurrente {sale_id} eliminada con {len(invoice_ids)} facturas asociadas")
+    
     result['deleted'] = True
     return result
 
@@ -1058,7 +977,7 @@ def process_due_recurring_invoices() -> dict:
     today_str = now.strftime('%Y-%m-%d')
     current_time_str = now.strftime('%H:%M')  # e.g. '13:47'
 
-    conn = legacy_db.get_conn()
+    conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
         SELECT * FROM recurring_sales
@@ -1088,7 +1007,7 @@ def process_due_recurring_invoices() -> dict:
                 # Generar si hoy >= billing_day y sin factura este mes
                 if now.day >= billing_day:
                     cycle_start = now.strftime('%Y-%m-01')
-                    conn2 = legacy_db.get_conn()
+                    conn2 = get_conn()
                     c2 = conn2.cursor()
                     c2.execute("""
                         SELECT id FROM invoices
@@ -1120,7 +1039,7 @@ def process_due_recurring_invoices() -> dict:
                         start_dt = datetime.strptime(start_date_str, '%Y-%m-%d')
                         if now.month == start_dt.month:
                             year_start = now.strftime('%Y-01-01')
-                            conn2 = legacy_db.get_conn()
+                            conn2 = get_conn()
                             c2 = conn2.cursor()
                             c2.execute("""
                                 SELECT id FROM invoices
@@ -1135,7 +1054,7 @@ def process_due_recurring_invoices() -> dict:
                 # Frecuencia desconocida: tratar como mensual
                 if now.day >= billing_day:
                     cycle_start = now.strftime('%Y-%m-01')
-                    conn2 = legacy_db.get_conn()
+                    conn2 = get_conn()
                     c2 = conn2.cursor()
                     c2.execute("""
                         SELECT id FROM invoices
@@ -1277,7 +1196,7 @@ def _notify_recurring_invoice(invoice_id: int,
 
 def generate_invoice_from_recurring(sale_id: int) -> int:
     """Generar una factura desde una venta recurrente"""
-    conn = legacy_db.get_conn()
+    conn = get_conn()
     cur = conn.cursor()
 
     # Obtener datos de la venta recurrente

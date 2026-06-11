@@ -28,7 +28,7 @@ CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
 -- Insert default admin user
 -- Password: admin123 (DEBE CAMBIARSE EN PRIMER LOGIN)
 -- Hash generado con bcrypt
-INSERT INTO users (username, email, password_hash, full_name, role, is_active)
+INSERT OR IGNORE INTO users (username, email, password_hash, full_name, role, is_active)
 VALUES (
     'admin',
     'admin@building.local',

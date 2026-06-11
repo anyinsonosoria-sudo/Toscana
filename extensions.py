@@ -11,6 +11,14 @@ from flask_limiter.util import get_remote_address
 from flask_caching import Cache
 from flask_apscheduler import APScheduler
 from flask import request, jsonify, redirect, url_for
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+
+# ==========================================
+# DATABASE ORM AND MIGRATIONS
+# ==========================================
+db = SQLAlchemy()
+migrate = Migrate()
 
 # ==========================================
 # FLASK-LOGIN
@@ -58,6 +66,14 @@ def init_extensions(app):
     Args:
         app: Instancia de Flask
     """
+    # Inicializar SQLAlchemy
+    try:
+        db.init_app(app)
+        migrate.init_app(app, db)
+        print("[OK] SQLAlchemy y Flask-Migrate inicializados")
+    except Exception as e:
+        print(f"[WARNING] No se pudo configurar SQLAlchemy o Flask-Migrate: {e}")
+
     # Inicializar Flask-Login
     login_manager.init_app(app)
     # Usar una clase de usuario anónimo que provea métodos esperados por templates
@@ -100,7 +116,7 @@ def init_extensions(app):
     # Inicializar Rate Limiting
     try:
         import os
-        if app.config.get('TESTING') or os.environ.get('TESTING') == 'True':
+        if app.config.get('TESTING') or os.environ.get('TESTING') == 'True' or app.debug:
             app.config['RATELIMIT_ENABLED'] = False
         limiter.init_app(app)
         print("[OK] Rate limiting configurado: 200/dia, 50/hora")

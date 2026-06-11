@@ -2,6 +2,7 @@
 Aplicación principal Flask para gestión de edificios.
 """
 import os
+import secrets
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -39,9 +40,10 @@ def create_app(config_object: Optional[str] = None) -> Flask:
     app = Flask(__name__)
     
     # Configuración básica
+    fallback_key = secrets.token_hex(32)
     app.config['SECRET_KEY'] = os.environ.get(
         'SECRET_KEY', 
-        os.environ.get('FLASK_SECRET_KEY', 'replace-this-with-a-secure-random-key')
+        os.environ.get('FLASK_SECRET_KEY', fallback_key)
     )
     
     # Cargar configuración
@@ -49,9 +51,10 @@ def create_app(config_object: Optional[str] = None) -> Flask:
         app.config.from_object(config_object)
     else:
         try:
-            app.config.from_object('config')
-        except Exception:
-            pass
+            from config import get_config
+            app.config.from_object(get_config())
+        except Exception as e:
+            print(f"Error loading config: {e}")
     
     # Configuraciones adicionales de seguridad
     app.config.setdefault('SESSION_COOKIE_HTTPONLY', True)
@@ -133,7 +136,8 @@ def create_app(config_object: Optional[str] = None) -> Flask:
     
     # En producción, requerir SECRET_KEY seguro
     if os.environ.get('FLASK_ENV') == 'production':
-        if app.config.get('SECRET_KEY') == 'replace-this-with-a-secure-random-key':
+        env_key = os.environ.get('SECRET_KEY') or os.environ.get('FLASK_SECRET_KEY')
+        if not env_key or env_key == 'replace-this-with-a-secure-random-key':
             raise RuntimeError("SECRET_KEY inseguro. Configura una variable de entorno segura para producción.")
         app.config['SESSION_COOKIE_SECURE'] = True
     
@@ -507,15 +511,228 @@ def _register_routes(app: Flask) -> None:
         else:
             return redirect(url_for("auth.login"))
 
-    resident_month_names = {
-        1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
-        7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
-    }
-    resident_month_lookup = {name.lower(): number for number, name in resident_month_names.items()}
-    resident_month_short_names = {
-        1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr", 5: "May", 6: "Jun",
-        7: "Jul", 8: "Ago", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic"
-    }
+    # ── Resident Portal (delegated to services.resident_help) ─────
+    from services.resident_help import (
+        build_balances_context,
+        build_evolution_context,
+        build_billing_context,
+        build_reports_context,
+        build_help_context,
+        compose_help_answer,
+        get_help_thread,
+        store_help_thread,
+        clear_help_thread,
+        serialize_help_message,
+        help_answer_to_message,
+        render_resident_page,
+    )
+
+    @app.route("/dashboard/balances")
+    @login_required
+    def resident_balances():
+        if current_user.role != 'resident':
+            return redirect(url_for('dashboard'))
+        return render_resident_page(
+            'resident_balances.html', 'balances', build_balances_context(),
+        )
+
+    @app.route("/dashboard/evolucion")
+    @login_required
+    def resident_evolution():
+        if current_user.role != 'resident':
+            return redirect(url_for('dashboard'))
+        return render_resident_page(
+            'resident_evolution.html', 'evolution', build_evolution_context(),
+        )
+
+    @app.route("/dashboard/facturas-pagos")
+    @login_required
+    def resident_billing_overview():
+        if current_user.role != 'resident':
+            return redirect(url_for('dashboard'))
+        return render_resident_page(
+            'resident_billing.html', 'billing', build_billing_context(),
+        )
+
+    @app.route("/dashboard/reportes")
+    @login_required
+    def resident_reports():
+        if current_user.role != 'resident':
+            return redirect(url_for('dashboard'))
+        return render_resident_page(
+            'resident_reports.html', 'reports', build_reports_context(),
+        )
+
+    @app.route("/dashboard/ayuda", methods=['GET', 'POST'])
+    @login_required
+    def resident_help():
+        if current_user.role != 'resident':
+            return redirect(url_for('dashboard'))
+        action = (request.form.get('action') or request.args.get('action') or '').strip().lower()
+        if action == 'reset':
+            clear_help_thread()
+            return redirect(url_for('resident_help'))
+
+        resident_thread = get_help_thread()
+
+        if request.method == 'POST':
+            resident_question = (request.form.get('question') or '').strip()
+            if resident_question:
+                resident_context = build_help_context('', resident_thread)
+                resident_answer = compose_help_answer(resident_question, resident_context, resident_thread)
+                resident_thread.append(serialize_help_message({
+                    'role': 'user',
+                    'content': resident_question,
+                }))
+                assistant_message = help_answer_to_message(resident_answer)
+                if assistant_message:
+                    resident_thread.append(assistant_message)
+                store_help_thread(resident_thread)
+            return redirect(url_for('resident_help'))
+
+        resident_question = (request.args.get('q') or '').strip()
+        if resident_question:
+            resident_context = build_help_context('', resident_thread)
+            resident_answer = compose_help_answer(resident_question, resident_context, resident_thread)
+            preview_thread = resident_thread + [serialize_help_message({
+                'role': 'user',
+                'content': resident_question,
+            })]
+            assistant_message = help_answer_to_message(resident_answer)
+            if assistant_message:
+                preview_thread.append(assistant_message)
+            return render_resident_page(
+                'resident_help.html', 'help',
+                build_help_context(resident_question, preview_thread),
+            )
+
+        return render_resident_page(
+            'resident_help.html', 'help',
+            build_help_context('', resident_thread),
+        )
+
+    # ── Dashboard & Health ──────────────────────────────────────────
+    @app.route("/dashboard")
+    @login_required
+    def dashboard():
+        """Dashboard principal con acciones rápidas y resumen."""
+        if current_user.role == 'resident':
+            return resident_balances()
+        from datetime import datetime, timedelta
+        import models
+        import apartments
+        import products_services
+        import suppliers
+        
+        stats = {
+            'units_count': 0,
+            'cash_available': 0,
+            'unpaid_count': 0,
+            'total_pending': 0,
+            'total_invoiced': 0,
+            'total_paid': 0,
+            'invoice_status': {'paid': 0, 'unpaid': 0},
+            'recent_invoices': [],
+            'recent_payments': [],
+            'clients': [],
+            'services': [],
+            'suppliers': [],
+            'pending_invoices': [],
+        }
+        
+        try:
+            with db.get_db() as conn:
+                cur = conn.cursor()
+                
+                # Apartamentos
+                apts = apartments.list_apartments()
+                stats['units_count'] = len(apts)
+                
+                # Facturas
+                invoices = models.list_invoices()
+                paid_count = sum(1 for i in invoices if i.get('paid'))
+                unpaid_count = len(invoices) - paid_count
+                stats['invoice_status'] = {'paid': paid_count, 'unpaid': unpaid_count}
+                stats['unpaid_count'] = unpaid_count
+                
+                total_invoiced = sum(i.get('amount', 0) for i in invoices)
+                stats['total_invoiced'] = total_invoiced
+                
+                # Total pagado
+                cur.execute("SELECT COALESCE(SUM(amount), 0) FROM payments")
+                total_paid = cur.fetchone()[0]
+                stats['total_paid'] = total_paid
+                stats['total_pending'] = total_invoiced - total_paid
+                
+                # Efectivo disponible (pagos + ingresos contables - gastos)
+                cur.execute("SELECT COALESCE(SUM(amount), 0) FROM payments")
+                total_income = cur.fetchone()[0]
+                # Sumar ingresos de accounting_transactions que NO son duplicados de pagos (INV-*)
+                cur.execute("""SELECT COALESCE(SUM(amount), 0) FROM accounting_transactions 
+                               WHERE type = 'income' AND (reference IS NULL OR reference NOT LIKE 'INV-%')""")
+                total_income += cur.fetchone()[0]
+                cur.execute("SELECT COALESCE(SUM(amount), 0) FROM expenses")
+                total_expenses = cur.fetchone()[0]
+                stats['cash_available'] = total_income - total_expenses
+                
+                # Facturas recientes (últimas 5)
+                stats['recent_invoices'] = invoices[:5] if invoices else []
+                
+                # Pagos recientes (últimos 5)
+                cur.execute("""
+                    SELECT p.*, i.description as invoice_desc, a.number as apt_number,
+                           a.resident_name
+                    FROM payments p
+                    JOIN invoices i ON p.invoice_id = i.id
+                    LEFT JOIN apartments a ON i.unit_id = a.id
+                    ORDER BY p.paid_date DESC LIMIT 5
+                """)
+                stats['recent_payments'] = [dict(r) for r in cur.fetchall()]
+                
+                # Clientes (apartamentos con residentes) para wizards
+                clients = []
+                for apt in apts:
+                    if apt.get('resident_name'):
+                        clients.append({
+                            'id': apt['id'],
+                            'name': apt['resident_name'],
+                            'apartment': apt['number'],
+                            'email': apt.get('resident_email', ''),
+                            'phone': apt.get('resident_phone', ''),
+                        })
+                stats['clients'] = clients
+                
+                # Servicios activos
+                svcs = products_services.list_products_services(active_only=True)
+                stats['services'] = [{'id': s['id'], 'code': s.get('code',''), 'name': s['name'],
+                                       'price': s.get('price',0)} for s in svcs]
+                
+                # Proveedores
+                sups = suppliers.list_suppliers()
+                stats['suppliers'] = [{'id': s['id'], 'name': s['name'],
+                                        'type': s.get('supplier_type',''),
+                                        'phone': s.get('phone',''),
+                                        'email': s.get('email','')} for s in sups]
+                
+                # Facturas pendientes con balance
+                cur.execute("""
+                    SELECT i.id, i.description, i.amount, i.issued_date, i.unit_id,
+                           a.resident_name as client_name, a.number as apartment_number,
+                           COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) as total_paid
+                    FROM invoices i
+                    LEFT JOIN apartments a ON i.unit_id = a.id
+                    WHERE i.paid = 0
+                    ORDER BY i.id DESC
+                """)
+                pending = [dict(r) for r in cur.fetchall()]
+                for pi in pending:
+                    pi['remaining'] = max(pi['amount'] - pi['total_paid'], 0)
+                stats['pending_invoices'] = pending
+        except Exception as e:
+            app.logger.error(f"Error loading dashboard: {e}")
+        
+        stats['now'] = datetime.now().strftime('%Y-%m-%d')
+        return render_template("index.html", **stats)
 
     def _build_resident_report_months():
         """Genera el histórico de reportes mensuales completos visibles para residentes."""
@@ -1575,223 +1792,9 @@ def _register_routes(app: Flask) -> None:
         context['resident_active_section'] = section
         return render_template(template_name, **context)
     
-    @app.route("/dashboard/balances")
-    @login_required
-    def resident_balances():
-        if current_user.role != 'resident':
-            return redirect(url_for('dashboard'))
-        return _render_resident_page(
-            'resident_balances.html',
-            'balances',
-            _build_resident_balances_context(),
-        )
+    # Duplicate resident block removed.
 
-    @app.route("/dashboard/evolucion")
-    @login_required
-    def resident_evolution():
-        if current_user.role != 'resident':
-            return redirect(url_for('dashboard'))
-        return _render_resident_page(
-            'resident_evolution.html',
-            'evolution',
-            _build_resident_evolution_context(),
-        )
-
-    @app.route("/dashboard/facturas-pagos")
-    @login_required
-    def resident_billing_overview():
-        if current_user.role != 'resident':
-            return redirect(url_for('dashboard'))
-        return _render_resident_page(
-            'resident_billing.html',
-            'billing',
-            _build_resident_billing_context(),
-        )
-
-    @app.route("/dashboard/reportes")
-    @login_required
-    def resident_reports():
-        if current_user.role != 'resident':
-            return redirect(url_for('dashboard'))
-        return _render_resident_page(
-            'resident_reports.html',
-            'reports',
-            _build_resident_reports_context(),
-        )
-
-    @app.route("/dashboard/ayuda", methods=['GET', 'POST'])
-    @login_required
-    def resident_help():
-        if current_user.role != 'resident':
-            return redirect(url_for('dashboard'))
-        action = (request.form.get('action') or request.args.get('action') or '').strip().lower()
-        if action == 'reset':
-            _clear_resident_help_thread()
-            return redirect(url_for('resident_help'))
-
-        resident_thread = _get_resident_help_thread()
-
-        if request.method == 'POST':
-            resident_question = (request.form.get('question') or '').strip()
-            if resident_question:
-                resident_context = _build_resident_help_context('', resident_thread)
-                resident_answer = _compose_resident_help_answer(resident_question, resident_context, resident_thread)
-                resident_thread.append(_serialize_resident_help_message({
-                    'role': 'user',
-                    'content': resident_question,
-                }))
-                assistant_message = _resident_help_answer_to_message(resident_answer)
-                if assistant_message:
-                    resident_thread.append(assistant_message)
-                _store_resident_help_thread(resident_thread)
-            return redirect(url_for('resident_help'))
-
-        resident_question = (request.args.get('q') or '').strip()
-        if resident_question:
-            resident_context = _build_resident_help_context('', resident_thread)
-            resident_answer = _compose_resident_help_answer(resident_question, resident_context, resident_thread)
-            preview_thread = resident_thread + [_serialize_resident_help_message({
-                'role': 'user',
-                'content': resident_question,
-            })]
-            assistant_message = _resident_help_answer_to_message(resident_answer)
-            if assistant_message:
-                preview_thread.append(assistant_message)
-            return _render_resident_page(
-                'resident_help.html',
-                'help',
-                _build_resident_help_context(resident_question, preview_thread),
-            )
-
-        return _render_resident_page(
-            'resident_help.html',
-            'help',
-            _build_resident_help_context('', resident_thread),
-        )
-
-    @app.route("/dashboard")
-    @login_required
-    def dashboard():
-        """Dashboard principal con acciones rápidas y resumen."""
-        if current_user.role == 'resident':
-            return resident_balances()
-        from datetime import datetime, timedelta
-        import models
-        import apartments
-        import products_services
-        import suppliers
-        
-        stats = {
-            'units_count': 0,
-            'cash_available': 0,
-            'unpaid_count': 0,
-            'total_pending': 0,
-            'total_invoiced': 0,
-            'total_paid': 0,
-            'invoice_status': {'paid': 0, 'unpaid': 0},
-            'recent_invoices': [],
-            'recent_payments': [],
-            'clients': [],
-            'services': [],
-            'suppliers': [],
-            'pending_invoices': [],
-        }
-        
-        try:
-            conn = db.get_conn()
-            cur = conn.cursor()
-            
-            # Apartamentos
-            apts = apartments.list_apartments()
-            stats['units_count'] = len(apts)
-            
-            # Facturas
-            invoices = models.list_invoices()
-            paid_count = sum(1 for i in invoices if i.get('paid'))
-            unpaid_count = len(invoices) - paid_count
-            stats['invoice_status'] = {'paid': paid_count, 'unpaid': unpaid_count}
-            stats['unpaid_count'] = unpaid_count
-            
-            total_invoiced = sum(i.get('amount', 0) for i in invoices)
-            stats['total_invoiced'] = total_invoiced
-            
-            # Total pagado
-            cur.execute("SELECT COALESCE(SUM(amount), 0) FROM payments")
-            total_paid = cur.fetchone()[0]
-            stats['total_paid'] = total_paid
-            stats['total_pending'] = total_invoiced - total_paid
-            
-            # Efectivo disponible (pagos + ingresos contables - gastos)
-            cur.execute("SELECT COALESCE(SUM(amount), 0) FROM payments")
-            total_income = cur.fetchone()[0]
-            # Sumar ingresos de accounting_transactions que NO son duplicados de pagos (INV-*)
-            cur.execute("""SELECT COALESCE(SUM(amount), 0) FROM accounting_transactions 
-                           WHERE type = 'income' AND (reference IS NULL OR reference NOT LIKE 'INV-%')""")
-            total_income += cur.fetchone()[0]
-            cur.execute("SELECT COALESCE(SUM(amount), 0) FROM expenses")
-            total_expenses = cur.fetchone()[0]
-            stats['cash_available'] = total_income - total_expenses
-            
-            # Facturas recientes (últimas 5)
-            stats['recent_invoices'] = invoices[:5] if invoices else []
-            
-            # Pagos recientes (últimos 5)
-            cur.execute("""
-                SELECT p.*, i.description as invoice_desc, a.number as apt_number,
-                       a.resident_name
-                FROM payments p
-                JOIN invoices i ON p.invoice_id = i.id
-                LEFT JOIN apartments a ON i.unit_id = a.id
-                ORDER BY p.paid_date DESC LIMIT 5
-            """)
-            stats['recent_payments'] = [dict(r) for r in cur.fetchall()]
-            
-            # Clientes (apartamentos con residentes) para wizards
-            clients = []
-            for apt in apts:
-                if apt.get('resident_name'):
-                    clients.append({
-                        'id': apt['id'],
-                        'name': apt['resident_name'],
-                        'apartment': apt['number'],
-                        'email': apt.get('resident_email', ''),
-                        'phone': apt.get('resident_phone', ''),
-                    })
-            stats['clients'] = clients
-            
-            # Servicios activos
-            svcs = products_services.list_products_services(active_only=True)
-            stats['services'] = [{'id': s['id'], 'code': s.get('code',''), 'name': s['name'],
-                                   'price': s.get('price',0)} for s in svcs]
-            
-            # Proveedores
-            sups = suppliers.list_suppliers()
-            stats['suppliers'] = [{'id': s['id'], 'name': s['name'],
-                                    'type': s.get('supplier_type',''),
-                                    'phone': s.get('phone',''),
-                                    'email': s.get('email','')} for s in sups]
-            
-            # Facturas pendientes con balance
-            cur.execute("""
-                SELECT i.id, i.description, i.amount, i.issued_date, i.unit_id,
-                       a.resident_name as client_name, a.number as apartment_number,
-                       COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) as total_paid
-                FROM invoices i
-                LEFT JOIN apartments a ON i.unit_id = a.id
-                WHERE i.paid = 0
-                ORDER BY i.id DESC
-            """)
-            pending = [dict(r) for r in cur.fetchall()]
-            for pi in pending:
-                pi['remaining'] = max(pi['amount'] - pi['total_paid'], 0)
-            stats['pending_invoices'] = pending
-            
-            conn.close()
-        except Exception as e:
-            app.logger.error(f"Error loading dashboard: {e}")
-        
-        stats['now'] = datetime.now().strftime('%Y-%m-%d')
-        return render_template("index.html", **stats)
+    # Duplicated dashboard removed
     
     @app.route("/health")
     def health_check():

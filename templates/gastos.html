@@ -482,6 +482,7 @@ document.getElementById('btnScanOCR').addEventListener('click', async function()
 
     const formData = new FormData();
     formData.append('file', fileToUpload);
+    formData.append('csrf_token', '{{ csrf_token() }}');
 
     try {
         const resp = await fetch('/gastos/upload-recibo', { method: 'POST', body: formData });
