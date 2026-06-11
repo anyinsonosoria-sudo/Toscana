@@ -1,4 +1,4 @@
-const CACHE_NAME = 'toscana-pwa-v2';
+const CACHE_NAME = 'toscana-pwa-v3';
 const STATIC_ASSETS = [
   '/static/css/app.css',
   '/static/css/mobile_app.css',

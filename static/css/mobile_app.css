@@ -15,17 +15,7 @@ body.is-pwa,
     scroll-behavior: smooth;
 }
 
-/* Make non-interactive elements unselectable (like native apps) */
-.resident-bottom-nav,
-.resident-hero,
-.resident-panel__header,
-.mobile-header,
-.resident-metric-card,
-.pwa-install-banner {
-    -webkit-user-select: none; /* Safari */
-    -ms-user-select: none; /* IE 10 and IE 11 */
-    user-select: none; /* Standard syntax */
-}
+/* Removed user-select: none as it breaks clicks on iOS Safari */
 
 /* Allow selection in text-heavy areas like chat */
 .resident-chat-bubble,
