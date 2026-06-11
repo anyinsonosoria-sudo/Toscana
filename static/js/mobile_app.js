@@ -3,47 +3,12 @@
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Setup Page Transitions
-    setupPageTransitions();
-    
     // 2. Setup Haptic Feedback on bottom nav
     setupHaptics();
     
     // 3. Setup PWA Install Prompt
     setupPwaInstallPrompt();
 });
-
-function setupPageTransitions() {
-    // Create transition overlay if it doesn't exist
-    let overlay = document.getElementById('pwa-page-transition');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'pwa-page-transition';
-        overlay.innerHTML = '<div class="pwa-spinner"></div>';
-        document.body.appendChild(overlay);
-    }
-    
-    // Hide overlay on pageshow (e.g., when returning via back button)
-    window.addEventListener('pageshow', (e) => {
-        overlay.classList.remove('active');
-    });
-
-    // Attach to internal links (especially bottom nav)
-    const links = document.querySelectorAll('a:not([target="_blank"]):not([href^="#"]):not([href^="mailto:"]):not([href^="tel:"])');
-    links.forEach(link => {
-        link.addEventListener('click', (e) => {
-            // Only trigger if it's not a modifier click
-            if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.button !== 0) return;
-            
-            const href = link.getAttribute('href');
-            if (href && href !== '#' && !href.includes('javascript:')) {
-                overlay.classList.add('active');
-                // Failsafe: if navigation fails or takes too long, hide overlay after 5s
-                setTimeout(() => overlay.classList.remove('active'), 5000);
-            }
-        });
-    });
-}
 
 function setupHaptics() {
     const navItems = document.querySelectorAll('.resident-bottom-nav__item, .btn');

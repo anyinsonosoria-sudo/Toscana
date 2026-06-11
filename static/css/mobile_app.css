@@ -20,7 +20,6 @@ body.is-pwa,
 .resident-hero,
 .resident-panel__header,
 .mobile-header,
-.btn,
 .resident-metric-card,
 .pwa-install-banner {
     -webkit-user-select: none; /* Safari */
@@ -34,38 +33,6 @@ body.is-pwa,
     -webkit-user-select: text;
     -ms-user-select: text;
     user-select: text;
-}
-
-/* 2. Global Page Loader Overlay */
-#pwa-page-transition {
-    position: fixed;
-    inset: 0;
-    background-color: var(--primary);
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.25s ease-in-out;
-}
-
-#pwa-page-transition.active {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.pwa-spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid rgba(255, 255, 255, 0.3);
-    border-radius: 50%;
-    border-top-color: white;
-    animation: pwa-spin 1s ease-in-out infinite;
-}
-
-@keyframes pwa-spin {
-    to { transform: rotate(360deg); }
 }
 
 /* 3. PWA Install Banner */
