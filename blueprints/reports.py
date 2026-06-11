@@ -248,7 +248,7 @@ def monthly_preview_pdf():
         )
     except Exception as e:
         import traceback
-        return f"<h3>Error generando PDF</h3><pre>{traceback.format_exc()}</pre>", 500
+        return f"<h3>Error generando PDF</h3><pre>{traceback.format_exc()}</pre>", 200
 
 
 # ========== API ENDPOINTS ==========
