@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test</title>
+</head>
+<body>
+    <a href="#" id="btn-abril" onclick="event.preventDefault(); this.innerHTML='<span class=\'spinner-border spinner-border-sm\' role=\'status\' aria-hidden=\'true\'></span> Generando...'; this.style.pointerEvents='none'; window.location.href='/reportes/mensual/download.pdf?reference_date=2026-05-01&period_mode=previous_month';">
+        <i class="bi bi-file-earmark-pdf"></i> PDF
+    </a>
+    
+    <div id="result"></div>
+    <script>
+        window.onerror = function(msg, url, line) {
+            document.getElementById('result').innerText += ' ERROR: ' + msg;
+        };
+        document.getElementById('btn-abril').click();
+        setTimeout(() => {
+            document.getElementById('result').innerText += ' HTML: ' + document.getElementById('btn-abril').innerHTML;
+        }, 100);
+    </script>
+</body>
+</html>

@@ -316,8 +316,8 @@
                         <p class="text-muted small mb-3">La administración publica mensualmente el reporte financiero consolidado del residencial.</p>
                         
                         <a href="#" 
-                           onclick="event.preventDefault(); this.innerHTML='<span class=\'spinner-border spinner-border-sm\' role=\'status\' aria-hidden=\'true\'></span> Generando...'; this.style.pointerEvents='none'; window.location.href='{{ url_for('reports.monthly_download_pdf') }}';" 
-                           class="btn btn-primary w-100 py-2.5" style="border-radius: 12px; font-weight: 600;">
+                           data-url="{{ url_for('reports.monthly_download_pdf') }}" 
+                           class="btn btn-primary w-100 py-2.5 js-download-report" style="border-radius: 12px; font-weight: 600;">
                             <i class="bi bi-cloud-arrow-down-fill me-1"></i> Descargar Reporte Actual
                         </a>
                     </div>
@@ -334,8 +334,8 @@
                                 <span style="font-weight: 600; color: var(--text-color); font-size: 0.95rem;">{{ month.label }}</span>
                             </div>
                             <a href="#" 
-                               onclick="event.preventDefault(); this.innerHTML='<span class=\'spinner-border spinner-border-sm\' role=\'status\' aria-hidden=\'true\'></span>...'; this.style.pointerEvents='none'; window.location.href='{{ url_for('reports.monthly_download_pdf', reference_date=month.ref_date, period_mode='previous_month') }}';" 
-                               class="btn btn-sm btn-outline-primary px-3 rounded-pill" style="font-size: 0.8rem; font-weight: 600;">
+                               data-url="{{ url_for('reports.monthly_download_pdf', reference_date=month.ref_date, period_mode='previous_month') }}" 
+                               class="btn btn-sm btn-outline-primary px-3 rounded-pill js-download-report" style="font-size: 0.8rem; font-weight: 600;">
                                 <i class="bi bi-file-pdf"></i> PDF
                             </a>
                         </li>
@@ -710,6 +710,22 @@ document.addEventListener("DOMContentLoaded", function() {
             `;
         }
     }
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var btns = document.querySelectorAll('.js-download-report');
+    btns.forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            var url = this.getAttribute('data-url');
+            if (url) {
+                this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generando...';
+                this.style.pointerEvents = 'none';
+                window.location.href = url;
+            }
+        });
+    });
 });
 </script>
 {% endblock %}
