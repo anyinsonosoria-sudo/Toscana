@@ -48,7 +48,9 @@
 
 <nav class="resident-bottom-nav d-lg-none" aria-label="Navegación móvil">
     {% for item in get_resident_navigation() %}
-    <a class="resident-bottom-nav__item {% if resident_active_section and request.endpoint == item.endpoint %}active{% endif %}" href="{{ item.url }}">
+    <a class="resident-bottom-nav__item {% if resident_active_section and request.endpoint == item.endpoint %}active{% endif %}" 
+       href="{{ item.url }}"
+       onclick="if(this.href){ window.location.href = this.href; return false; }">
         <i class="{{ item.icon }}"></i>
         <span>{{ item.label }}</span>
     </a>
