@@ -722,9 +722,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (url) {
                 this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generando...';
                 this.style.pointerEvents = 'none';
-                setTimeout(function() {
-                    window.location.href = url;
-                }, 100);
+                window.location.href = url;
             }
         });
     });
