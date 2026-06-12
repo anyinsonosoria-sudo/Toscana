@@ -1098,7 +1098,7 @@ def _register_routes(app: Flask) -> None:
             period_mode=period_mode,
         )
         report_url = url_for(
-            'reports.monthly_preview_pdf',
+            'reports.monthly_download_pdf',
             reference_date=month_reference['reference_date'],
             period_mode=period_mode,
         )
