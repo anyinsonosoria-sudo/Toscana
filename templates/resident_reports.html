@@ -42,7 +42,7 @@
                         </div>
                         <a href="#" 
                            class="btn btn-outline-primary rounded-pill px-4"
-                           onclick="event.preventDefault(); this.innerHTML='<span class=\'spinner-border spinner-border-sm\' role=\'status\' aria-hidden=\'true\'></span> Generando...'; this.style.pointerEvents='none'; window.location.href='{{ url_for('reports.monthly_preview_pdf', reference_date=month.ref_date, period_mode='previous_month') }}';">
+                           onclick="event.preventDefault(); this.innerHTML='<span class=\'spinner-border spinner-border-sm\' role=\'status\' aria-hidden=\'true\'></span> Generando...'; this.style.pointerEvents='none'; window.location.href='{{ url_for('reports.monthly_download_pdf', reference_date=month.ref_date, period_mode='previous_month') }}';">
                             <i class="bi bi-file-earmark-pdf"></i> PDF
                         </a>
                     </div>

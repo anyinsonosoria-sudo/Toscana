@@ -1021,7 +1021,7 @@ def build_reports_context() -> dict:
     context = get_common_context()
     context.update({
         'current_report_url': url_for(
-            'reports.monthly_preview_pdf',
+            'reports.monthly_download_pdf',
             reference_date=datetime.now().strftime('%Y-%m-%d'),
             period_mode='current_month_to_date',
         ),

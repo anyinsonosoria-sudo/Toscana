@@ -210,9 +210,17 @@ def monthly_send():
     )
 
 
+@reports_bp.route('/mensual/download.pdf')
+@login_required
+def monthly_download_pdf():
+    return _monthly_pdf_logic()
+
 @reports_bp.route('/mensual/preview.pdf')
 @login_required
 def monthly_preview_pdf():
+    return _monthly_pdf_logic()
+
+def _monthly_pdf_logic():
     try:
         # Permitir a residentes o usuarios con el permiso correspondiente
         if current_user.role != 'resident':
@@ -232,7 +240,8 @@ def monthly_preview_pdf():
         report_data = reports.add_current_balance_context(report_data)
 
         preview_dir = Path(reports.__file__).resolve().parent / 'static' / 'reports'
-        preview_filename = f"monthly_financial_report_preview_{report_data['report_period']}.pdf"
+        # Añadimos un timestamp para evitar que WeasyPrint o el navegador cacheen el archivo físico si se sobreescribe
+        preview_filename = f"monthly_financial_report_{report_data['report_period']}_{int(datetime.now().timestamp())}.pdf"
         
         pdf_path = reports.generate_monthly_financial_report_pdf_file(
             report_data,
