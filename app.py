@@ -510,6 +510,15 @@ def _register_context_processors(app: Flask) -> None:
 def _register_routes(app: Flask) -> None:
     """Registra las rutas principales de la aplicación."""
     
+    @app.route("/debug_logs")
+    def debug_logs():
+        try:
+            with open("/var/log/toscana.pythonanywhere.com.error.log", "r") as f:
+                logs = f.readlines()[-100:]
+            return "<pre>" + "".join(logs) + "</pre>"
+        except Exception as e:
+            return str(e)
+
     @app.route("/")
     def index():
         """Ruta principal: redirige según autenticación."""
