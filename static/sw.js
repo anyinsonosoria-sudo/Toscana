@@ -2,7 +2,8 @@
 // This SW self-destructs all old caches and passes ALL requests through to the network.
 // This fixes issues with stale caches breaking navigation and PDF downloads.
 
-const CACHE_NAME = 'toscana-pwa-v99';
+// version update to force cache clear: 100
+const CACHE_NAME = 'toscana-pwa-v100';
 
 // Install: skip waiting immediately
 self.addEventListener('install', event => {
