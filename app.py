@@ -161,15 +161,6 @@ def create_app(config_object: Optional[str] = None) -> Flask:
     
     # Registrar manejadores de errores
     _register_error_handlers(app)
-    
-    # Registrar headers de seguridad
-    _register_security_headers(app)
-    
-    # Forzar HTTPS en PythonAnywhere
-    @app.before_request
-    def enforce_https():
-        if request.headers.get('X-Forwarded-Proto', 'http') == 'http' and 'pythonanywhere.com' in request.host:
-            return redirect(request.url.replace("http://", "https://", 1))
 
     
     # Inicializar base de datos
@@ -1900,44 +1891,6 @@ def _register_error_handlers(app: Flask) -> None:
             raise error
         
         return render_template('errors/500.html'), 500
-
-
-def _register_security_headers(app: Flask) -> None:
-    """Registra headers de seguridad en todas las respuestas."""
-    
-    @app.after_request
-    def add_security_headers(response):
-        """Agrega headers de seguridad a cada respuesta."""
-        # Prevenir sniffing de MIME type
-        response.headers['X-Content-Type-Options'] = 'nosniff'
-        
-        # Proteccion contra clickjacking
-        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
-        
-        # Proteccion XSS (legacy, pero aun util)
-        response.headers['X-XSS-Protection'] = '1; mode=block'
-        
-        # Referrer policy
-        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-        
-        # Permissions policy (limitar APIs del navegador)
-        # camera=(self) permite acceso a la cámara para OCR en móviles
-        response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=(self)'
-        
-        # Content Security Policy basica (ajustar segun necesidades)
-        # Permite inline styles/scripts por Bootstrap, ajustar en produccion
-        if not app.debug:
-            csp = (
-                "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; "
-                "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net; "
-                "font-src 'self' cdn.jsdelivr.net; "
-                "img-src 'self' data:; "
-                "connect-src 'self'"
-            )
-            response.headers['Content-Security-Policy'] = csp
-        
-        return response
 
 
 # Crear instancia de la aplicación
