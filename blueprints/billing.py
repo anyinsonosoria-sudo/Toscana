@@ -1457,11 +1457,11 @@ def view_invoice_pdf(invoice_id):
                 return redirect(url_for('billing.invoices'))
         
         # Servir el archivo PDF
-        return send_from_directory(
-            pdf_dir,
-            pdf_filename,
-            as_attachment=False,  # False = mostrar en navegador, True = descargar
-            mimetype='application/pdf'
+        return send_file(
+            pdf_path,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=pdf_filename
         )
         
     except Exception as e:

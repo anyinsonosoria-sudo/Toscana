@@ -252,7 +252,7 @@ def _monthly_pdf_logic():
         return send_file(
             pdf_path,
             mimetype='application/pdf',
-            as_attachment=False,
+            as_attachment=True,
             download_name=preview_filename,
         )
     except Exception as e:

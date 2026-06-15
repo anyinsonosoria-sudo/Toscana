@@ -1183,6 +1183,7 @@ body {
         display: flex;
         flex-direction: column;
         justify-content: center;
+        color: var(--gray-800);
     }
 
     .data-table tbody td::before {

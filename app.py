@@ -465,6 +465,12 @@ def _register_context_processors(app: Flask) -> None:
                     'icon': 'bi bi-chat-square-dots',
                     'url': '/dashboard/ayuda',
                 },
+                {
+                    'endpoint': 'logout',
+                    'label': 'Salir',
+                    'icon': 'bi bi-box-arrow-right text-danger',
+                    'url': '/logout',
+                },
             ]
 
         return dict(get_resident_navigation=get_resident_navigation)
