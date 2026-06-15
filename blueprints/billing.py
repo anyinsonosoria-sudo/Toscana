@@ -4,7 +4,7 @@ Gestión completa de facturas, pagos, cuentas por cobrar y ventas recurrentes
 """
 import logging
 import os
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, g
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, g, send_file, abort
 from flask_login import login_required, current_user
 from datetime import datetime
 from pathlib import Path
@@ -1460,7 +1460,7 @@ def view_invoice_pdf(invoice_id):
         return send_file(
             pdf_path,
             mimetype='application/pdf',
-            as_attachment=False,
+            as_attachment=True,
             download_name=pdf_filename
         )
         
@@ -1790,7 +1790,7 @@ def view_receipt_pdf(payment_id):
         return send_from_directory(
             pdf_dir,
             pdf_filename,
-            as_attachment=False,
+            as_attachment=True,
             mimetype='application/pdf'
         )
     except Exception as e:
@@ -1877,7 +1877,7 @@ def download_statement_pdf(unit_id):
         return send_from_directory(
             pdf_dir,
             pdf_filename,
-            as_attachment=False,
+            as_attachment=True,
             mimetype='application/pdf'
         )
     except Exception as e:

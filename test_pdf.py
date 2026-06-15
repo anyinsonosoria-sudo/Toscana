@@ -1,39 +1,66 @@
+import os
 import sys
-sys.path.append('.')
-from extensions import db
+from pathlib import Path
+
+# Setup flask app context
 from app import app
-from db import get_conn
-import apartments
-import company
-import receipt_pdf
-from data_models.models import Invoice, Payment
+from data_models.models import Payment, Invoice
+from extensions import db
 
 with app.app_context():
-    unit_id = 1
-    apt = apartments.get_apartment(unit_id)
-    if not apt:
-        print("No apt found")
-        sys.exit(1)
+    from blueprints.billing import view_receipt_pdf
+    from flask import request
+    
+    payment = db.session.query(Payment).first()
+    if payment:
+        print(f"Testing view_receipt_pdf for payment {payment.id}")
+        # We can't actually call view_receipt_pdf easily without a request context and logged in user
+        # But we can test the inner logic
+        import company
+        import receipt_pdf
         
-    invoices_orm = Invoice.query.filter_by(unit_id=unit_id).order_by(Invoice.issued_date.desc()).limit(20).all()
-    invoices = [{
-        'id': i.id, 'description': i.description, 'amount': i.amount,
-        'issued_date': i.issued_date, 'due_date': i.due_date, 'paid': 1 if i.paid else 0
-    } for i in invoices_orm]
-    
-    payments_orm = Payment.query.join(Invoice).filter(Invoice.unit_id == unit_id).order_by(Payment.paid_date.desc()).limit(20).all()
-    payments = [{
-        'id': p.id, 'amount': p.amount, 'paid_date': p.paid_date,
-        'method': p.method, 'invoice_id': p.invoice_id
-    } for p in payments_orm]
-    
-    company_info = company.get_company_info() or {}
-    pdf_path = 'test_estado_cuenta.pdf'
-    
-    try:
-        receipt_pdf.generate_account_statement_pdf(apt, invoices, payments, company_info, pdf_path)
-        import os
-        print(f'Generated PDF size: {os.path.getsize(pdf_path)} bytes')
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
+        invoice_num = payment.invoice_id
+        invoice = payment.invoice
+        apt_number = "1A"
+        resident_name = "Test"
+        safe_resident_name = "".join(c for c in resident_name if c.isalnum() or c in (' ', '_', '-')).strip()
+        pdf_filename = f"Apartamento {apt_number}-{safe_resident_name}-Comprobante de pago Factura #{invoice_num}.pdf"
+        
+        pdf_dir = Path("static/invoices")
+        pdf_dir.mkdir(parents=True, exist_ok=True)
+        pdf_path = pdf_dir / pdf_filename
+        
+        print("pdf_filename:", pdf_filename)
+        
+        payment_data = {
+            'id': payment.id,
+            'amount': payment.amount,
+            'method': payment.method,
+            'payment_date': payment.paid_date[:10] if payment.paid_date else '2026-01-01',
+            'notes': payment.notes or ''
+        }
+        
+        invoice_data = {
+            'id': invoice_num,
+            'description': invoice.description,
+            'amount': invoice.amount,
+            'total_paid': payment.amount,
+            'apartment_number': apt_number,
+            'resident_name': resident_name,
+            'resident_email': '',
+            'resident_phone': ''
+        }
+        company_info = company.get_company_info() or {}
+        
+        print("Generating receipt PDF...")
+        try:
+            receipt_pdf.generate_payment_receipt_pdf(payment_data, invoice_data, company_info, str(pdf_path))
+            print("Successfully generated receipt PDF at:", pdf_path)
+            print("File exists:", pdf_path.exists())
+            if pdf_path.exists():
+                print("File size:", pdf_path.stat().st_size)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+    else:
+        print("No payment found")
