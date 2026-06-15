@@ -1370,7 +1370,7 @@ def _register_routes(app: Flask) -> None:
         context = _get_resident_common_context()
         context.update({
             'current_report_url': url_for(
-                'reports.monthly_preview_pdf',
+                'reports.monthly_view_html',
                 reference_date=datetime.now().strftime('%Y-%m-%d'),
                 period_mode='current_month_to_date',
             ),

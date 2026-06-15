@@ -1884,3 +1884,144 @@ def download_statement_pdf(unit_id):
         logger.error(f"Error en download_statement_pdf: {e}")
         flash("Error al cargar el estado de cuenta", "error")
         return redirect(url_for('dashboard'))
+
+# ========== VISUALIZACIÓN HTML (MÓVILES/PWA) ==========
+
+@billing_bp.route('/facturas/ver-html/<int:invoice_id>', endpoint='view_invoice_html')
+@login_required
+def view_invoice_html(invoice_id):
+    """Ver factura en HTML en vez de PDF (amigable para móviles)"""
+    try:
+        request_user = _get_request_user()
+        invoice = models.get_invoice_by_id(invoice_id)
+        if not invoice:
+            flash("Factura no encontrada", "error")
+            return redirect(url_for('dashboard') if request_user.role == 'resident' else url_for('billing.invoices'))
+        
+        if request_user.role == 'resident':
+            allowed_unit_ids = _get_resident_allowed_unit_ids()
+            if invoice.get('unit_id') not in allowed_unit_ids:
+                flash("Acceso denegado: esta factura no pertenece a su apartamento", "error")
+                return redirect(url_for('dashboard'))
+        else:
+            from utils.permissions import check_permission
+            if not check_permission(request_user.id, 'facturacion.view', request_user.role):
+                flash("No tienes permiso para ver esta factura", "warning")
+                abort(403)
+        
+        import apartments, company
+        apt = apartments.get_apartment(invoice.get('unit_id')) or {}
+        company_info = company.get_company_info() or {}
+        
+        from data_models.models import Payment
+        from extensions import db as sa_db
+        from sqlalchemy import func
+        total_paid = sa_db.session.query(func.sum(Payment.amount)).filter_by(invoice_id=invoice_id).scalar() or 0.0
+        invoice['total_paid'] = float(total_paid)
+        
+        return render_template(
+            'resident_document_view.html',
+            doc_type='invoice',
+            invoice=invoice,
+            company_info=company_info,
+            resident_name=apt.get('resident_name', invoice.get('client_name', 'Cliente')),
+            apt_number=apt.get('number', 'N/A')
+        )
+    except Exception as e:
+        logger.error(f"Error en view_invoice_html: {e}")
+        flash("Error al cargar la factura", "error")
+        return redirect(url_for('dashboard'))
+
+@billing_bp.route('/pagos/ver-html/<int:payment_id>', endpoint='view_receipt_html')
+@login_required
+def view_receipt_html(payment_id):
+    """Ver recibo en HTML en vez de PDF"""
+    try:
+        from data_models.models import Payment
+        from extensions import db as sa_db
+        p_obj = sa_db.session.get(Payment, payment_id)
+        
+        if not p_obj:
+            flash("Pago no encontrado", "error")
+            return redirect(url_for('dashboard') if current_user.role == 'resident' else url_for('billing.payments'))
+            
+        payment_dict = {
+            'id': p_obj.id, 'amount': p_obj.amount, 'method': p_obj.method,
+            'payment_date': (p_obj.paid_date[:10] if isinstance(p_obj.paid_date, str) else p_obj.paid_date.strftime('%Y-%m-%d')) if p_obj.paid_date else datetime.now().strftime('%Y-%m-%d'),
+            'notes': p_obj.notes, 'unit_id': p_obj.invoice.unit_id
+        }
+        
+        if current_user.role == 'resident':
+            allowed_unit_ids = _get_resident_allowed_unit_ids()
+            if payment_dict['unit_id'] not in allowed_unit_ids:
+                flash("Acceso denegado: este recibo no pertenece a su apartamento", "error")
+                return redirect(url_for('dashboard'))
+        else:
+            from utils.permissions import check_permission
+            if not check_permission(current_user.id, 'facturacion.view', current_user.role):
+                flash("No tienes permiso", "warning")
+                abort(403)
+                
+        import apartments, company
+        apt = apartments.get_apartment(payment_dict['unit_id']) or {}
+        company_info = company.get_company_info() or {}
+        
+        invoice_dict = {'id': p_obj.invoice_id, 'description': p_obj.invoice.description, 'amount': p_obj.invoice.amount}
+        
+        return render_template(
+            'resident_document_view.html',
+            doc_type='receipt',
+            payment=payment_dict,
+            invoice=invoice_dict,
+            company_info=company_info,
+            resident_name=apt.get('resident_name', 'Cliente'),
+            apt_number=apt.get('number', 'N/A')
+        )
+    except Exception as e:
+        logger.error(f"Error en view_receipt_html: {e}")
+        flash("Error al cargar el recibo", "error")
+        return redirect(url_for('dashboard'))
+
+@billing_bp.route('/apartamentos/estado-cuenta-html/<int:unit_id>', endpoint='view_statement_html')
+@login_required
+def view_statement_html(unit_id):
+    """Ver estado de cuenta en HTML"""
+    try:
+        request_user = _get_request_user()
+        if request_user.role == 'resident':
+            allowed_unit_ids = _get_resident_allowed_unit_ids()
+            if unit_id not in allowed_unit_ids:
+                flash("Acceso denegado", "error")
+                return redirect(url_for('dashboard'))
+                
+        import apartments, company
+        apt = apartments.get_apartment(unit_id)
+        if not apt:
+            flash("Apartamento no encontrado", "error")
+            return redirect(url_for('dashboard'))
+            
+        from data_models.models import Invoice, Payment
+        invoices_orm = Invoice.query.filter_by(unit_id=unit_id).order_by(Invoice.issued_date.desc()).limit(20).all()
+        invoices = [{'issued_date': i.issued_date, 'description': i.description, 'amount': i.amount} for i in invoices_orm]
+        
+        payments_orm = Payment.query.join(Invoice).filter(Invoice.unit_id == unit_id).order_by(Payment.paid_date.desc()).limit(20).all()
+        payments = [{'paid_date': p.paid_date, 'method': p.method, 'amount': p.amount} for p in payments_orm]
+        
+        from models import get_balance
+        balance = get_balance(unit_id)
+        
+        return render_template(
+            'resident_document_view.html',
+            doc_type='statement',
+            invoices=invoices,
+            payments=payments,
+            balance=balance,
+            current_date=datetime.now().strftime('%Y-%m-%d %H:%M'),
+            company_info=company.get_company_info() or {},
+            resident_name=apt.get('resident_name', 'Cliente'),
+            apt_number=apt.get('number', 'N/A')
+        )
+    except Exception as e:
+        logger.error(f"Error en view_statement_html: {e}")
+        flash("Error al cargar el estado de cuenta", "error")
+        return redirect(url_for('dashboard'))

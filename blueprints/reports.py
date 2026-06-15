@@ -259,6 +259,37 @@ def _monthly_pdf_logic():
         import traceback
         return f"<h3>Error generando PDF</h3><pre>{traceback.format_exc()}</pre>", 200
 
+@reports_bp.route('/mensual/ver-html', endpoint='monthly_view_html')
+@login_required
+def monthly_view_html():
+    """Ver reporte mensual en formato HTML en vez de PDF (optimizado para PWA)"""
+    try:
+        # Permitir a residentes o usuarios con el permiso correspondiente
+        if current_user.role != 'resident':
+            from utils.permissions import check_permission
+            if not check_permission(current_user.id, 'reportes.view', current_user.role):
+                flash("No tienes permiso para ver este reporte", "warning")
+                abort(403)
+
+        reference_dt = _parse_reference_date(request.args.get('reference_date')) or datetime.now()
+        period_mode = _resolve_period_mode(request.args.get('period_mode'))
+
+        company_info = get_company_info() or {}
+        report_data = reports.get_monthly_financial_report_data(
+            reference_dt=reference_dt,
+            period_mode=period_mode,
+        )
+        report_data = reports.add_current_balance_context(report_data)
+
+        return render_template(
+            'resident_monthly_report.html',
+            report_data=report_data,
+            company_info=company_info
+        )
+    except Exception as e:
+        import traceback
+        return f"<h3>Error generando reporte HTML</h3><pre>{traceback.format_exc()}</pre>", 200
+
 
 # ========== API ENDPOINTS ==========
 

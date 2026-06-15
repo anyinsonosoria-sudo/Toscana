@@ -1,0 +1,208 @@
+{% extends "resident_portal_base.html" %}
+
+{% block title %}
+    {% if doc_type == 'invoice' %}Factura #{{ invoice.id }}
+    {% elif doc_type == 'receipt' %}Recibo de Pago #{{ payment.id }}
+    {% elif doc_type == 'statement' %}Estado de Cuenta
+    {% else %}Documento{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="resident-container mt-4 mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4 d-print-none">
+        <a href="javascript:history.back()" class="btn btn-outline-secondary rounded-pill px-4">
+            <i class="bi bi-arrow-left"></i> Volver
+        </a>
+        <button onclick="window.print()" class="btn btn-primary rounded-pill px-4">
+            <i class="bi bi-printer"></i> Imprimir / Guardar PDF
+        </button>
+    </div>
+
+    <div class="card shadow-sm border-0" style="border-radius: 16px; overflow: hidden;">
+        <div class="card-body p-4 p-md-5 bg-white text-dark">
+            
+            <!-- Header -->
+            <div class="row mb-5 border-bottom pb-4">
+                <div class="col-sm-6 text-center text-sm-start mb-3 mb-sm-0">
+                    <h2 class="fw-bold" style="color: var(--primary);">{{ company_info.name or 'Residencial Toscana' }}</h2>
+                    {% if company_info.address %}<div class="text-muted small">{{ company_info.address }}</div>{% endif %}
+                    {% if company_info.phone %}<div class="text-muted small">Tel: {{ company_info.phone }}</div>{% endif %}
+                    {% if company_info.email %}<div class="text-muted small">{{ company_info.email }}</div>{% endif %}
+                </div>
+                <div class="col-sm-6 text-center text-sm-end">
+                    {% if doc_type == 'invoice' %}
+                        <h4 class="fw-bold text-secondary mb-1">FACTURA</h4>
+                        <div class="text-muted">No. {{ invoice.number or invoice.id }}</div>
+                        <div class="text-muted mt-2"><strong>Emitida:</strong> {{ invoice.issued_date }}</div>
+                    {% elif doc_type == 'receipt' %}
+                        <h4 class="fw-bold text-success mb-1">RECIBO DE PAGO</h4>
+                        <div class="text-muted">No. {{ payment.id }}</div>
+                        <div class="text-muted mt-2"><strong>Fecha:</strong> {{ payment.payment_date }}</div>
+                    {% elif doc_type == 'statement' %}
+                        <h4 class="fw-bold text-info mb-1">ESTADO DE CUENTA</h4>
+                        <div class="text-muted">Generado: {{ current_date }}</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Client Info -->
+            <div class="row mb-5 bg-light p-3 rounded" style="border-left: 4px solid var(--primary);">
+                <div class="col-12">
+                    <h6 class="fw-bold mb-1">Cliente:</h6>
+                    <div class="fs-5">{{ resident_name }}</div>
+                    <div class="text-muted">Apartamento {{ apt_number }}</div>
+                </div>
+            </div>
+
+            <!-- Content Details -->
+            {% if doc_type == 'invoice' %}
+                <div class="mb-4">
+                    <h6 class="fw-bold border-bottom pb-2 mb-3">Detalle del Cargo</h6>
+                    <table class="table table-borderless">
+                        <thead class="border-bottom">
+                            <tr>
+                                <th>Descripción</th>
+                                <th class="text-end">Monto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>{{ invoice.description }}</td>
+                                <td class="text-end fw-bold">RD$ {{ "{:,.2f}".format(invoice.amount) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="row mt-5">
+                    <div class="col-sm-6 offset-sm-6 text-end">
+                        <table class="table table-borderless table-sm">
+                            <tr>
+                                <td class="text-muted">Total Pagado:</td>
+                                <td class="text-success">RD$ {{ "{:,.2f}".format(invoice.total_paid) }}</td>
+                            </tr>
+                            <tr class="border-top">
+                                <td class="fw-bold fs-5">Pendiente:</td>
+                                <td class="fw-bold fs-5 text-danger">RD$ {{ "{:,.2f}".format(invoice.amount - invoice.total_paid) }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+            {% elif doc_type == 'receipt' %}
+                <div class="mb-4">
+                    <h6 class="fw-bold border-bottom pb-2 mb-3">Detalle del Pago</h6>
+                    <div class="row">
+                        <div class="col-6 mb-2">
+                            <span class="text-muted small">Método de Pago:</span><br>
+                            <strong>{{ payment.method }}</strong>
+                        </div>
+                        <div class="col-6 mb-2 text-end">
+                            <span class="text-muted small">Monto Pagado:</span><br>
+                            <strong class="text-success fs-5">RD$ {{ "{:,.2f}".format(payment.amount) }}</strong>
+                        </div>
+                    </div>
+                    {% if payment.notes %}
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <span class="text-muted small">Notas:</span><br>
+                            <em>{{ payment.notes }}</em>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <div class="mt-5 border-top pt-4">
+                    <h6 class="fw-bold mb-3">Aplicado a la Factura:</h6>
+                    <table class="table table-borderless table-sm">
+                        <tr>
+                            <td>{{ invoice.description }}</td>
+                            <td class="text-end text-muted">RD$ {{ "{:,.2f}".format(invoice.amount) }}</td>
+                        </tr>
+                    </table>
+                </div>
+
+            {% elif doc_type == 'statement' %}
+                <div class="row mb-4 text-center">
+                    <div class="col-12">
+                        <div class="p-3 bg-light rounded d-inline-block">
+                            <span class="text-muted d-block mb-1">Balance Actual</span>
+                            <span class="fs-2 fw-bold {% if balance > 0 %}text-danger{% elif balance < 0 %}text-success{% else %}text-secondary{% endif %}">
+                                RD$ {{ "{:,.2f}".format(balance) }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-5">
+                    <h6 class="fw-bold border-bottom pb-2 mb-3">Últimas Facturas (Cargos)</h6>
+                    {% if invoices %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr class="text-muted small">
+                                    <th>Fecha</th>
+                                    <th>Concepto</th>
+                                    <th class="text-end">Monto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for inv in invoices %}
+                                <tr>
+                                    <td>{{ inv.issued_date }}</td>
+                                    <td>{{ inv.description }}</td>
+                                    <td class="text-end text-danger">RD$ {{ "{:,.2f}".format(inv.amount) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted small">No hay facturas recientes.</p>
+                    {% endif %}
+                </div>
+
+                <div class="mb-4">
+                    <h6 class="fw-bold border-bottom pb-2 mb-3">Últimos Pagos (Abonos)</h6>
+                    {% if payments %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr class="text-muted small">
+                                    <th>Fecha</th>
+                                    <th>Método</th>
+                                    <th class="text-end">Monto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for pay in payments %}
+                                <tr>
+                                    <td>{{ pay.paid_date }}</td>
+                                    <td>{{ pay.method }}</td>
+                                    <td class="text-end text-success">RD$ {{ "{:,.2f}".format(pay.amount) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted small">No hay pagos recientes.</p>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            <div class="mt-5 text-center text-muted small border-top pt-4">
+                Documento generado a través del Portal de Residentes de Toscana.
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    @media print {
+        body { background: white !important; }
+        .resident-sidebar, .resident-mobile-header, .d-print-none { display: none !important; }
+        .resident-main { padding: 0 !important; margin: 0 !important; }
+        .card { box-shadow: none !important; border: none !important; }
+    }
+</style>
+{% endblock %}

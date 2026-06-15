@@ -58,8 +58,8 @@
                         </div>
                         <div class="text-end">
                             <div class="resident-unit-card__value">RD$ {{ '{:,.2f}'.format(unit.balance or 0) }}</div>
-                            <a href="{{ url_for('billing.download_statement_pdf', unit_id=unit.unit_id) }}" download class="btn btn-sm btn-outline-primary mt-2 rounded-pill">
-                                <i class="bi bi-file-earmark-pdf"></i> Descargar PDF
+                            <a href="{{ url_for('billing.view_statement_html', unit_id=unit.unit_id) }}" class="btn btn-sm btn-outline-primary mt-2 rounded-pill">
+                                <i class="bi bi-file-earmark-text"></i> Ver Estado de Cuenta
                             </a>
                         </div>
                     </div>
@@ -95,8 +95,8 @@
                         </div>
                         <div class="text-end">
                             <div class="resident-list-item__value text-danger">RD$ {{ '{:,.2f}'.format(invoice.remaining or 0) }}</div>
-                            <a href="{{ url_for('billing.view_invoice_pdf', invoice_id=invoice.id) }}" download class="btn btn-sm btn-outline-secondary mt-2 rounded-pill">
-                                <i class="bi bi-file-earmark-text"></i> Ver Factura PDF
+                            <a href="{{ url_for('billing.view_invoice_html', invoice_id=invoice.id) }}" class="btn btn-sm btn-outline-secondary mt-2 rounded-pill">
+                                <i class="bi bi-file-earmark-text"></i> Ver Factura
                             </a>
                         </div>
                     </div>

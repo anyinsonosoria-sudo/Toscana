@@ -1,0 +1,163 @@
+{% extends "resident_portal_base.html" %}
+
+{% block title %}Reporte Financiero Mensual{% endblock %}
+
+{% block content %}
+<div class="resident-container mt-4 mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4 d-print-none">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary rounded-pill px-4">
+            <i class="bi bi-arrow-left"></i> Volver al Inicio
+        </a>
+        <button onclick="window.print()" class="btn btn-primary rounded-pill px-4">
+            <i class="bi bi-printer"></i> Imprimir / PDF
+        </button>
+    </div>
+
+    <div class="card shadow-sm border-0" style="border-radius: 16px; overflow: hidden;">
+        <div class="card-body p-4 p-md-5 bg-white text-dark">
+            
+            <div class="text-center mb-5 border-bottom pb-4">
+                <h2 class="fw-bold" style="color: var(--primary);">{{ company_info.name or 'Residencial Toscana' }}</h2>
+                <h4 class="text-muted mt-3">Reporte Financiero Consolidado</h4>
+                <div class="badge bg-secondary mt-2 px-3 py-2 fs-6 rounded-pill">
+                    {{ report_data.period_label }}
+                </div>
+                <div class="text-muted small mt-2">Del {{ report_data.date_from }} al {{ report_data.date_to }}</div>
+            </div>
+
+            <!-- Balances -->
+            <div class="row g-3 mb-5">
+                <div class="col-sm-6 col-md-3">
+                    <div class="p-3 bg-light rounded text-center h-100">
+                        <div class="text-muted small mb-1">Saldo Inicial</div>
+                        <div class="fs-5 fw-bold">RD$ {{ "{:,.2f}".format(report_data.opening_balance) }}</div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-md-3">
+                    <div class="p-3 bg-light rounded text-center h-100">
+                        <div class="text-muted small mb-1">Cobrado (Ingresos)</div>
+                        <div class="fs-5 fw-bold text-success">RD$ {{ "{:,.2f}".format(report_data.total_collections) }}</div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-md-3">
+                    <div class="p-3 bg-light rounded text-center h-100">
+                        <div class="text-muted small mb-1">Gastos (Egresos)</div>
+                        <div class="fs-5 fw-bold text-danger">RD$ {{ "{:,.2f}".format(report_data.total_expenses) }}</div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-md-3">
+                    <div class="p-3 rounded text-center h-100" style="background-color: var(--primary); color: white;">
+                        <div class="small mb-1 opacity-75">Saldo Final</div>
+                        <div class="fs-4 fw-bold">RD$ {{ "{:,.2f}".format(report_data.closing_balance) }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resumen Operativo -->
+            <div class="row mb-5">
+                <div class="col-12">
+                    <h5 class="fw-bold border-bottom pb-2 mb-4">Resumen Operativo del Mes</h5>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card bg-success text-white border-0 h-100" style="border-radius: 12px;">
+                        <div class="card-body">
+                            <h6><i class="bi bi-graph-up-arrow"></i> Cobros Recibidos</h6>
+                            <h3 class="fw-bold">{{ report_data.collections|length }}</h3>
+                            <small class="opacity-75">Ingresos registrados en el período</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card bg-danger text-white border-0 h-100" style="border-radius: 12px;">
+                        <div class="card-body">
+                            <h6><i class="bi bi-graph-down-arrow"></i> Gastos Registrados</h6>
+                            <h3 class="fw-bold">{{ report_data.expenses|length }}</h3>
+                            <small class="opacity-75">Pagos y compras del condominio</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card bg-warning text-dark border-0 h-100" style="border-radius: 12px;">
+                        <div class="card-body">
+                            <h6><i class="bi bi-hourglass-split"></i> Cuentas por Cobrar</h6>
+                            <h3 class="fw-bold">{{ report_data.pending_receivables|length }}</h3>
+                            <small class="opacity-75">Balance total: RD$ {{ "{:,.2f}".format(report_data.total_pending_receivables) }}</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detalles de Gastos -->
+            <div class="mb-5">
+                <h5 class="fw-bold border-bottom pb-2 mb-3">Detalle de Gastos</h5>
+                {% if report_data.expenses %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr class="text-muted small">
+                                <th>Fecha</th>
+                                <th>Concepto</th>
+                                <th class="text-end">Monto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for exp in report_data.expenses %}
+                            <tr>
+                                <td>{{ exp.date }}</td>
+                                <td>{{ exp.description }}</td>
+                                <td class="text-end text-danger fw-bold">RD$ {{ "{:,.2f}".format(exp.amount) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted small">No hubo gastos registrados en este período.</p>
+                {% endif %}
+            </div>
+            
+            <!-- Detalles de Cobros -->
+            <div class="mb-4">
+                <h5 class="fw-bold border-bottom pb-2 mb-3">Detalle de Ingresos por Apto</h5>
+                {% if report_data.collections %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr class="text-muted small">
+                                <th>Apto</th>
+                                <th>Residente</th>
+                                <th class="text-end">Monto Cobrado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for col in report_data.collections %}
+                            <tr>
+                                <td>{{ col.apt_number }}</td>
+                                <td>{{ col.resident_name }}</td>
+                                <td class="text-end text-success fw-bold">RD$ {{ "{:,.2f}".format(col.amount) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted small">No hubo ingresos registrados en este período.</p>
+                {% endif %}
+            </div>
+
+            <div class="mt-5 text-center text-muted small border-top pt-4">
+                Documento generado a través del Portal de Residentes de Toscana.
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    @media print {
+        body { background: white !important; }
+        .resident-sidebar, .resident-mobile-header, .d-print-none { display: none !important; }
+        .resident-main { padding: 0 !important; margin: 0 !important; }
+        .card { box-shadow: none !important; border: none !important; }
+    }
+</style>
+{% endblock %}

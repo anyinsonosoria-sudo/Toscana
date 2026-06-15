@@ -31,8 +31,8 @@
                         <div class="text-end">
                             <div class="resident-list-item__value text-danger">RD$ {{ '{:,.2f}'.format(invoice.remaining or 0) }}</div>
                             <div class="d-flex gap-2 justify-content-end mt-2">
-                                <a href="{{ url_for('billing.view_invoice_pdf', invoice_id=invoice.id) }}" download class="btn btn-sm btn-outline-primary rounded-pill">
-                                    <i class="bi bi-file-earmark-pdf"></i> PDF
+                                <a href="{{ url_for('billing.view_invoice_html', invoice_id=invoice.id) }}" class="btn btn-sm btn-outline-primary rounded-pill">
+                                    <i class="bi bi-file-earmark-text"></i> Ver Factura
                                 </a>
                                 <button type="button" class="btn btn-sm btn-primary rounded-pill" data-bs-toggle="modal" data-bs-target="#reportPaymentModal{{ invoice.id }}">
                                     <i class="bi bi-wallet2"></i> Reportar Pago
@@ -137,8 +137,8 @@
                             <td data-label="Fecha">{{ pay.paid_date or 'N/D' }}</td>
                             <td data-label="Monto" class="text-end text-success fw-bold">RD$ {{ '{:,.2f}'.format(pay.amount or 0) }}</td>
                             <td data-label="Recibo" class="text-end">
-                                <a href="{{ url_for('billing.view_receipt_pdf', payment_id=pay.id) }}" download class="btn btn-sm btn-outline-success rounded-pill">
-                                    <i class="bi bi-file-earmark-check"></i> Recibo PDF
+                                <a href="{{ url_for('billing.view_receipt_html', payment_id=pay.id) }}" class="btn btn-sm btn-outline-success rounded-pill">
+                                    <i class="bi bi-file-earmark-text"></i> Ver Recibo
                                 </a>
                             </td>
                         </tr>
