@@ -1793,90 +1793,91 @@ def view_receipt_pdf(payment_id):
             as_attachment=True,
             mimetype='application/pdf'
         )
+                    'phone': a.get('resident_phone', ''),
+                })
+        return jsonify({'success': True, 'clients': clients})
     except Exception as e:
-        logger.error(f"Error en view_receipt_pdf: {e}")
-        flash("Error al cargar el recibo de pago", "error")
-        if current_user.role == 'resident':
-            return redirect(url_for('dashboard'))
-        return redirect(url_for('billing.payments'))
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@billing_bp.route('/apartamentos/estado-cuenta/<int:unit_id>', endpoint='download_statement_pdf')
+@billing_bp.route('/api/services', methods=['GET'])
 @login_required
-def download_statement_pdf(unit_id):
-    """Ver o descargar el estado de cuenta actualizado de un apartamento en PDF"""
+def api_services():
+    """Devuelve lista de servicios/productos activos como JSON."""
     try:
-        request_user = _get_request_user()
-        import apartments
-        import company
-        from db import get_conn
-        import receipt_pdf
+        svcs = products_services.list_products_services(active_only=True)
+        services = [{'id': s['id'], 'code': s.get('code', ''), 'name': s['name'],
+                      'price': s.get('price', 0), 'type': s.get('type', '')} for s in svcs]
+        return jsonify({'success': True, 'services': services})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@billing_bp.route('/api/pending-invoices', methods=['GET'])
+@login_required
+def api_pending_invoices():
+    """Devuelve facturas pendientes con balance, opcionalmente filtradas por client_id."""
+    try:
+        client_id = request.args.get('client_id', type=int)
         
-        # 1. Obtener apartamento
-        apt = apartments.get_apartment(unit_id)
-        if not apt:
-            flash("Apartamento no encontrado", "error")
-            return redirect(url_for('dashboard'))
-            
-        # 2. Validación de pertenencia si es residente
-        if request_user.role == 'resident':
-            allowed_unit_ids = _get_resident_allowed_unit_ids()
-            if unit_id not in allowed_unit_ids:
-                flash("Acceso denegado: este apartamento no le pertenece", "error")
-                return redirect(url_for('dashboard'))
-        else:
-            from utils.permissions import check_permission
-            if not check_permission(request_user.id, 'apartamentos.view', request_user.role):
-                flash("No tienes permiso para ver el estado de cuenta de este apartamento", "warning")
-                abort(403)
-                
-        # 3. Formatear la ruta y el nombre del PDF
-        apt_number = apt.get('number', 'N/A')
-        resident_name = apt.get('resident_name', 'Cliente')
-        safe_resident_name = "".join(c for c in resident_name if c.isalnum() or c in (' ', '_', '-')).strip()
+        from data_models.models import Invoice, Apartment, Payment
+        from extensions import db as sa_db
+        from sqlalchemy import func
         
-        pdf_filename = f"Apartamento {apt_number}-{safe_resident_name}-Estado de cuenta.pdf"
-        pdf_dir = Path(__file__).parent.parent / "static" / "invoices"
-        pdf_path = pdf_dir / pdf_filename
+        # Subquery for total_paid
+        paid_subq = sa_db.session.query(
+            Payment.invoice_id,
+            func.sum(Payment.amount).label('total_paid')
+        ).group_by(Payment.invoice_id).subquery()
         
-        # 4. Generar el PDF dinámicamente cada vez para contener datos totalmente vigentes
-        try:
-            pdf_dir.mkdir(parents=True, exist_ok=True)
+        query = sa_db.session.query(
+            Invoice.id,
+            Invoice.description,
+            Invoice.amount,
+            Invoice.issued_date,
+            Invoice.due_date,
+            Apartment.resident_name.label('client_name'),
+            Apartment.number.label('apartment_number'),
+            func.coalesce(paid_subq.c.total_paid, 0).label('total_paid')
+        ).outerjoin(Apartment, Invoice.unit_id == Apartment.id)\
+         .outerjoin(paid_subq, Invoice.id == paid_subq.c.invoice_id)\
+         .filter(Invoice.paid == False)
+         
+        if client_id:
+            query = query.filter(Invoice.unit_id == client_id)
             
-            from data_models.models import Invoice, Payment
-            from extensions import db as sa_db
+        query = query.order_by(Invoice.id.desc())
+        
+        results = query.all()
+        rows = []
+        for r in results:
+            rows.append({
+                'id': r.id,
+                'description': r.description,
+                'amount': r.amount,
+                'issued_date': r.issued_date,
+                'due_date': r.due_date,
+                'client_name': r.client_name,
+                'apartment_number': r.apartment_number,
+                'total_paid': r.total_paid,
+                'remaining': max(r.amount - r.total_paid, 0)
+            })
             
-            # Obtener facturas para el apartamento (hasta las últimas 20)
-            invoices_orm = Invoice.query.filter_by(unit_id=unit_id).order_by(Invoice.issued_date.desc()).limit(20).all()
-            invoices = [{
-                'id': i.id, 'description': i.description, 'amount': i.amount,
-                'issued_date': i.issued_date, 'due_date': i.due_date, 'paid': 1 if i.paid else 0
-            } for i in invoices_orm]
-            
-            # Obtener cobros y abonos para el apartamento (hasta los últimos 20)
-            payments_orm = Payment.query.join(Invoice).filter(Invoice.unit_id == unit_id).order_by(Payment.paid_date.desc()).limit(20).all()
-            payments = [{
-                'id': p.id, 'amount': p.amount, 'paid_date': p.paid_date,
-                'method': p.method, 'invoice_id': p.invoice_id
-            } for p in payments_orm]
-            
-            # Calcular balance
-            from models import get_balance
-            balance = get_balance(unit_id)
-            
-            company_info = company.get_company_info() or {}
-            
-            # Generar el PDF
-            receipt_pdf.generate_account_statement_pdf(apt, invoices, payments, company_info, str(pdf_path))
-        except Exception as e:
-            logger.error(f"Error generando PDF de estado de cuenta: {e}")
-            flash("No se pudo generar el PDF del estado de cuenta", "error")
-            return redirect(url_for('dashboard'))
-            
-        # 5. Servir el archivo PDF recién generado
-        return send_from_directory(
-            pdf_dir,
-            pdf_filename,
+        return jsonify({'success': True, 'invoices': rows})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Variable para verificar disponibilidad de senders
+try:
+    import senders
+    HAS_SENDERS = True
+except ImportError:
+    HAS_SENDERS = False
+
+
+# ========== COMPROBANTES DE PAGO Y ESTADOS DE CUENTA PARA RESIDENTES ==========
+
 @billing_bp.route('/pagos/pdf/<int:payment_id>', endpoint='view_receipt_pdf')
 @login_required
 def view_receipt_pdf(payment_id):
