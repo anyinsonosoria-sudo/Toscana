@@ -1877,6 +1877,200 @@ def download_statement_pdf(unit_id):
         return send_from_directory(
             pdf_dir,
             pdf_filename,
+@billing_bp.route('/pagos/pdf/<int:payment_id>', endpoint='view_receipt_pdf')
+@login_required
+def view_receipt_pdf(payment_id):
+    """Ver/descargar PDF de un recibo de pago"""
+    try:
+        from db import get_conn
+        import company
+        import receipt_pdf
+        
+        from data_models.models import Payment, Invoice
+        from extensions import db as sa_db
+        
+        # 1. Obtener datos del pago y su factura
+        p_obj = sa_db.session.get(Payment, payment_id)
+        
+        if p_obj:
+            payment = {
+                'id': p_obj.id,
+                'amount': p_obj.amount,
+                'method': p_obj.method,
+                'paid_date': p_obj.paid_date,
+                'notes': p_obj.notes,
+                'invoice_id': p_obj.invoice_id,
+                'unit_id': p_obj.invoice.unit_id,
+                'invoice_desc': p_obj.invoice.description,
+                'invoice_amount': p_obj.invoice.amount
+            }
+        else:
+            payment = None
+        
+        if not payment:
+            flash("Pago no encontrado", "error")
+            if current_user.role == 'resident':
+                return redirect(url_for('dashboard'))
+            return redirect(url_for('billing.payments'))
+            
+        # 2. Validación de pertenencia si es residente
+        if current_user.role == 'resident':
+            allowed_unit_ids = _get_resident_allowed_unit_ids()
+            if payment['unit_id'] not in allowed_unit_ids:
+                flash("Acceso denegado: este recibo no pertenece a su apartamento", "error")
+                return redirect(url_for('dashboard'))
+        else:
+            from utils.permissions import check_permission
+            if not check_permission(current_user.id, 'facturacion.view', current_user.role):
+                flash("No tienes permiso para ver este recibo", "warning")
+                abort(403)
+                
+        # 3. Obtener el apartamento
+        apt = apartments.get_apartment(payment['unit_id'])
+        if not apt:
+            flash("Apartamento asociado no encontrado", "error")
+            return redirect(url_for('dashboard'))
+            
+        # 4. Formatear la ruta y el nombre del PDF
+        apt_number = apt.get('number', 'N/A')
+        resident_name = apt.get('resident_name', 'Cliente')
+        invoice_num = payment['invoice_id']
+        
+        # Limpieza simple de caracteres especiales
+        safe_resident_name = "".join(c for c in resident_name if c.isalnum() or c in (' ', '_', '-')).strip()
+        
+        pdf_filename = f"Apartamento {apt_number}-{safe_resident_name}-Comprobante de pago Factura #{invoice_num}.pdf"
+        pdf_dir = Path(__file__).parent.parent / "static" / "invoices"
+        pdf_path = pdf_dir / pdf_filename
+        
+        # 5. Generar PDF si no existe en disco
+        if not pdf_path.exists():
+            try:
+                pdf_dir.mkdir(parents=True, exist_ok=True)
+                company_info = company.get_company_info() or {}
+                
+                # Obtener total pagado histórico en esa factura
+                from sqlalchemy import func
+                total_paid = sa_db.session.query(func.sum(Payment.amount)).filter_by(invoice_id=invoice_num).scalar() or 0.0
+                
+                payment_data = {
+                    'id': payment['id'],
+                    'amount': payment['amount'],
+                    'method': payment['method'],
+                    'payment_date': payment['paid_date'][:10] if payment['paid_date'] else datetime.now().strftime('%Y-%m-%d'),
+                    'notes': payment['notes'] or ''
+                }
+                
+                invoice_data = {
+                    'id': invoice_num,
+                    'description': payment['invoice_desc'],
+                    'amount': payment['invoice_amount'],
+                    'total_paid': total_paid,
+                    'apartment_number': apt_number,
+                    'resident_name': resident_name,
+                    'resident_email': apt.get('resident_email', '') or '',
+                    'resident_phone': apt.get('resident_phone', '') or ''
+                }
+                
+                receipt_pdf.generate_payment_receipt_pdf(payment_data, invoice_data, company_info, str(pdf_path))
+            except Exception as e:
+                logger.error(f"Error generando PDF de recibo: {e}")
+                flash("No se pudo generar el PDF del recibo de pago", "error")
+                if current_user.role == 'resident':
+                    return redirect(url_for('dashboard'))
+                return redirect(url_for('billing.payments'))
+                
+        # 6. Servir el archivo PDF de forma interactiva
+        return send_from_directory(
+            pdf_dir,
+            pdf_filename,
+            as_attachment=True,
+            mimetype='application/pdf'
+        )
+    except Exception as e:
+        logger.error(f"Error en view_receipt_pdf: {e}")
+        flash("Error al cargar el recibo de pago", "error")
+        if current_user.role == 'resident':
+            return redirect(url_for('dashboard'))
+        return redirect(url_for('billing.payments'))
+
+
+@billing_bp.route('/apartamentos/estado-cuenta/<int:unit_id>', endpoint='download_statement_pdf')
+@login_required
+def download_statement_pdf(unit_id):
+    """Ver o descargar el estado de cuenta actualizado de un apartamento en PDF"""
+    try:
+        request_user = _get_request_user()
+        import apartments
+        import company
+        from db import get_conn
+        import receipt_pdf
+        
+        # 1. Obtener apartamento
+        apt = apartments.get_apartment(unit_id)
+        if not apt:
+            flash("Apartamento no encontrado", "error")
+            return redirect(url_for('dashboard'))
+            
+        # 2. Validación de pertenencia si es residente
+        if request_user.role == 'resident':
+            allowed_unit_ids = _get_resident_allowed_unit_ids()
+            if unit_id not in allowed_unit_ids:
+                flash("Acceso denegado: este apartamento no le pertenece", "error")
+                return redirect(url_for('dashboard'))
+        else:
+            from utils.permissions import check_permission
+            if not check_permission(request_user.id, 'apartamentos.view', request_user.role):
+                flash("No tienes permiso para ver el estado de cuenta de este apartamento", "warning")
+                abort(403)
+                
+        # 3. Formatear la ruta y el nombre del PDF
+        apt_number = apt.get('number', 'N/A')
+        resident_name = apt.get('resident_name', 'Cliente')
+        safe_resident_name = "".join(c for c in resident_name if c.isalnum() or c in (' ', '_', '-')).strip()
+        
+        pdf_filename = f"Apartamento {apt_number}-{safe_resident_name}-Estado de cuenta.pdf"
+        pdf_dir = Path(__file__).parent.parent / "static" / "invoices"
+        pdf_path = pdf_dir / pdf_filename
+        
+        # 4. Generar el PDF dinámicamente cada vez para contener datos totalmente vigentes
+        try:
+            pdf_dir.mkdir(parents=True, exist_ok=True)
+            
+            from data_models.models import Invoice, Payment
+            from extensions import db as sa_db
+            
+            # Obtener facturas para el apartamento (hasta las últimas 20)
+            invoices_orm = Invoice.query.filter_by(unit_id=unit_id).order_by(Invoice.issued_date.desc()).limit(20).all()
+            invoices = [{
+                'id': i.id, 'description': i.description, 'amount': i.amount,
+                'issued_date': i.issued_date, 'due_date': i.due_date, 'paid': 1 if i.paid else 0
+            } for i in invoices_orm]
+            
+            # Obtener cobros y abonos para el apartamento (hasta los últimos 20)
+            payments_orm = Payment.query.join(Invoice).filter(Invoice.unit_id == unit_id).order_by(Payment.paid_date.desc()).limit(20).all()
+            payments = [{
+                'id': p.id, 'amount': p.amount, 'paid_date': p.paid_date,
+                'method': p.method, 'invoice_id': p.invoice_id
+            } for p in payments_orm]
+            
+            # Calcular balance
+            from models import get_balance
+            balance = get_balance(unit_id)
+            
+            company_info = company.get_company_info() or {}
+            
+            # Generar el PDF
+            receipt_pdf.generate_account_statement_pdf(apt, invoices, payments, company_info, str(pdf_path))
+        except Exception as e:
+            logger.error(f"Error generando PDF de estado de cuenta: {e}")
+            flash("No se pudo generar el PDF del estado de cuenta", "error")
+            return redirect(url_for('dashboard'))
+            
+        # 5. Servir el archivo PDF recién generado
+        return send_from_directory(
+            pdf_dir,
+            pdf_filename,
             as_attachment=True,
             mimetype='application/pdf'
         )
@@ -1895,14 +2089,12 @@ def view_invoice_html(invoice_id):
         request_user = _get_request_user()
         invoice = models.get_invoice_by_id(invoice_id)
         if not invoice:
-            flash("Factura no encontrada", "error")
-            return redirect(url_for('dashboard') if request_user.role == 'resident' else url_for('billing.invoices'))
+            return "Error: Factura no encontrada", 400
         
         if request_user.role == 'resident':
             allowed_unit_ids = _get_resident_allowed_unit_ids()
             if invoice.get('unit_id') not in allowed_unit_ids:
-                flash("Acceso denegado: esta factura no pertenece a su apartamento", "error")
-                return redirect(url_for('dashboard'))
+                return f"Error: Acceso denegado. Unit_id {invoice.get('unit_id')} no esta en {allowed_unit_ids}", 403
         else:
             from utils.permissions import check_permission
             if not check_permission(request_user.id, 'facturacion.view', request_user.role):
@@ -1928,9 +2120,8 @@ def view_invoice_html(invoice_id):
             apt_number=apt.get('number', 'N/A')
         )
     except Exception as e:
-        logger.error(f"Error en view_invoice_html: {e}")
-        flash("Error al cargar la factura", "error")
-        return redirect(url_for('dashboard'))
+        import traceback
+        return f"<h3>Error interno al cargar la factura:</h3><pre>{traceback.format_exc()}</pre>", 500
 
 @billing_bp.route('/pagos/ver-html/<int:payment_id>', endpoint='view_receipt_html')
 @login_required
@@ -1942,8 +2133,7 @@ def view_receipt_html(payment_id):
         p_obj = sa_db.session.get(Payment, payment_id)
         
         if not p_obj:
-            flash("Pago no encontrado", "error")
-            return redirect(url_for('dashboard') if current_user.role == 'resident' else url_for('billing.payments'))
+            return "Error: Pago no encontrado", 400
             
         payment_dict = {
             'id': p_obj.id, 'amount': p_obj.amount, 'method': p_obj.method,
@@ -1954,8 +2144,7 @@ def view_receipt_html(payment_id):
         if current_user.role == 'resident':
             allowed_unit_ids = _get_resident_allowed_unit_ids()
             if payment_dict['unit_id'] not in allowed_unit_ids:
-                flash("Acceso denegado: este recibo no pertenece a su apartamento", "error")
-                return redirect(url_for('dashboard'))
+                return f"Error: Acceso denegado al recibo. Unit_id {payment_dict['unit_id']} no esta en {allowed_unit_ids}", 403
         else:
             from utils.permissions import check_permission
             if not check_permission(current_user.id, 'facturacion.view', current_user.role):
@@ -1965,6 +2154,10 @@ def view_receipt_html(payment_id):
         import apartments, company
         apt = apartments.get_apartment(payment_dict['unit_id']) or {}
         company_info = company.get_company_info() or {}
+        
+        invoice = models.get_invoice_by_id(p_obj.invoice_id)
+        if not invoice:
+            return "Error: Factura asociada no encontrada", 400
         
         invoice_dict = {'id': p_obj.invoice_id, 'description': p_obj.invoice.description, 'amount': p_obj.invoice.amount}
         
@@ -1978,9 +2171,8 @@ def view_receipt_html(payment_id):
             apt_number=apt.get('number', 'N/A')
         )
     except Exception as e:
-        logger.error(f"Error en view_receipt_html: {e}")
-        flash("Error al cargar el recibo", "error")
-        return redirect(url_for('dashboard'))
+        import traceback
+        return f"<h3>Error interno al cargar el recibo:</h3><pre>{traceback.format_exc()}</pre>", 500
 
 @billing_bp.route('/apartamentos/estado-cuenta-html/<int:unit_id>', endpoint='view_statement_html')
 @login_required

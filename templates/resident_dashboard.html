@@ -177,7 +177,7 @@
                                 {% for inv in pending_invoices %}
                                 <tr class="invoice-item-row" style="border-bottom: 1px solid var(--gray-100);">
                                     <td class="py-3 border-0" data-label="Concepto / Descripcion">
-                                        <div style="font-weight: 600; color: var(--text-color);">{{ inv.description }}</div>
+                                        <div style="font-weight: 600;">{{ inv.description }}</div>
                                         <div class="text-mono small mt-0.5" style="color: var(--gray-500); font-size: 0.75rem;">
                                             <i class="bi bi-building me-1"></i> Apartamento Asociado
                                         </div>
@@ -250,7 +250,7 @@
                                 {% for pay in payments_history %}
                                 <tr style="border-bottom: 1px solid var(--gray-100);">
                                     <td class="py-3 border-0" data-label="Concepto de Factura">
-                                        <div style="font-weight: 600; color: var(--text-color);">{{ pay.invoice_desc }}</div>
+                                        <div style="font-weight: 600;">{{ pay.invoice_desc }}</div>
                                         {% if pay.notes %}
                                         <div class="text-muted small mt-0.5" style="font-size: 0.78rem;">
                                             <i class="bi bi-chat-text me-1"></i> {{ pay.notes }}
@@ -329,7 +329,7 @@
                                 <span class="d-inline-flex align-items-center justify-content-center bg-light text-primary rounded-circle" style="width: 32px; height: 32px;">
                                     <i class="bi bi-calendar3" style="font-size: 0.85rem;"></i>
                                 </span>
-                                <span style="font-weight: 600; color: var(--text-color); font-size: 0.95rem;">{{ month.label }}</span>
+                                <span style="font-weight: 600; font-size: 0.95rem;">{{ month.label }}</span>
                             </div>
                             <a href="{{ url_for('reports.monthly_view_html', reference_date=month.ref_date, period_mode='previous_month') }}" 
                                class="btn btn-sm btn-outline-primary px-3 rounded-pill" style="font-size: 0.8rem; font-weight: 600;">
