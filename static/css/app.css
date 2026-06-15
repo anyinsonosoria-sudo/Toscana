@@ -1513,6 +1513,11 @@ body {
     border-bottom-color: var(--gray-300);
 }
 
+[data-theme="dark"] .data-table tbody tr {
+    background: var(--gray-100);
+    border-color: var(--gray-200);
+}
+
 [data-theme="dark"] .data-table tbody td,
 [data-theme="dark"] .data-table tbody td strong {
     border-bottom-color: var(--gray-200);
@@ -1520,7 +1525,7 @@ body {
 }
 
 [data-theme="dark"] .data-table tbody tr:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--gray-200);
 }
 
 [data-theme="dark"] .btn-action {

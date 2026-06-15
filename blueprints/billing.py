@@ -1460,7 +1460,7 @@ def view_invoice_pdf(invoice_id):
         return send_file(
             pdf_path,
             mimetype='application/pdf',
-            as_attachment=True,
+            as_attachment=False,
             download_name=pdf_filename
         )
         
