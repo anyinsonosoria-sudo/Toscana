@@ -101,3 +101,56 @@ function setupPwaInstallPrompt() {
         setTimeout(() => banner.classList.add('show'), 2000);
     }
 }
+
+// ====== PWA PDF DOWNLOAD FIX ======
+// This fixes the issue where authenticated PDF downloads fail in Android/iOS Standalone mode.
+document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('click', async function(e) {
+        // Intercept any link that has the download attribute
+        const link = e.target.closest('a[download]');
+        if (link) {
+            e.preventDefault();
+            
+            const originalHtml = link.innerHTML;
+            link.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="margin-right: 5px;"></span> Descargando...';
+            link.style.pointerEvents = 'none';
+            
+            try {
+                const response = await fetch(link.href);
+                if (!response.ok) {
+                    throw new Error('Error al descargar: ' + response.statusText);
+                }
+                
+                const blob = await response.blob();
+                const blobUrl = window.URL.createObjectURL(blob);
+                
+                // Extraer el nombre del archivo si es posible
+                let filename = link.getAttribute('download') || 'documento.pdf';
+                if (filename === '') filename = 'documento.pdf';
+                const disposition = response.headers.get('Content-Disposition');
+                if (disposition && disposition.indexOf('filename=') !== -1) {
+                    const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+                    if (matches != null && matches[1]) {
+                        filename = matches[1].replace(/['"]/g, '');
+                    }
+                }
+                
+                // Forzar la descarga del Blob local
+                const tempLink = document.createElement('a');
+                tempLink.href = blobUrl;
+                tempLink.download = filename;
+                document.body.appendChild(tempLink);
+                tempLink.click();
+                document.body.removeChild(tempLink);
+                
+                setTimeout(() => window.URL.revokeObjectURL(blobUrl), 100);
+            } catch (err) {
+                console.error("PWA Download Error:", err);
+                alert("Ocurrió un error al descargar el archivo. Por favor, intenta de nuevo.");
+            } finally {
+                link.innerHTML = originalHtml;
+                link.style.pointerEvents = 'auto';
+            }
+        }
+    });
+});
