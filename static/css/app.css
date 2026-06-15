@@ -1183,7 +1183,11 @@ body {
         display: flex;
         flex-direction: column;
         justify-content: center;
-        color: var(--gray-800);
+        color: #1F2937 !important;
+    }
+    
+    .data-table tbody td strong {
+        color: #1F2937 !important;
     }
 
     .data-table tbody td::before {
@@ -1509,9 +1513,10 @@ body {
     border-bottom-color: var(--gray-300);
 }
 
-[data-theme="dark"] .data-table tbody td {
+[data-theme="dark"] .data-table tbody td,
+[data-theme="dark"] .data-table tbody td strong {
     border-bottom-color: var(--gray-200);
-    color: var(--gray-800);
+    color: #f1f5f9 !important;
 }
 
 [data-theme="dark"] .data-table tbody tr:hover {
