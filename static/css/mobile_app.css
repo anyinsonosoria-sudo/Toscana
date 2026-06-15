@@ -2,10 +2,10 @@
    Mobile App (PWA) Native Feel Optimizations
    ========================================================================== */
 
-/* 1. Prevent "pull-to-refresh" and text selection globally, except in inputs/chat */
+/* 1. Optimize scrolling and overscroll behavior */
 body.is-pwa, 
-.resident-shell {
-    /* Disable pull-to-refresh to make it feel like a solid native app */
+body.is-resident-shell {
+    /* Prevent pull-to-refresh on the body to keep the app shell stable */
     overscroll-behavior-y: none;
     
     /* Disable tap highlight on Android (the blue box) */
@@ -13,6 +13,11 @@ body.is-pwa,
     
     /* Smooth scrolling globally */
     scroll-behavior: smooth;
+}
+
+/* Allow native pull-to-refresh only inside the main content area */
+.main-content {
+    overscroll-behavior-y: auto;
 }
 
 /* Removed user-select: none as it breaks clicks on iOS Safari */
@@ -87,22 +92,23 @@ body.is-pwa,
     padding: 0.5rem;
 }
 
-/* Bottom Navigation Bar for Mobile PWA (Recovered from corrupted file) */
+/* Bottom Navigation Bar for Mobile PWA */
 .resident-bottom-nav {
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
     height: 68px;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(12px);
+    background: rgba(255, 255, 255, 0.85); /* Slightly more transparent for better glass effect */
+    backdrop-filter: blur(16px); /* Stronger blur */
+    -webkit-backdrop-filter: blur(16px);
     border-top: 1px solid rgba(15, 23, 42, 0.08);
     display: flex;
     justify-content: space-around;
     align-items: center;
     padding-bottom: env(safe-area-inset-bottom);
     z-index: 1000;
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.04);
 }
 
 .resident-bottom-nav__item {
@@ -139,6 +145,19 @@ body.is-pwa,
 }
 
 @media (max-width: 992px) {
+    /* Hide top header and sidebar for residents, rely entirely on bottom nav */
+    body.is-resident-shell .mobile-header,
+    body.is-resident-shell .sidebar,
+    body.is-resident-shell .sidebar-backdrop {
+        display: none !important;
+    }
+    
+    /* Remove padding added by the top header */
+    body.is-resident-shell .main-content {
+        padding-top: 1rem !important;
+        margin-left: 0 !important;
+    }
+
     body {
         padding-bottom: calc(68px + env(safe-area-inset-bottom) + 1rem) !important;
     }

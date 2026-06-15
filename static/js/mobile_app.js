@@ -11,7 +11,13 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupHaptics() {
-    // Removed because calling navigator.vibrate on touchstart cancels click events on some Android devices
+    // Safe haptic feedback using touchend to avoid canceling click events on Android
+    document.addEventListener('touchend', (e) => {
+        const target = e.target.closest('.btn, .nav-link, .resident-switcher__item, .resident-bottom-nav__item');
+        if (target && navigator.vibrate) {
+            navigator.vibrate(10); // Very light haptic tap
+        }
+    }, { passive: true });
 }
 
 function setupPwaInstallPrompt() {
@@ -44,6 +50,14 @@ function setupPwaInstallPrompt() {
     const installBtn = banner.querySelector('.pwa-install-btn');
     const closeBtn = banner.querySelector('.pwa-install-banner__close');
 
+    // Helper to check if dismissed recently (7 days)
+    const checkDismissed = () => {
+        const dismissedAt = localStorage.getItem('pwa-prompt-dismissed');
+        if (!dismissedAt) return false;
+        const daysPassed = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24);
+        return daysPassed < 7;
+    };
+
     // Only show if the browser fires beforeinstallprompt
     window.addEventListener('beforeinstallprompt', (e) => {
         // Prevent Chrome 67 and earlier from automatically showing the prompt
@@ -52,7 +66,7 @@ function setupPwaInstallPrompt() {
         deferredPrompt = e;
         
         // Show the banner if user hasn't dismissed it recently
-        if (!localStorage.getItem('pwa-prompt-dismissed')) {
+        if (!checkDismissed()) {
             setTimeout(() => banner.classList.add('show'), 2000);
         }
     });
@@ -80,7 +94,7 @@ function setupPwaInstallPrompt() {
       return /iphone|ipad|ipod/.test( userAgent );
     }
     
-    if (isIos() && !isStandalone && !localStorage.getItem('pwa-prompt-dismissed')) {
+    if (isIos() && !isStandalone && !checkDismissed()) {
         // Change text for iOS instructions
         banner.querySelector('.pwa-install-btn').style.display = 'none';
         banner.querySelector('.pwa-install-banner__text').innerHTML = 'Toca el botón <i class="bi bi-box-arrow-up"></i> Compartir y selecciona <strong>"Agregar a Inicio"</strong>.';

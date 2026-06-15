@@ -16,7 +16,7 @@
         linear-gradient(135deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.1) 100%),
         var(--primary);
     color: white;
-    box-shadow: 0 24px 50px rgba(15, 23, 42, 0.16);
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12), 0 8px 16px rgba(var(--primary-rgb, 0,0,0), 0.15);
 }
 
 .resident-hero::after {
@@ -103,20 +103,28 @@
     min-width: max-content;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.55rem;
     padding: 0.8rem 1rem;
+    min-height: 48px; /* Touch target standard */
     border-radius: 16px;
     background: white;
     color: var(--gray-700);
     text-decoration: none;
     font-weight: 700;
     border: 1px solid rgba(15, 23, 42, 0.06);
-    box-shadow: 0 10px 18px rgba(15, 23, 42, 0.05);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .resident-switcher__item:hover {
     color: var(--gray-900);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(15, 23, 42, 0.08);
+}
+
+.resident-switcher__item:active {
+    transform: scale(0.96); /* Micro-animation */
 }
 
 .resident-switcher__item.active {
@@ -133,9 +141,15 @@
 .resident-panel {
     background: white;
     border-radius: 24px;
-    border: 1px solid rgba(15, 23, 42, 0.06);
-    box-shadow: 0 16px 35px rgba(15, 23, 42, 0.06);
+    border: 1px solid rgba(15, 23, 42, 0.05);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.02);
     padding: 1.25rem;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Micro-animation global helper for interactive cards */
+.resident-panel.interactive:active {
+    transform: scale(0.98);
 }
 
 .resident-panel__header {
