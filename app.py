@@ -1234,24 +1234,7 @@ def _register_routes(app: Flask) -> None:
             link_label='Abrir resumen del portal',
         )
 
-    @app.route('/debug_reportes_html')
-def debug_reportes_html():
-    from services.resident_help import build_report_months
-    from datetime import datetime
-    
-    # Dummy context similar to resident_reports.html
-    context = {
-        'current_user': type('User', (), {'full_name': 'Test', 'username': 'test'}),
-        'apartments': [],
-        'total_pending': 0,
-        'total_paid': 0,
-        'company_info': {},
-        'report_months': build_report_months(),
-        'current_report_url': '/test_current_report_url',
-    }
-    return render_template('resident_reports.html', **context)
-
-def _get_resident_common_context():
+    def _get_resident_common_context():
         linked_apartments = residents.list_linked_apartments_for_user(
             current_user.id,
             fallback_email=current_user.email,
