@@ -1513,15 +1513,16 @@ body {
     border-bottom-color: var(--gray-300);
 }
 
-[data-theme="dark"] .data-table tbody tr {
-    background: var(--gray-100);
-    border-color: var(--gray-200);
-}
-
 [data-theme="dark"] .data-table tbody td,
 [data-theme="dark"] .data-table tbody td strong {
     border-bottom-color: var(--gray-200);
-    color: #f1f5f9 !important;
+}
+
+.resident-shell .data-table tbody td,
+.resident-shell .data-table tbody td strong,
+[data-theme="dark"] .resident-shell .data-table tbody td,
+[data-theme="dark"] .resident-shell .data-table tbody td strong {
+    color: #1F2937 !important;
 }
 
 [data-theme="dark"] .data-table tbody tr:hover {

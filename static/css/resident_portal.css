@@ -1833,8 +1833,12 @@
             bottom: calc(1rem + env(safe-area-inset-bottom));
         }
     }
-}
- / *   B o t t o m   N a v i g a t i o n   B a r   f o r   M o b i l e   P W A   * / 
+.resident-shell .data-table tbody td,
+.resident-shell .data-table tbody td strong,
+[data-theme="dark"] .resident-shell .data-table tbody td,
+[data-theme="dark"] .resident-shell .data-table tbody td strong {
+    color: #1F2937 !important;
+} / *   B o t t o m   N a v i g a t i o n   B a r   f o r   M o b i l e   P W A   * / 
  . r e s i d e n t - b o t t o m - n a v   { 
          p o s i t i o n :   f i x e d ; 
          b o t t o m :   0 ; 
