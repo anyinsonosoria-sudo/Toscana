@@ -1927,7 +1927,7 @@ def view_invoice_html(invoice_id):
         )
     except Exception as e:
         import traceback
-        return f"<h3>Error interno al cargar la factura:</h3><pre>{traceback.format_exc()}</pre>", 500
+        return f"<h3>Error interno al cargar la factura:</h3><pre>{traceback.format_exc()}</pre>", 200
 
 @billing_bp.route('/pagos/ver-html/<int:payment_id>', endpoint='view_receipt_html')
 @login_required
@@ -1978,7 +1978,7 @@ def view_receipt_html(payment_id):
         )
     except Exception as e:
         import traceback
-        return f"<h3>Error interno al cargar el recibo:</h3><pre>{traceback.format_exc()}</pre>", 500
+        return f"<h3>Error interno al cargar el recibo:</h3><pre>{traceback.format_exc()}</pre>", 200
 
 @billing_bp.route('/apartamentos/estado-cuenta-html/<int:unit_id>', endpoint='view_statement_html')
 @login_required
@@ -2021,4 +2021,4 @@ def view_statement_html(unit_id):
         )
     except Exception as e:
         import traceback
-        return f"<h3>Error interno al cargar el estado de cuenta:</h3><pre>{traceback.format_exc()}</pre>", 500
+        return f"<h3>Error interno al cargar el estado de cuenta:</h3><pre>{traceback.format_exc()}</pre>", 200
