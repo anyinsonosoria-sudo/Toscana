@@ -2020,6 +2020,5 @@ def view_statement_html(unit_id):
             apt_number=apt.get('number', 'N/A')
         )
     except Exception as e:
-        logger.error(f"Error en view_statement_html: {e}")
-        flash("Error al cargar el estado de cuenta", "error")
-        return redirect(url_for('dashboard'))
+        import traceback
+        return f"<h3>Error interno al cargar el estado de cuenta:</h3><pre>{traceback.format_exc()}</pre>", 500
