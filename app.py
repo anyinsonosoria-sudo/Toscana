@@ -1389,6 +1389,7 @@ def _register_routes(app: Flask) -> None:
                 reference_date=datetime.now().strftime('%Y-%m-%d'),
                 period_mode='current_month_to_date',
             ),
+            'report_months': _build_resident_report_months(),
         })
         return context
 
