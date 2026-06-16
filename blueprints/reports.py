@@ -271,8 +271,14 @@ def monthly_view_html():
                 flash("No tienes permiso para ver este reporte", "warning")
                 abort(403)
 
-        reference_dt = _parse_reference_date(request.args.get('reference_date')) or datetime.now()
-        period_mode = _resolve_period_mode(request.args.get('period_mode'))
+        # El histórico envía 'month=YYYY-MM'
+        month_str = request.args.get('month')
+        if month_str:
+            reference_dt = _parse_reference_date(f"{month_str}-01") or datetime.now()
+            period_mode = 'month'
+        else:
+            reference_dt = _parse_reference_date(request.args.get('reference_date')) or datetime.now()
+            period_mode = _resolve_period_mode(request.args.get('period_mode'))
 
         company_info = get_company_info() or {}
         report_data = reports.get_monthly_financial_report_data(
