@@ -259,7 +259,7 @@ def _monthly_pdf_logic():
         import traceback
         return f"<h3>Error generando PDF</h3><pre>{traceback.format_exc()}</pre>", 200
 
-@reports_bp.route('/mensual/ver-html', endpoint='monthly_view_html')
+@reports_bp.route('/mensual/ver-html-v2', endpoint='monthly_view_html')
 @login_required
 def monthly_view_html():
     """Ver reporte mensual en formato HTML en vez de PDF (optimizado para PWA)"""

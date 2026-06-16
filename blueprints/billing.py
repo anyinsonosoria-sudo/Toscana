@@ -1887,7 +1887,7 @@ def download_statement_pdf(unit_id):
 
 # ========== VISUALIZACIÓN HTML (MÓVILES/PWA) ==========
 
-@billing_bp.route('/facturas/ver-html/<int:invoice_id>', endpoint='view_invoice_html')
+@billing_bp.route('/facturas/ver-html-v2/<int:invoice_id>', endpoint='view_invoice_html')
 @login_required
 def view_invoice_html(invoice_id):
     """Ver factura en HTML en vez de PDF (amigable para móviles)"""
@@ -1929,7 +1929,7 @@ def view_invoice_html(invoice_id):
         import traceback
         return f"<h3>Error interno al cargar la factura:</h3><pre>{traceback.format_exc()}</pre>", 200
 
-@billing_bp.route('/pagos/ver-html/<int:payment_id>', endpoint='view_receipt_html')
+@billing_bp.route('/pagos/ver-html-v2/<int:payment_id>', endpoint='view_receipt_html')
 @login_required
 def view_receipt_html(payment_id):
     """Ver recibo en HTML en vez de PDF"""
@@ -1980,7 +1980,7 @@ def view_receipt_html(payment_id):
         import traceback
         return f"<h3>Error interno al cargar el recibo:</h3><pre>{traceback.format_exc()}</pre>", 200
 
-@billing_bp.route('/apartamentos/estado-cuenta-html/<int:unit_id>', endpoint='view_statement_html')
+@billing_bp.route('/apartamentos/estado-cuenta-html-v2/<int:unit_id>', endpoint='view_statement_html')
 @login_required
 def view_statement_html(unit_id):
     """Ver estado de cuenta en HTML"""
