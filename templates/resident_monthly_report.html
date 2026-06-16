@@ -64,12 +64,15 @@
             </div>
 
             <!-- Banner Aclaratorio de Saldo -->
-            <div class="alert mb-5 p-4" style="background-color: #fefce8; border: 1px solid #fef08a; color: #713f12; border-radius: 14px;">
-                <div class="small fw-bold mb-2" style="color: #a16207; letter-spacing: 0.5px;">ACTUALIZADO AL DESCARGAR ESTE REPORTE</div>
+            <div class="alert mb-5 p-4 p-md-5 text-center shadow-sm" style="background-color: #fefce8; border: 1px solid #fef08a; color: #713f12; border-radius: 16px;">
+                <div class="small fw-bold mb-3 text-uppercase" style="color: #a16207; letter-spacing: 1px;">Actualizado al Descargar este Reporte</div>
                 <h5 class="fw-bold mb-2">{{ report_data.current_balance_title }}</h5>
-                <h2 class="fw-bold mb-3">RD$ {{ "{:,.2f}".format(report_data.current_balance_amount) }}</h2>
-                <p class="small mb-3" style="opacity: 0.85;">{{ report_data.current_balance_note }}</p>
-                <div class="fw-bold small">Cierre del reporte: RD$ {{ "{:,.2f}".format(report_data.closing_balance) }}</div>
+                <h1 class="fw-bold mb-4" style="color: #854d0e;">RD$ {{ "{:,.2f}".format(report_data.current_balance_amount) }}</h1>
+                <hr style="border-color: rgba(161, 98, 7, 0.2); margin: 1.5rem auto; width: 80%;">
+                <p class="small mb-3 mx-auto" style="opacity: 0.85; max-width: 600px;">{{ report_data.current_balance_note }}</p>
+                <div class="fw-bold small px-3 py-2 d-inline-block rounded-pill" style="background-color: rgba(161, 98, 7, 0.1); color: #854d0e;">
+                    Cierre del reporte: RD$ {{ "{:,.2f}".format(report_data.closing_balance) }}
+                </div>
             </div>
 
             <!-- Resumen Operativo -->
