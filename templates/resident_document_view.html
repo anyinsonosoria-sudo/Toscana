@@ -163,9 +163,9 @@
                             <tbody>
                                 {% for inv in invoices %}
                                 <tr>
-                                    <td>{{ inv.issued_date }}</td>
+                                    <td class="text-nowrap">{{ inv.issued_date }}</td>
                                     <td>{{ inv.description }}</td>
-                                    <td class="text-end text-danger">RD$ {{ "{:,.2f}".format(inv.amount) }}</td>
+                                    <td class="text-end text-danger text-nowrap">RD$ {{ "{:,.2f}".format(inv.amount) }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -191,9 +191,9 @@
                             <tbody>
                                 {% for pay in payments %}
                                 <tr>
-                                    <td>{{ pay.paid_date }}</td>
+                                    <td class="text-nowrap">{{ pay.paid_date }}</td>
                                     <td>{{ pay.method }}</td>
-                                    <td class="text-end text-success">RD$ {{ "{:,.2f}".format(pay.amount) }}</td>
+                                    <td class="text-end text-success text-nowrap">RD$ {{ "{:,.2f}".format(pay.amount) }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>

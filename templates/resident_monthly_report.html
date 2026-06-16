@@ -38,9 +38,9 @@
             <!-- Balances -->
             <div class="row g-3 mb-5">
                 <div class="col-sm-6 col-md-3">
-                    <div class="p-3 rounded text-center h-100" style="background-color: var(--gray-50); border: 1px solid var(--gray-200);">
-                        <div class="text-muted small mb-1">Saldo Inicial</div>
-                        <div class="fs-5 fw-bold">RD$ {{ "{:,.2f}".format(report_data.opening_balance) }}</div>
+                    <div class="p-3 rounded text-center h-100" style="background-color: rgba(15, 23, 42, 0.04); border: 1px solid rgba(15, 23, 42, 0.1);">
+                        <div class="small mb-1" style="color: #64748b; font-weight: 600;">Saldo Inicial</div>
+                        <div class="fs-5 fw-bold" style="color: #0f172a;">RD$ {{ "{:,.2f}".format(report_data.opening_balance) }}</div>
                     </div>
                 </div>
                 <div class="col-sm-6 col-md-3">
@@ -59,6 +59,16 @@
                     <div class="p-3 rounded text-center h-100" style="background-color: var(--primary); color: white; box-shadow: 0 10px 20px rgba(var(--primary-rgb, 0,0,0), 0.15);">
                         <div class="small mb-1 opacity-75">Saldo Final</div>
                         <div class="fs-4 fw-bold">RD$ {{ "{:,.2f}".format(report_data.closing_balance) }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Banner Aclaratorio de Saldo -->
+            <div class="alert mb-5" style="background-color: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); color: #b45309; border-radius: 14px;">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-info-circle-fill fs-4 me-3"></i>
+                    <div>
+                        <strong>Nota Importante:</strong> El Saldo Final mostrado arriba (RD$ {{ "{:,.2f}".format(report_data.closing_balance) }}) corresponde exclusivamente al cierre de este reporte ({{ report_data.date_to }}). El <strong>saldo actual real</strong> del residencial puede ser diferente debido a transacciones posteriores a esta fecha.
                     </div>
                 </div>
             </div>
@@ -113,9 +123,9 @@
                         <tbody>
                             {% for exp in report_data.expenses %}
                             <tr style="border-bottom: 1px solid var(--gray-100);">
-                                <td class="py-3 border-0 text-muted">{{ exp.date }}</td>
+                                <td class="py-3 border-0 text-muted text-nowrap">{{ exp.date }}</td>
                                 <td class="py-3 border-0 fw-semibold">{{ exp.description }}</td>
-                                <td class="text-end py-3 border-0 fw-bold text-danger">RD$ {{ "{:,.2f}".format(exp.amount) }}</td>
+                                <td class="text-end py-3 border-0 fw-bold text-danger text-nowrap">RD$ {{ "{:,.2f}".format(exp.amount) }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -144,7 +154,7 @@
                             <tr style="border-bottom: 1px solid var(--gray-100);">
                                 <td class="py-3 border-0 fw-semibold text-center">{{ col.apt_number }}</td>
                                 <td class="py-3 border-0">{{ col.resident_name }}</td>
-                                <td class="text-end py-3 border-0 fw-bold text-success">RD$ {{ "{:,.2f}".format(col.amount) }}</td>
+                                <td class="text-end py-3 border-0 fw-bold text-success text-nowrap">RD$ {{ "{:,.2f}".format(col.amount) }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
