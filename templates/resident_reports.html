@@ -39,7 +39,7 @@
                             <h3 class="resident-report-item__title">{{ month.label }}</h3>
                             <p class="resident-report-item__meta">Reporte mensual cerrado del residencial.</p>
                         </div>
-                        <a href="{{ url_for('reports.monthly_view_html', month=month.month) }}" class="btn btn-sm btn-outline-primary" style="border-radius: 8px;">
+                        <a href="{{ url_for('reports.monthly_view_html', month=month.month) }}" onclick="alert('Histórico. Mes: {{ month.month }}');" class="btn btn-sm btn-outline-primary" style="border-radius: 8px;">
                             <i class="bi bi-file-earmark-text me-1"></i> Ver Reporte
                         </a>
                     </div>

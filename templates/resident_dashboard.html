@@ -90,7 +90,7 @@
                             {% for apt in apartments %}
                             <div class="d-flex align-items-center justify-content-between bg-light rounded px-2.5 py-1.5" style="border: 1px solid var(--gray-100);">
                                 <span class="fw-bold text-dark" style="font-size: 0.82rem;"><i class="bi bi-house-door text-info me-1"></i>Apto {{ apt.number }}</span>
-                                <a href="{{ url_for('billing.view_statement_html', unit_id=apt.id) }}" class="btn btn-xs btn-outline-info py-0.5 px-2 rounded" style="font-size: 0.72rem; font-weight: 700; letter-spacing: -0.1px;" title="Ver Estado de Cuenta">
+                                <a href="{{ url_for('billing.view_statement_html', unit_id=apt.id) }}" onclick="alert('Tap registrado. Redirigiendo a: ' + this.href);" class="btn btn-xs btn-outline-info py-0.5 px-2 rounded" style="font-size: 0.72rem; font-weight: 700; letter-spacing: -0.1px;" title="Ver Estado de Cuenta">
                                     <i class="bi bi-file-earmark-text me-0.5"></i>Estado Cuenta
                                 </a>
                             </div>
