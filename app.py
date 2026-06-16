@@ -476,6 +476,21 @@ def _register_context_processors(app: Flask) -> None:
         return dict(get_resident_navigation=get_resident_navigation)
     
     @app.context_processor
+    def inject_resident_totals():
+        """Inyecta los totales del residente si está autenticado como tal."""
+        if current_user.is_authenticated and current_user.role == 'resident':
+            import residents
+            try:
+                summary = residents.get_resident_statement_summary_for_user(
+                    current_user.id,
+                    fallback_email=current_user.email,
+                )
+                return dict(resident_totals=summary.get('totals', {}))
+            except Exception as e:
+                app.logger.error(f"Error injecting resident totals: {e}")
+        return dict(resident_totals={'balance': 0, 'total_paid': 0, 'apartments': 0})
+    
+    @app.context_processor
     def inject_payment_helpers():
         """Inyecta funciones auxiliares para pagos."""
         def get_paid_amount(invoice_id):

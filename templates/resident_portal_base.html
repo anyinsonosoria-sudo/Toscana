@@ -37,17 +37,18 @@
         <p class="resident-hero__subtitle">{% block resident_subtitle %}{% endblock %}</p>
 
         <div class="resident-hero__summary">
+            {% set totals = resident_totals | default({'balance': 0, 'total_paid': 0, 'apartments': 0}) %}
             <article class="resident-hero__summary-card">
                 <span class="resident-hero__summary-label">Balance actual</span>
-                <span class="resident-hero__summary-value">RD$ {{ "{:,.2f}".format(resident_totals.balance or 0) }}</span>
+                <span class="resident-hero__summary-value">RD$ {{ "{:,.2f}".format(totals.balance or 0) }}</span>
             </article>
             <article class="resident-hero__summary-card">
                 <span class="resident-hero__summary-label">Pagos registrados</span>
-                <span class="resident-hero__summary-value">RD$ {{ "{:,.2f}".format(resident_totals.total_paid or 0) }}</span>
+                <span class="resident-hero__summary-value">RD$ {{ "{:,.2f}".format(totals.total_paid or 0) }}</span>
             </article>
             <article class="resident-hero__summary-card">
                 <span class="resident-hero__summary-label">Apartamentos vinculados</span>
-                <span class="resident-hero__summary-value">{{ resident_totals.apartments or 0 }}</span>
+                <span class="resident-hero__summary-value">{{ totals.apartments or 0 }}</span>
             </article>
         </div>
     </section>
