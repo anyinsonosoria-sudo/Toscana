@@ -709,6 +709,15 @@ def _register_routes(app: Flask) -> None:
         except Exception as e:
             debug_info['gemini_1.5_flash'] = f'failed: {e}'
 
+        # List models available to the key
+        try:
+            available = []
+            for m in genai.list_models():
+                available.append(m.name)
+            debug_info['available_models'] = available
+        except Exception as e:
+            debug_info['available_models'] = f'failed: {e}'
+
         return jsonify(debug_info)
 
     @app.route("/dashboard/reportar_pago/<int:invoice_id>", methods=['POST'])
