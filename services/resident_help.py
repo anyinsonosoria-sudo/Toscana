@@ -708,18 +708,37 @@ def _build_ai_context_text(question: str, context: dict, deterministic_answer: O
                 reference_dt=reference_dt, period_mode='previous_month',
             )
             lines.append(
-                f"Reporte consultado {month_reference['label']}: cobros {format_currency(report_data.get('total_collections'))}, "
-                f"gastos {format_currency(report_data.get('total_expenses'))}, "
-                f"balance {format_currency(report_data.get('closing_balance'))}."
+                f"Reporte consultado {month_reference['label']}: "
+                f"Ingresos Operacionales {format_currency(report_data.get('total_collections'))}, "
+                f"Otros Ingresos {format_currency(report_data.get('other_income', 0))}, "
+                f"Gastos Operacionales {format_currency(report_data.get('total_expenses'))}, "
+                f"Otros Gastos {format_currency(report_data.get('other_expenses', 0))}, "
+                f"Balance de cierre {format_currency(report_data.get('closing_balance'))}."
             )
             
+            expenses_summary = report_data.get('operating_expenses_detail', [])
+            if expenses_summary:
+                lines.append(f"Resumen de Gastos por Categoría ({month_reference['label']}):")
+                for cat in expenses_summary:
+                    lines.append(
+                        f"  - {cat.get('category') or 'Gasto'}: {format_currency(cat.get('total') or 0)}"
+                    )
+                    
             expenses = report_data.get('expenses', [])
             if expenses:
-                lines.append(f"Detalle de los gastos de {month_reference['label']}:")
+                lines.append(f"Detalle individual de Gastos Operacionales ({month_reference['label']}):")
                 for exp in expenses:
                     lines.append(
                         f"  - {exp.get('category') or 'Gasto'}: {exp.get('description') or ''} "
                         f"({format_currency(exp.get('amount') or 0)})"
+                    )
+            
+            other_expenses = report_data.get('other_expenses_detail', [])
+            if other_expenses:
+                lines.append(f"Detalle de Otros Gastos ({month_reference['label']}):")
+                for exp in other_expenses:
+                    lines.append(
+                        f"  - {exp.get('category') or 'Gasto'}: {format_currency(exp.get('total') or exp.get('amount') or 0)}"
                     )
         except Exception as exc:
             current_app.logger.warning(f"No se pudo preparar contexto de reporte para residente: {exc}")
