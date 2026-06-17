@@ -662,6 +662,49 @@ def _register_routes(app: Flask) -> None:
             return jsonify({'answer': assistant_message})
         return jsonify({'answer': None})
 
+    @app.route("/dashboard/ayuda/debug", methods=['GET'], endpoint='resident_help_debug')
+    @login_required
+    def resident_help_debug():
+        """Temporary diagnostic endpoint to debug Gemini configuration and API connectivity."""
+        if current_user.role != 'resident':
+            return jsonify({'error': 'unauthorized'}), 403
+
+        from services.resident_help import ai_enabled
+        import sys
+
+        cfg = app.config
+        debug_info = {
+            'RESIDENT_AI_CHAT_ENABLED_cfg': cfg.get('RESIDENT_AI_CHAT_ENABLED'),
+            'RESIDENT_AI_CHAT_ENABLED_env': os.environ.get('RESIDENT_AI_CHAT_ENABLED'),
+            'RESIDENT_AI_API_KEY_configured': bool(cfg.get('RESIDENT_AI_API_KEY')),
+            'RESIDENT_AI_MODEL': cfg.get('RESIDENT_AI_MODEL'),
+            'ai_enabled_func': ai_enabled(),
+            'python_version': sys.version,
+        }
+
+        # Attempt to import google-generativeai
+        try:
+            import google.generativeai as genai
+            debug_info['import_generativeai'] = 'success'
+        except ImportError as e:
+            debug_info['import_generativeai'] = f'failed: {e}'
+            return jsonify(debug_info)
+
+        # Attempt a simple test call
+        try:
+            genai.configure(api_key=cfg.get('RESIDENT_AI_API_KEY') or '')
+            model_name = cfg.get('RESIDENT_AI_MODEL') or 'gemini-1.5-flash'
+            if 'gpt' in model_name:
+                model_name = 'gemini-1.5-flash'
+            model = genai.GenerativeModel(model_name=model_name)
+            response = model.generate_content("Hola, responde con la palabra 'OK'")
+            debug_info['gemini_call'] = 'success'
+            debug_info['gemini_response'] = response.text.strip()
+        except Exception as e:
+            debug_info['gemini_call'] = f'failed: {e}'
+
+        return jsonify(debug_info)
+
     @app.route("/dashboard/reportar_pago/<int:invoice_id>", methods=['POST'])
     @login_required
     def resident_report_payment(invoice_id):
