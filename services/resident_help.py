@@ -779,9 +779,9 @@ def _build_ai_answer(
 
     try:
         # Usamos el modelo Gemini
-        model_name = cfg.get('RESIDENT_AI_MODEL') or 'gemini-1.5-flash'
+        model_name = cfg.get('RESIDENT_AI_MODEL') or 'gemini-2.5-flash'
         if 'gpt' in model_name: 
-            model_name = 'gemini-1.5-flash' # fallback if the env still has gpt-4
+            model_name = 'gemini-2.5-flash' # fallback if the env still has gpt-4
             
         model = genai.GenerativeModel(
             model_name=model_name,
