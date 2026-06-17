@@ -1,185 +1,663 @@
 {% extends "resident_portal_base.html" %}
 
-{% block resident_title %}Ayuda{% endblock %}
+{% block resident_title %}Asistente Toscana{% endblock %}
 
-{% block resident_heading %}Ayuda y asistente contextual{% endblock %}
+{% block resident_heading %}{% endblock %}
+{% block resident_subtitle %}{% endblock %}
 
-{% block resident_subtitle %}Contacto directo con la administración y respuestas rápidas sobre tu portal, tus facturas y los reportes publicados.{% endblock %}
+{% block resident_page_css %}
+<style>
+    /* ── Fullscreen Chat Overrides ─────────────────────── */
+    .resident-hero { display: none !important; }
+    .resident-switcher { display: none !important; }
+    .resident-bottom-nav { display: none !important; }
+    .rp-fab-wrap { display: none !important; }
+    .resident-shell {
+        gap: 0 !important;
+        padding: 0 !important;
+        max-width: 100% !important;
+        height: 100dvh;
+        overflow: hidden;
+    }
+    body { padding-bottom: 0 !important; }
+
+    /* ── Chat Shell ────────────────────────────────────── */
+    .chat-app {
+        display: flex;
+        flex-direction: column;
+        height: 100dvh;
+        background: linear-gradient(170deg, #f0f4f8 0%, #e2e8f0 40%, #f8fafc 100%);
+        position: relative;
+    }
+
+    /* ── Chat Header ───────────────────────────────────── */
+    .chat-header {
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+        padding: 0.9rem 1.2rem;
+        background: var(--primary);
+        color: #fff;
+        flex-shrink: 0;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+        z-index: 10;
+    }
+    .chat-header__back {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.15);
+        border: none;
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        cursor: pointer;
+        transition: background 0.15s;
+        text-decoration: none;
+    }
+    .chat-header__back:hover { background: rgba(255,255,255,0.28); color: #fff; }
+    .chat-header__avatar {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.2);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+        flex-shrink: 0;
+    }
+    .chat-header__info { flex: 1; min-width: 0; }
+    .chat-header__name { font-weight: 800; font-size: 1rem; }
+    .chat-header__status {
+        font-size: 0.75rem;
+        opacity: 0.8;
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    .chat-header__dot {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: #4ade80;
+        display: inline-block;
+    }
+    .chat-header__actions { display: flex; gap: 0.5rem; }
+    .chat-header__btn {
+        width: 36px; height: 36px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.15);
+        border: none;
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .chat-header__btn:hover { background: rgba(255,255,255,0.28); }
+
+    /* ── Chat Thread ───────────────────────────────────── */
+    .chat-thread {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1.25rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+        scroll-behavior: smooth;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(148,163,184,0.3) transparent;
+    }
+    .chat-thread::-webkit-scrollbar { width: 5px; }
+    .chat-thread::-webkit-scrollbar-thumb {
+        background-color: rgba(148,163,184,0.3);
+        border-radius: 10px;
+    }
+
+    /* ── Bubbles ────────────────────────────────────────── */
+    .chat-bubble-wrap {
+        display: flex;
+        width: 100%;
+        animation: chatBubbleIn 0.3s cubic-bezier(.34,1.56,.64,1) forwards;
+    }
+    @keyframes chatBubbleIn {
+        from { opacity: 0; transform: translateY(16px) scale(0.96); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .chat-bubble-wrap.is-user { justify-content: flex-end; }
+    .chat-bubble-wrap.is-assistant { justify-content: flex-start; }
+
+    .chat-bubble {
+        max-width: 82%;
+        padding: 0.9rem 1.1rem;
+        border-radius: 20px;
+        position: relative;
+        font-size: 0.93rem;
+        line-height: 1.55;
+        word-break: break-word;
+    }
+
+    /* User bubble */
+    .chat-bubble-wrap.is-user .chat-bubble {
+        background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 80%, black));
+        color: #fff;
+        border-bottom-right-radius: 6px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+    }
+
+    /* Assistant bubble */
+    .chat-bubble-wrap.is-assistant .chat-bubble {
+        background: #fff;
+        color: #1e293b;
+        border-bottom-left-radius: 6px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        border: 1px solid rgba(148,163,184,0.12);
+    }
+
+    .chat-bubble__meta {
+        font-size: 0.7rem;
+        margin-bottom: 0.35rem;
+        opacity: 0.65;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+    .chat-bubble__title {
+        font-size: 0.92rem;
+        font-weight: 800;
+        margin-bottom: 0.4rem;
+        color: var(--primary);
+    }
+    .chat-bubble-wrap.is-user .chat-bubble__title { color: rgba(255,255,255,0.9); }
+
+    .chat-bubble__body { font-size: 0.93rem; }
+    .chat-bubble__body p { margin-bottom: 0.4rem; }
+    .chat-bubble__body p:last-child { margin-bottom: 0; }
+    .chat-bubble__body ul, .chat-bubble__body ol {
+        padding-left: 1.2rem;
+        margin: 0.4rem 0;
+    }
+    .chat-bubble__body li { margin-bottom: 0.2rem; }
+    .chat-bubble__body strong { font-weight: 700; }
+
+    .chat-bubble__detail {
+        margin-top: 0.6rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid rgba(128,128,128,0.15);
+        font-size: 0.82rem;
+        opacity: 0.8;
+    }
+
+    .chat-bubble__link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin-top: 0.7rem;
+        padding: 0.45rem 1rem;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-decoration: none;
+        transition: filter 0.15s, transform 0.15s;
+    }
+    .chat-bubble-wrap.is-assistant .chat-bubble__link {
+        background: var(--primary);
+        color: #fff;
+    }
+    .chat-bubble-wrap.is-user .chat-bubble__link {
+        background: rgba(255,255,255,0.2);
+        color: #fff;
+    }
+    .chat-bubble__link:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+    /* ── Typing Indicator ──────────────────────────────── */
+    .chat-typing {
+        display: none;
+        justify-content: flex-start;
+        padding: 0 0 0.5rem;
+    }
+    .chat-typing.active { display: flex; }
+    .chat-typing__dots {
+        background: #fff;
+        padding: 0.8rem 1.2rem;
+        border-radius: 20px;
+        border-bottom-left-radius: 6px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        display: flex;
+        gap: 5px;
+        align-items: center;
+    }
+    .chat-typing__dot {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: var(--primary);
+        opacity: 0.4;
+        animation: typingBounce 1.4s infinite;
+    }
+    .chat-typing__dot:nth-child(2) { animation-delay: 0.2s; }
+    .chat-typing__dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingBounce {
+        0%, 80%, 100% { transform: scale(0.7); opacity: 0.4; }
+        40% { transform: scale(1); opacity: 1; }
+    }
+
+    /* ── Empty State ───────────────────────────────────── */
+    .chat-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        text-align: center;
+        padding: 2rem;
+        gap: 1rem;
+    }
+    .chat-empty__icon {
+        width: 80px; height: 80px;
+        border-radius: 50%;
+        background: rgba(var(--primary-rgb, 101,67,33), 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.2rem;
+        color: var(--primary);
+    }
+    .chat-empty__title { font-weight: 800; font-size: 1.15rem; color: #1e293b; }
+    .chat-empty__text { font-size: 0.88rem; color: #64748b; max-width: 320px; }
+
+    /* ── Quick Chips ───────────────────────────────────── */
+    .chat-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        justify-content: center;
+        padding: 0 1rem;
+        margin-top: 0.5rem;
+    }
+    .chat-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.5rem 0.9rem;
+        border-radius: 999px;
+        background: #fff;
+        color: var(--primary);
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid rgba(var(--primary-rgb, 101,67,33), 0.15);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .chat-chip:hover {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    /* ── Composer ───────────────────────────────────────── */
+    .chat-composer {
+        flex-shrink: 0;
+        padding: 0.85rem 1rem;
+        padding-bottom: calc(0.85rem + env(safe-area-inset-bottom, 0px));
+        background: rgba(255,255,255,0.95);
+        backdrop-filter: blur(16px);
+        border-top: 1px solid rgba(148,163,184,0.12);
+        z-index: 10;
+    }
+    .chat-composer__row {
+        display: flex;
+        align-items: flex-end;
+        gap: 0.65rem;
+    }
+    .chat-composer__input {
+        flex: 1;
+        resize: none;
+        border: 1px solid rgba(148,163,184,0.25);
+        border-radius: 22px;
+        padding: 0.75rem 1.1rem;
+        font-size: 0.93rem;
+        background: #f8fafc;
+        outline: none;
+        max-height: 120px;
+        min-height: 44px;
+        line-height: 1.4;
+        transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    }
+    .chat-composer__input:focus {
+        background: #fff;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 101,67,33), 0.1);
+    }
+    .chat-composer__send {
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        border: none;
+        background: var(--primary);
+        color: #fff;
+        font-size: 1.15rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .chat-composer__send:hover {
+        transform: scale(1.08);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+    }
+    .chat-composer__send:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    /* ── Responsive ────────────────────────────────────── */
+    @media (min-width: 768px) {
+        .chat-app {
+            max-width: 680px;
+            margin: 0 auto;
+            border-left: 1px solid rgba(148,163,184,0.1);
+            border-right: 1px solid rgba(148,163,184,0.1);
+        }
+    }
+    @media (max-width: 480px) {
+        .chat-bubble { max-width: 88%; padding: 0.75rem 0.95rem; }
+        .chat-header { padding: 0.75rem 0.9rem; }
+        .chat-composer { padding: 0.7rem 0.8rem; }
+    }
+</style>
+{% endblock %}
 
 {% block resident_content %}
-<div class="row g-4">
-    <div class="col-lg-5">
-        <section class="resident-help-card h-100">
-            <span class="resident-badge is-warning mb-3"><i class="bi bi-headset"></i> Soporte</span>
-            <h2 class="resident-panel__title text-white">Administración Toscana</h2>
-            <p class="resident-panel__subtitle text-white-50">Si necesitas validar un pago o resolver algo que el portal no cubre, usa estos contactos.</p>
-
-            <div class="resident-ai-status {% if resident_ai_enabled %}is-live{% else %}is-guided{% endif %}">
-                <i class="bi {% if resident_ai_enabled %}bi-cpu{% else %}bi-shield-check{% endif %}"></i>
-                <div>
-                    <strong>{{ resident_ai_status_label }}</strong>
-                    <div>{{ resident_ai_status_detail }}</div>
-                </div>
+<div class="chat-app" id="chatApp">
+    <!-- Header -->
+    <div class="chat-header">
+        <a href="{{ url_for('resident_balances') }}" class="chat-header__back" title="Volver al portal">
+            <i class="bi bi-arrow-left"></i>
+        </a>
+        <div class="chat-header__avatar">
+            <i class="bi bi-cpu-fill"></i>
+        </div>
+        <div class="chat-header__info">
+            <div class="chat-header__name">Asistente Toscana</div>
+            <div class="chat-header__status">
+                <span class="chat-header__dot"></span>
+                {% if resident_ai_enabled %}IA conectada{% else %}Asistente guiado{% endif %}
             </div>
-
-            <div class="resident-help-card__contact">
-                {% if company_info.name %}<div><strong>{{ company_info.name }}</strong></div>{% endif %}
-                {% if company_info.phone %}<div><span><i class="bi bi-telephone"></i> {{ company_info.phone }}</span></div>{% endif %}
-                {% if company_info.email %}<div><span><i class="bi bi-envelope"></i> {{ company_info.email }}</span></div>{% endif %}
-            </div>
-        </section>
-
-        <section class="resident-panel mt-4">
-            <div class="resident-panel__header">
-                <div>
-                    <h2 class="resident-panel__title">Atajos frecuentes</h2>
-                    <p class="resident-panel__subtitle">Accesos directos a tareas que suelen generar preguntas.</p>
-                </div>
-            </div>
-            <div class="resident-shortcut-list">
-                <a href="{{ url_for('auth.edit_profile') }}" class="resident-shortcut-link">
-                    <div>
-                        <strong>Actualizar perfil y foto</strong>
-                        <div class="resident-list-item__meta">Nombre, teléfono e imagen del usuario.</div>
-                    </div>
-                    <i class="bi bi-arrow-right"></i>
-                </a>
-                <a href="{{ url_for('auth.change_password') }}" class="resident-shortcut-link">
-                    <div>
-                        <strong>Cambiar contraseña</strong>
-                        <div class="resident-list-item__meta">Actualiza tus credenciales de acceso.</div>
-                    </div>
-                    <i class="bi bi-arrow-right"></i>
-                </a>
-                <a href="{{ url_for('resident_reports') }}" class="resident-shortcut-link">
-                    <div>
-                        <strong>Ver reportes publicados</strong>
-                        <div class="resident-list-item__meta">Balances y gastos generales del residencial.</div>
-                    </div>
-                    <i class="bi bi-arrow-right"></i>
-                </a>
-            </div>
-        </section>
+        </div>
+        <div class="chat-header__actions">
+            <a href="{{ url_for('resident_help', action='reset') }}" class="chat-header__btn" title="Nueva conversación" id="chatResetBtn">
+                <i class="bi bi-arrow-counterclockwise"></i>
+            </a>
+        </div>
     </div>
 
-    <div class="col-lg-7">
-        <section class="resident-panel h-100 p-0 resident-chat-container">
-            <div class="resident-panel__header px-4 pt-4 pb-2 m-0 border-bottom">
-                <div>
-                    <h2 class="resident-panel__title"><i class="bi bi-robot text-primary me-2"></i>Asistente Toscana</h2>
-                    <p class="resident-panel__subtitle mb-0">
-                        {% if resident_ai_enabled %}
-                        Consulta libremente sobre tu cuenta, pagos y reportes sin salir del portal.
+    <!-- Thread -->
+    <div class="chat-thread" id="chatThread">
+        {% if resident_help_thread %}
+            {% for message in resident_help_thread %}
+            <div class="chat-bubble-wrap {% if message.role == 'user' %}is-user{% else %}is-assistant{% endif %}">
+                <div class="chat-bubble">
+                    <div class="chat-bubble__meta">
+                        {% if message.role == 'assistant' %}
+                            <i class="bi bi-cpu-fill"></i> {% if message.source == 'ai' %}Toscana IA{% else %}Asistente{% endif %}
                         {% else %}
-                        Escribe sobre balance, facturas, pagos, reportes, perfil o contacto.
+                            <i class="bi bi-person-fill"></i> Tú
                         {% endif %}
-                    </p>
-                </div>
-            </div>
-
-            <div class="resident-chat-thread" id="chatThread">
-                {% if resident_help_thread %}
-                    {% for message in resident_help_thread %}
-                    <div class="resident-chat-bubble-wrap {% if message.role == 'user' %}is-user{% else %}is-assistant{% endif %}">
-                        <div class="resident-chat-bubble">
-                            <div class="resident-chat-meta">
-                                {% if message.role == 'assistant' %}
-                                    <i class="bi bi-cpu-fill"></i> {% if message.source == 'ai' %}Toscana IA{% else %}Asistente{% endif %}
-                                {% else %}
-                                    <i class="bi bi-person-fill"></i> Tú
-                                {% endif %}
-                            </div>
-                            
-                            {% if message.title and message.role == 'assistant' %}
-                            <h3 class="mb-2" style="font-size: 0.95rem; font-weight: 700;">{{ message.title }}</h3>
-                            {% endif %}
-                            
-                            {% if message.content %}
-                            <div style="font-size: 0.95rem;">{{ message.content | safe }}</div>
-                            {% endif %}
-                            
-                            {% if message.detail %}
-                            <div class="mt-2 pt-2" style="font-size: 0.85rem; border-top: 1px solid rgba(128,128,128,0.2); opacity: 0.9;">
-                                {{ message.detail }}
-                            </div>
-                            {% endif %}
-                            
-                            {% if message.link_url %}
-                            <div class="mt-3">
-                                <a href="{{ message.link_url }}" {% if 'http' not in message.link_url and '.pdf' not in message.link_url %}{% else %}target="_blank"{% endif %} class="btn btn-sm rounded-pill shadow-sm" style="font-size: 0.8rem; font-weight: 600; padding: 6px 14px; background: {% if message.role == 'user' %}rgba(255,255,255,0.25){% else %}var(--primary){% endif %}; color: white; border: none;">
-                                    <i class="bi bi-box-arrow-up-right me-1"></i> {{ message.link_label }}
-                                </a>
-                            </div>
-                            {% endif %}
-                        </div>
                     </div>
-                    {% endfor %}
-                {% else %}
-                <div class="resident-empty resident-empty--chat w-100 h-100 d-flex flex-column align-items-center justify-content-center">
-                    <i class="bi bi-chat-heart" style="font-size: 3rem; color: var(--primary); opacity: 0.8;"></i>
-                    <p class="mt-3 text-muted fw-bold">¿En qué puedo ayudarte hoy?</p>
-                </div>
-                {% endif %}
-            </div>
-
-            <form method="post" action="{{ url_for('resident_help') }}" class="resident-chat-composer">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <textarea class="form-control shadow-sm" id="chatInput" name="question" rows="2" placeholder="Escribe tu mensaje aquí..." required></textarea>
-                <div class="resident-chat-action-bar">
-                    <a href="{{ url_for('resident_help', action='reset') }}" class="btn btn-link text-muted text-decoration-none p-0" title="Nueva conversación">
-                        <i class="bi bi-trash3"></i> Limpiar
+                    {% if message.title and message.role == 'assistant' %}
+                    <div class="chat-bubble__title">{{ message.title }}</div>
+                    {% endif %}
+                    {% if message.content %}
+                    <div class="chat-bubble__body">{{ message.content | safe }}</div>
+                    {% endif %}
+                    {% if message.detail %}
+                    <div class="chat-bubble__detail">{{ message.detail }}</div>
+                    {% endif %}
+                    {% if message.link_url %}
+                    <a href="{{ message.link_url }}" class="chat-bubble__link" {% if 'http' in message.link_url %}target="_blank"{% endif %}>
+                        <i class="bi bi-box-arrow-up-right"></i> {{ message.link_label or 'Ver detalle' }}
                     </a>
-                    <button type="submit" class="btn btn-primary rounded-pill px-4 py-2 shadow-sm fw-bold">
-                        <i class="bi bi-send-fill me-1"></i> Enviar
-                    </button>
-                </div>
-            </form>
-
-            <div class="resident-help-suggestions mb-4">
-                <div class="resident-help-suggestions__header">
-                    <strong>{{ resident_help_suggestions_label }}</strong>
-                    <p>{{ resident_help_suggestions_hint }}</p>
-                </div>
-                <div class="resident-suggestion-list">
-                {% for suggestion in resident_help_suggestions %}
-                <a class="resident-suggestion-chip" href="{{ url_for('resident_help', q=suggestion) }}">
-                    <i class="bi bi-lightbulb"></i>
-                    {{ suggestion }}
-                </a>
-                {% endfor %}
+                    {% endif %}
                 </div>
             </div>
-        </section>
+            {% endfor %}
+        {% else %}
+            <!-- Empty state -->
+            <div class="chat-empty" id="chatEmpty">
+                <div class="chat-empty__icon">
+                    <i class="bi bi-chat-heart-fill"></i>
+                </div>
+                <div class="chat-empty__title">¿En qué puedo ayudarte?</div>
+                <div class="chat-empty__text">
+                    Pregúntame sobre tu balance, facturas, pagos, reportes mensuales o cualquier duda sobre tu portal.
+                </div>
+                <div class="chat-chips" id="chatChips">
+                    {% for suggestion in resident_help_suggestions %}
+                    <button class="chat-chip" data-question="{{ suggestion }}">
+                        <i class="bi bi-lightning-fill"></i> {{ suggestion }}
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Typing indicator -->
+    <div class="chat-typing" id="chatTyping">
+        <div class="chat-typing__dots">
+            <span class="chat-typing__dot"></span>
+            <span class="chat-typing__dot"></span>
+            <span class="chat-typing__dot"></span>
+        </div>
+    </div>
+
+    <!-- Composer -->
+    <div class="chat-composer">
+        <form id="chatForm" class="chat-composer__row" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <textarea class="chat-composer__input" id="chatInput" name="question"
+                      rows="1" placeholder="Escribe tu mensaje..."
+                      autocomplete="off" autocorrect="on"></textarea>
+            <button type="submit" class="chat-composer__send" id="chatSendBtn" disabled title="Enviar">
+                <i class="bi bi-send-fill"></i>
+            </button>
+        </form>
     </div>
 </div>
 {% endblock %}
 
 {% block resident_page_js %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const chatThread = document.getElementById('chatThread');
-    const chatInput = document.getElementById('chatInput');
-    const form = document.querySelector('.resident-chat-composer');
-    
-    // Auto-scroll to bottom
-    if (chatThread) {
-        chatThread.scrollTop = chatThread.scrollHeight;
+(function() {
+    const thread   = document.getElementById('chatThread');
+    const input    = document.getElementById('chatInput');
+    const form     = document.getElementById('chatForm');
+    const sendBtn  = document.getElementById('chatSendBtn');
+    const typing   = document.getElementById('chatTyping');
+    const empty    = document.getElementById('chatEmpty');
+    const chips    = document.querySelectorAll('.chat-chip');
+    const API_URL  = '{{ url_for("resident_help_api") }}';
+    const CSRF     = '{{ csrf_token() }}';
+
+    // ── Auto-resize textarea ─────────────────────────────
+    function autoResize() {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        sendBtn.disabled = !input.value.trim();
     }
-    
-    // Auto-focus input on load
-    if (chatInput) {
-        chatInput.focus();
-        
-        // Enter to submit (Shift+Enter for newline)
-        chatInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (this.value.trim() !== '') {
-                    form.submit();
-                }
-            }
+    input.addEventListener('input', autoResize);
+
+    // ── Scroll to bottom ─────────────────────────────────
+    function scrollToBottom(smooth) {
+        requestAnimationFrame(function() {
+            thread.scrollTo({ top: thread.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
         });
     }
-});
+    scrollToBottom(false);
+
+    // ── Create bubble DOM ────────────────────────────────
+    function createBubble(data) {
+        var wrap = document.createElement('div');
+        wrap.className = 'chat-bubble-wrap ' + (data.role === 'user' ? 'is-user' : 'is-assistant');
+
+        var bubble = document.createElement('div');
+        bubble.className = 'chat-bubble';
+
+        // Meta
+        var meta = document.createElement('div');
+        meta.className = 'chat-bubble__meta';
+        if (data.role === 'assistant') {
+            meta.innerHTML = '<i class="bi bi-cpu-fill"></i> ' + (data.source === 'ai' ? 'Toscana IA' : 'Asistente');
+        } else {
+            meta.innerHTML = '<i class="bi bi-person-fill"></i> Tú';
+        }
+        bubble.appendChild(meta);
+
+        // Title
+        if (data.title && data.role === 'assistant') {
+            var title = document.createElement('div');
+            title.className = 'chat-bubble__title';
+            title.textContent = data.title;
+            bubble.appendChild(title);
+        }
+
+        // Body
+        if (data.content) {
+            var body = document.createElement('div');
+            body.className = 'chat-bubble__body';
+            body.innerHTML = data.content;
+            bubble.appendChild(body);
+        }
+
+        // Detail
+        if (data.detail) {
+            var detail = document.createElement('div');
+            detail.className = 'chat-bubble__detail';
+            detail.textContent = data.detail;
+            bubble.appendChild(detail);
+        }
+
+        // Link
+        if (data.link_url) {
+            var link = document.createElement('a');
+            link.className = 'chat-bubble__link';
+            link.href = data.link_url;
+            if (data.link_url.indexOf('http') === 0) link.target = '_blank';
+            link.innerHTML = '<i class="bi bi-box-arrow-up-right"></i> ' + (data.link_label || 'Ver detalle');
+            bubble.appendChild(link);
+        }
+
+        wrap.appendChild(bubble);
+        return wrap;
+    }
+
+    // ── Send message via AJAX ────────────────────────────
+    var isSending = false;
+
+    function sendMessage(question) {
+        if (isSending || !question.trim()) return;
+        isSending = true;
+        sendBtn.disabled = true;
+
+        // Remove empty state
+        if (empty) empty.remove();
+
+        // Add user bubble immediately
+        thread.appendChild(createBubble({
+            role: 'user',
+            content: question.trim()
+        }));
+        scrollToBottom(true);
+
+        // Show typing
+        typing.classList.add('active');
+        scrollToBottom(true);
+
+        // Clear input
+        input.value = '';
+        autoResize();
+
+        // AJAX
+        fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF
+            },
+            body: JSON.stringify({ question: question.trim() })
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            typing.classList.remove('active');
+            if (data.answer) {
+                thread.appendChild(createBubble(data.answer));
+            } else {
+                thread.appendChild(createBubble({
+                    role: 'assistant',
+                    content: 'No pude procesar tu mensaje. Intenta reformular la pregunta o contacta a la administración.',
+                    tone: 'warning'
+                }));
+            }
+            scrollToBottom(true);
+            isSending = false;
+            sendBtn.disabled = !input.value.trim();
+            input.focus();
+        })
+        .catch(function(err) {
+            typing.classList.remove('active');
+            thread.appendChild(createBubble({
+                role: 'assistant',
+                content: 'Hubo un error de conexión. Por favor intenta de nuevo.',
+                tone: 'warning'
+            }));
+            scrollToBottom(true);
+            isSending = false;
+            sendBtn.disabled = !input.value.trim();
+            console.error('Chat error:', err);
+        });
+    }
+
+    // ── Form submit ──────────────────────────────────────
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        sendMessage(input.value);
+    });
+
+    // ── Enter to send (Shift+Enter for newline) ──────────
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (input.value.trim()) sendMessage(input.value);
+        }
+    });
+
+    // ── Chip clicks ──────────────────────────────────────
+    chips.forEach(function(chip) {
+        chip.addEventListener('click', function(e) {
+            e.preventDefault();
+            var q = this.getAttribute('data-question');
+            if (q) sendMessage(q);
+        });
+    });
+
+    // ── Focus input on load ──────────────────────────────
+    input.focus();
+})();
 </script>
 {% endblock %}

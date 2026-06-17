@@ -475,3 +475,54 @@ def test_download_statement_pdf_allows_bridge_linked_resident(client, app, monke
 
     assert response.status_code == 200
     assert response.mimetype == 'application/pdf'
+
+
+@pytest.mark.integration
+def test_resident_help_api_ajax_endpoint(client, app):
+    with app.app_context():
+        _reset_resident_link_state()
+        unit_id = apartments.add_apartment(number='H-808', resident_name='AJAX Resident', resident_email='')
+        user_id = user_model.create_user(
+            username='ajax_resident',
+            email='ajax_resident@example.com',
+            password='password123',
+            full_name='AJAX Resident',
+            role='resident',
+        )
+        residents.link_user_to_apartment(
+            user_id,
+            unit_id,
+            resident_email='ajax_resident@example.com',
+            resident_name='AJAX Resident',
+            created_by=1,
+        )
+
+    # Test unauthorized access (should return 302 redirecting to login)
+    response = client.post('/dashboard/ayuda/api', json={'question': 'Hola'})
+    assert response.status_code == 302
+
+    # Log in
+    with client.session_transaction() as session:
+        session['_user_id'] = str(user_id)
+        session['_fresh'] = True
+
+    # Test empty question
+    response = client.post('/dashboard/ayuda/api', json={'question': ''})
+    assert response.status_code == 400
+    assert response.get_json() == {'error': 'empty_question'}
+
+    # Test valid question (triggers deterministic response since AI config is disabled by default)
+    response = client.post('/dashboard/ayuda/api', json={'question': 'Cual es mi saldo actual?'})
+    assert response.status_code == 200
+    data = response.get_json()
+    assert 'answer' in data
+    assert data['answer'] is not None
+    assert 'Balance actual' in data['answer']['title'] or 'Estado actual' in data['answer']['title']
+
+    # Verify session thread has been populated with both messages
+    with client.session_transaction() as session:
+        thread_keys = [key for key in session.keys() if key.startswith('resident_help_thread_')]
+        assert thread_keys
+        assert len(session[thread_keys[0]]) == 2
+        assert session[thread_keys[0]][0]['content'] == 'Cual es mi saldo actual?'
+        assert session[thread_keys[0]][1]['role'] == 'assistant'

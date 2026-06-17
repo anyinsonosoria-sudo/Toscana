@@ -630,6 +630,38 @@ def _register_routes(app: Flask) -> None:
             build_help_context('', resident_thread),
         )
 
+    @app.route("/dashboard/ayuda/api", methods=['POST'], endpoint='resident_help_api')
+    @login_required
+    def resident_help_api():
+        """AJAX endpoint for immersive chat — returns JSON instead of rendering HTML."""
+        from flask import jsonify
+        if current_user.role != 'resident':
+            return jsonify({'error': 'unauthorized'}), 403
+
+        data = request.get_json(silent=True) or {}
+        question = (data.get('question') or '').strip()
+        if not question:
+            return jsonify({'error': 'empty_question'}), 400
+
+        resident_thread = get_help_thread()
+        resident_context = build_help_context('', resident_thread)
+        resident_answer = compose_help_answer(question, resident_context, resident_thread)
+
+        # Store user message + assistant answer in thread
+        resident_thread.append(serialize_help_message({
+            'role': 'user',
+            'content': question,
+        }))
+        assistant_message = help_answer_to_message(resident_answer)
+        if assistant_message:
+            resident_thread.append(assistant_message)
+        store_help_thread(resident_thread)
+
+        # Build response payload
+        if assistant_message:
+            return jsonify({'answer': assistant_message})
+        return jsonify({'answer': None})
+
     @app.route("/dashboard/reportar_pago/<int:invoice_id>", methods=['POST'])
     @login_required
     def resident_report_payment(invoice_id):
@@ -879,7 +911,9 @@ def _register_routes(app: Flask) -> None:
     def _is_followup_question(normalized_question: str) -> bool:
         """Returns True when the question references a previous answer rather than introducing a new topic."""
         followup_signals = [
-            'ese', 'eso', 'esa', 'esos', 'esas',
+            # Pronombres demostrativos
+            'ese', 'eso', 'esa', 'esos', 'esas', 'esto', 'estos', 'estas',
+            # Solicitudes de desglose
             'desglos', 'detalla', 'detalle de', 'dame mas', 'ampliar',
             'mas detalle', 'mas informacion', 'con mas detalle',
             'que incluye', 'que contiene', 'como se compone', 'que hay ahi',
@@ -887,6 +921,14 @@ def _register_routes(app: Flask) -> None:
             'por categoria', 'por concepto', 'en que consiste',
             'puedes desglosar', 'puedes explicar', 'puedes ampliar',
             'y cuanto', 'y cuales', 'cuales son esos', 'cuales fueron',
+            # Preguntas conversacionales de seguimiento
+            'explicame', 'por que', 'como asi', 'en que se gasto',
+            'en que se uso', 'a que se debe', 'de donde sale',
+            'de donde salio', 'como es eso', 'que paso con',
+            'y el resto', 'algo mas', 'que mas', 'hay algo mas',
+            'cuanto fue', 'cuando fue', 'quien', 'a quien',
+            'y los demas', 'y las demas', 'continua', 'sigue',
+            'y eso', 'pero', 'entonces',
         ]
         return _resident_question_has_any(normalized_question, followup_signals)
 

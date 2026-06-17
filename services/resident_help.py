@@ -91,7 +91,9 @@ def question_has_any(normalized_question: str, fragments: list[str]) -> bool:
 def is_followup_question(normalized_question: str) -> bool:
     """Returns True when the question references a previous answer rather than introducing a new topic."""
     followup_signals = [
-        'ese', 'eso', 'esa', 'esos', 'esas',
+        # Pronombres demostrativos
+        'ese', 'eso', 'esa', 'esos', 'esas', 'esto', 'estos', 'estas',
+        # Solicitudes de desglose
         'desglos', 'detalla', 'detalle de', 'dame mas', 'ampliar',
         'mas detalle', 'mas informacion', 'con mas detalle',
         'que incluye', 'que contiene', 'como se compone', 'que hay ahi',
@@ -99,6 +101,14 @@ def is_followup_question(normalized_question: str) -> bool:
         'por categoria', 'por concepto', 'en que consiste',
         'puedes desglosar', 'puedes explicar', 'puedes ampliar',
         'y cuanto', 'y cuales', 'cuales son esos', 'cuales fueron',
+        # Preguntas conversacionales de seguimiento
+        'explicame', 'por que', 'como asi', 'en que se gasto',
+        'en que se uso', 'a que se debe', 'de donde sale',
+        'de donde salio', 'como es eso', 'que paso con',
+        'y el resto', 'algo mas', 'que mas', 'hay algo mas',
+        'cuanto fue', 'cuando fue', 'quien', 'a quien',
+        'y los demas', 'y las demas', 'continua', 'sigue',
+        'y eso', 'pero', 'entonces',
     ]
     return question_has_any(normalized_question, followup_signals)
 
@@ -467,16 +477,19 @@ def build_contact_help_answer(context: dict) -> dict[str, str | None]:
 
 def build_capabilities_help_answer(context: dict) -> dict[str, str | None]:
     totals = context['resident_totals']
+    company_info = context.get('company_info') or {}
+    admin_contact = company_info.get('phone') or company_info.get('email') or ''
+    contact_hint = f" Si necesitas algo fuera de mi alcance, contacta a la administración ({admin_contact})." if admin_contact else ' Si necesitas algo fuera de mi alcance, contacta a la administración.'
     return build_help_payload(
-        title='Informacion disponible en tu portal',
+        title='¿En qué puedo ayudarte?',
         body=(
-            'Puedo responder sobre saldo, facturas, pagos, apartamentos vinculados, '
-            'reportes mensuales, perfil, clave y contacto de administracion usando solo la informacion de tu portal.'
+            'Puedo responder sobre tu saldo, facturas pendientes, pagos, apartamentos vinculados, '
+            'reportes mensuales, perfil y contraseña.' + contact_hint
         ),
         detail=(
-            f"Ahora mismo tu cuenta muestra {format_currency(totals.get('balance'))} pendiente, "
-            f"{int(totals.get('pending_invoices') or 0)} factura(s) pendiente(s) y "
-            f"{int(totals.get('apartments') or 0)} apartamento(es) vinculada(s)."
+            f"Tu cuenta: {format_currency(totals.get('balance'))} pendiente, "
+            f"{int(totals.get('pending_invoices') or 0)} factura(s), "
+            f"{int(totals.get('apartments') or 0)} apartamento(s)."
         ),
         tone='info',
         link_url=url_for('resident_balances'),
@@ -752,11 +765,16 @@ def _build_ai_answer(
     
     context_block = _build_ai_context_text(question, context, deterministic_answer)
     system_instruction = (
-        'Eres el asistente virtual del portal residente Toscana. '
-        'Debes ser conversacional, amable y usar Markdown para formatear tus respuestas (listas, negritas, etc.). '
-        'NO uses títulos como "Respuesta del asistente", sé natural. '
-        f'Aquí está el contexto validado del residente actual:\n{context_block}\n'
-        'Responde basándote estrictamente en este contexto. Si te piden un desglose o detalle, usa la información de los reportes.'
+        'Eres el asistente virtual del portal residencial Toscana. Tu nombre es "Asistente Toscana". '
+        'REGLAS ESTRICTAS:\n'
+        '1. Responde SOLO con la información proporcionada en el contexto. NUNCA inventes datos ni montos.\n'
+        '2. Sé conversacional y amable, como un chat de WhatsApp. Usa Markdown: **negritas**, listas con -, etc.\n'
+        '3. NO uses títulos formales como "Respuesta del asistente". Sé natural y directo.\n'
+        '4. Cuando te pidan desglose o detalle, usa los datos de gastos/cobros del contexto para listarlos.\n'
+        '5. Si la pregunta es un seguimiento ("y esos?", "dame más", "explícame"), referénciate al mensaje anterior.\n'
+        '6. Si NO tienes la información para responder, dilo claramente y sugiere contactar a la administración.\n'
+        '7. Responde en español dominicano formal pero cercano. Máximo 6 frases a menos que listen datos.\n\n'
+        f'CONTEXTO VERIFICADO DEL RESIDENTE:\n{context_block}'
     )
 
     try:
