@@ -669,6 +669,11 @@ def _build_ai_context_text(question: str, context: dict, deterministic_answer: O
     combined_question = " ".join(recent_user_messages).lower()
     
     month_reference = extract_month_reference(combined_question)
+    
+    if not month_reference:
+        last_topic = extract_last_assistant_topic(thread)
+        if last_topic and last_topic.get('month_reference'):
+            month_reference = last_topic['month_reference']
 
     lines = [
         f"Residente: {current_user.full_name or current_user.username}",
