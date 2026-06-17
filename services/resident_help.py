@@ -594,8 +594,10 @@ def build_help_answer(question: str, context: dict, thread: Optional[list] = Non
 # ──────────────────────────────────────────────
 
 def sanitize_help_text(value: Any, max_length: int = 700) -> str:
-    normalized = " ".join(str(value or '').strip().split())
-    return normalized if len(normalized) <= max_length else normalized[:max_length - 3].rstrip() + '...'
+    if not value:
+        return ""
+    val_str = str(value).strip()
+    return val_str if len(val_str) <= max_length else val_str[:max_length - 3].rstrip() + '...'
 
 
 def _thread_key() -> str:
@@ -607,7 +609,7 @@ def serialize_help_message(message: dict[str, Any]) -> dict[str, str]:
     return {
         'role': role,
         'title': sanitize_help_text(message.get('title'), 120),
-        'content': sanitize_help_text(message.get('content'), 900),
+        'content': sanitize_help_text(message.get('content'), 4000),
         'detail': sanitize_help_text(message.get('detail'), 280),
         'tone': sanitize_help_text(message.get('tone'), 24) or ('primary' if role == 'assistant' else 'secondary'),
         'source': sanitize_help_text(message.get('source'), 24) or ('rules' if role == 'assistant' else 'user'),
@@ -855,7 +857,7 @@ def _build_ai_answer(
         chat = model.start_chat(history=history)
         response = chat.send_message(question)
         
-        ai_text = sanitize_help_text(response.text, 2000)
+        ai_text = sanitize_help_text(response.text, 4000)
         if not ai_text:
             return None
             
