@@ -187,6 +187,30 @@
     }
     .chat-bubble__body li { margin-bottom: 0.2rem; }
     .chat-bubble__body strong { font-weight: 700; }
+    
+    /* Markdown Tables Styling */
+    .chat-bubble__body table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.8rem 0;
+        font-size: 0.85rem;
+    }
+    .chat-bubble__body th, .chat-bubble__body td {
+        padding: 0.4rem 0.6rem;
+        border: 1px solid rgba(128,128,128,0.2);
+    }
+    .chat-bubble__body th {
+        background-color: rgba(128,128,128,0.05);
+        font-weight: 700;
+        text-align: left;
+    }
+    .chat-bubble-wrap.is-user .chat-bubble__body th,
+    .chat-bubble-wrap.is-user .chat-bubble__body td {
+        border-color: rgba(255,255,255,0.2);
+    }
+    .chat-bubble-wrap.is-user .chat-bubble__body th {
+        background-color: rgba(255,255,255,0.1);
+    }
 
     .chat-bubble__detail {
         margin-top: 0.6rem;
@@ -537,11 +561,15 @@
             bubble.appendChild(title);
         }
 
-        // Body
+        // Body (Parsed with Markdown)
         if (data.content) {
             var body = document.createElement('div');
             body.className = 'chat-bubble__body';
-            body.innerHTML = data.content;
+            if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+                body.innerHTML = DOMPurify.sanitize(marked.parse(data.content));
+            } else {
+                body.innerHTML = data.content;
+            }
             bubble.appendChild(body);
         }
 
@@ -607,6 +635,10 @@
             typing.classList.remove('active');
             if (data.answer) {
                 thread.appendChild(createBubble(data.answer));
+                // Initialize any mermaid charts that were just injected
+                if (typeof mermaid !== 'undefined') {
+                    try { mermaid.init(undefined, thread.querySelectorAll('.language-mermaid')); } catch(e) { console.error('Mermaid error', e); }
+                }
             } else {
                 thread.appendChild(createBubble({
                     role: 'assistant',
@@ -658,6 +690,19 @@
 
     // ── Focus input on load ──────────────────────────────
     input.focus();
+    
+    // Initial Mermaid initialization for pre-rendered bubbles
+    if (typeof mermaid !== 'undefined') {
+        try { mermaid.init(undefined, thread.querySelectorAll('.language-mermaid')); } catch(e) {}
+    }
 })();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>
+    if (typeof mermaid !== 'undefined') {
+        mermaid.initialize({ startOnLoad: false, theme: 'base' });
+    }
 </script>
 {% endblock %}
