@@ -751,10 +751,10 @@ def _build_ai_context_text(question: str, context: dict, deterministic_answer: O
             current_app.logger.warning(f"No se pudo preparar contexto de reporte para residente: {exc}")
 
     if question_has_any(combined_question, ['por mes', 'meses', 'acumulado', 'historico', 'tabla']):
-        lines.append("\n--- DATOS HISTÓRICOS (Últimos 3 meses disponibles) ---")
-        for r_month in report_months[:3]:
+        lines.append("\n--- DATOS HISTÓRICOS (Últimos 6 meses disponibles) ---")
+        for r_month in report_months[:6]:
             try:
-                ref_dt = datetime.strptime(r_month['reference_date'], '%Y-%m-%d')
+                ref_dt = datetime.strptime(r_month['ref_date'], '%Y-%m-%d')
                 r_data = financial_reports.get_monthly_financial_report_data(
                     reference_dt=ref_dt, period_mode='previous_month',
                 )
@@ -769,8 +769,8 @@ def _build_ai_context_text(question: str, context: dict, deterministic_answer: O
                     lines.append(f"Detalle de {r_month['label']}:")
                     for exp in exp_indiv:
                         lines.append(f"  - {exp.get('description') or exp.get('category')}: {format_currency(exp.get('amount') or 0)}")
-            except Exception:
-                pass
+            except Exception as e:
+                current_app.logger.warning(f"Error cargando historico de {r_month}: {e}")
         lines.append("--------------------------------------------------\n")
 
     if company_info:
