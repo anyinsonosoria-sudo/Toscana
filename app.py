@@ -690,18 +690,24 @@ def _register_routes(app: Flask) -> None:
             debug_info['import_generativeai'] = f'failed: {e}'
             return jsonify(debug_info)
 
-        # Attempt a simple test call
+        # Attempt test calls on both gemini-2.0-flash and gemini-1.5-flash
+        genai.configure(api_key=cfg.get('RESIDENT_AI_API_KEY') or '')
+        
+        # Test 2.0 Flash
         try:
-            genai.configure(api_key=cfg.get('RESIDENT_AI_API_KEY') or '')
-            model_name = cfg.get('RESIDENT_AI_MODEL') or 'gemini-1.5-flash'
-            if 'gpt' in model_name:
-                model_name = 'gemini-1.5-flash'
-            model = genai.GenerativeModel(model_name=model_name)
-            response = model.generate_content("Hola, responde con la palabra 'OK'")
-            debug_info['gemini_call'] = 'success'
-            debug_info['gemini_response'] = response.text.strip()
+            model_20 = genai.GenerativeModel(model_name='gemini-2.0-flash')
+            res_20 = model_20.generate_content("Hola, responde con la palabra 'OK'")
+            debug_info['gemini_2.0_flash'] = f'success: {res_20.text.strip()}'
         except Exception as e:
-            debug_info['gemini_call'] = f'failed: {e}'
+            debug_info['gemini_2.0_flash'] = f'failed: {e}'
+
+        # Test 1.5 Flash
+        try:
+            model_15 = genai.GenerativeModel(model_name='gemini-1.5-flash')
+            res_15 = model_15.generate_content("Hola, responde con la palabra 'OK'")
+            debug_info['gemini_1.5_flash'] = f'success: {res_15.text.strip()}'
+        except Exception as e:
+            debug_info['gemini_1.5_flash'] = f'failed: {e}'
 
         return jsonify(debug_info)
 
