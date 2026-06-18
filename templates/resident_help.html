@@ -595,6 +595,28 @@
         return wrap;
     }
 
+    // ── Safe Mermaid Initialization ──────────────────────
+    function initMermaidBlocks(container) {
+        if (typeof mermaid === 'undefined') return;
+        var blocks = container.querySelectorAll('.language-mermaid');
+        blocks.forEach(function(block, i) {
+            if (block.hasAttribute('data-processed')) return;
+            var id = 'mermaid-' + Date.now() + '-' + i;
+            var text = block.textContent;
+            try {
+                mermaid.render(id, text).then(function(result) {
+                    block.innerHTML = result.svg;
+                    block.setAttribute('data-processed', 'true');
+                }).catch(function(err) {
+                    console.error('Mermaid render error for block', err);
+                    block.innerHTML = '<div style="color:red; font-size:0.8rem; padding:10px; border:1px solid red;">Error renderizando gráfico: ' + err.message + '</div>';
+                });
+            } catch (err) {
+                console.error('Mermaid sync error', err);
+            }
+        });
+    }
+
     // ── Send message via AJAX ────────────────────────────
     var isSending = false;
 
@@ -603,47 +625,29 @@
         isSending = true;
         sendBtn.disabled = true;
 
-        // Remove empty state
         if (empty) empty.remove();
-
-        // Add user bubble immediately
-        thread.appendChild(createBubble({
-            role: 'user',
-            content: question.trim()
-        }));
+        thread.appendChild(createBubble({ role: 'user', content: question.trim() }));
         scrollToBottom(true);
-
-        // Show typing
         typing.classList.add('active');
         scrollToBottom(true);
-
-        // Clear input
         input.value = '';
         autoResize();
 
-        // AJAX
         fetch(API_URL, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': CSRF
-            },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
             body: JSON.stringify({ question: question.trim() })
         })
         .then(function(res) { return res.json(); })
         .then(function(data) {
             typing.classList.remove('active');
             if (data.answer) {
-                thread.appendChild(createBubble(data.answer));
-                // Initialize any mermaid charts that were just injected
-                if (typeof mermaid !== 'undefined') {
-                    try { mermaid.init(undefined, thread.querySelectorAll('.language-mermaid')); } catch(e) { console.error('Mermaid error', e); }
-                }
+                var bubble = createBubble(data.answer);
+                thread.appendChild(bubble);
+                initMermaidBlocks(bubble);
             } else {
                 thread.appendChild(createBubble({
-                    role: 'assistant',
-                    content: 'No pude procesar tu mensaje. Intenta reformular la pregunta o contacta a la administración.',
-                    tone: 'warning'
+                    role: 'assistant', content: 'No pude procesar tu mensaje. Intenta reformular.', tone: 'warning'
                 }));
             }
             scrollToBottom(true);
@@ -654,47 +658,24 @@
         .catch(function(err) {
             typing.classList.remove('active');
             thread.appendChild(createBubble({
-                role: 'assistant',
-                content: 'Hubo un error de conexión. Por favor intenta de nuevo.',
-                tone: 'warning'
+                role: 'assistant', content: 'Hubo un error de conexión. Por favor intenta de nuevo.', tone: 'warning'
             }));
             scrollToBottom(true);
             isSending = false;
             sendBtn.disabled = !input.value.trim();
-            console.error('Chat error:', err);
         });
     }
 
-    // ── Form submit ──────────────────────────────────────
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        sendMessage(input.value);
-    });
-
-    // ── Enter to send (Shift+Enter for newline) ──────────
+    form.addEventListener('submit', function(e) { e.preventDefault(); sendMessage(input.value); });
     input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            if (input.value.trim()) sendMessage(input.value);
-        }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (input.value.trim()) sendMessage(input.value); }
     });
-
-    // ── Chip clicks ──────────────────────────────────────
     chips.forEach(function(chip) {
-        chip.addEventListener('click', function(e) {
-            e.preventDefault();
-            var q = this.getAttribute('data-question');
-            if (q) sendMessage(q);
-        });
+        chip.addEventListener('click', function(e) { e.preventDefault(); var q = this.getAttribute('data-question'); if (q) sendMessage(q); });
     });
 
-    // ── Focus input on load ──────────────────────────────
     input.focus();
-    
-    // Initial Mermaid initialization for pre-rendered bubbles
-    if (typeof mermaid !== 'undefined') {
-        try { mermaid.init(undefined, thread.querySelectorAll('.language-mermaid')); } catch(e) {}
-    }
+    initMermaidBlocks(thread);
 })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
