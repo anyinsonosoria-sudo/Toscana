@@ -469,7 +469,7 @@ def _register_context_processors(app: Flask) -> None:
                     'endpoint': 'logout',
                     'label': 'Salir',
                     'icon': 'bi bi-box-arrow-right text-danger',
-                    'url': '/logout',
+                    'url': '/auth/logout',
                 },
             ]
 
