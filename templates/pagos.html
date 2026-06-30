@@ -31,7 +31,17 @@
                     <tr>
                         <td data-label="#">{{ p.id }}</td>
                         <td data-label="Factura"><strong>#{{ p.invoice_id }}</strong></td>
-                        <td data-label="Cliente">{{ p.client_name or p.invoice_desc or '-' }}</td>
+                        <td data-label="Cliente">
+                            {% if p.apt_resident and p.apt_number %}
+                                <strong>{{ p.apt_resident }}</strong> <br><small class="text-muted">Apt. {{ p.apt_number }}</small>
+                            {% elif p.apt_number %}
+                                <strong>Apt. {{ p.apt_number }}</strong>
+                            {% elif p.client_name %}
+                                <strong>{{ p.client_name }}</strong>
+                            {% else %}
+                                {{ p.invoice_desc or '-' }}
+                            {% endif %}
+                        </td>
                         <td data-label="Monto" style="font-weight: 700; color: var(--success);">RD$ {{ "{:,.2f}".format(p.amount or 0) }}</td>
                         <td data-label="Método"><span class="badge-status badge-active">{{ p.method or '-' }}</span></td>
                         <td data-label="Fecha"><small>{{ p.paid_date or '-' }}</small></td>

@@ -418,9 +418,11 @@ def payments():
         conn = db.get_conn()
         cur = conn.cursor()
         cur.execute("""
-            SELECT p.*, i.description as invoice_desc, i.unit_id, i.amount as invoice_amount
+            SELECT p.*, i.description as invoice_desc, i.unit_id, i.amount as invoice_amount,
+                   a.number as apt_number, a.resident_name as apt_resident
             FROM payments p
             JOIN invoices i ON p.invoice_id = i.id
+            LEFT JOIN apartments a ON i.unit_id = a.id
             ORDER BY p.paid_date DESC
         """)
         payments_list = [dict(row) for row in cur.fetchall()]
