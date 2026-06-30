@@ -518,6 +518,8 @@ def edit_user(user_id):
             flash(f'Usuario {user.username} actualizado correctamente', 'success')
             return redirect(url_for('auth.list_users'))
         except Exception as e:
+            from extensions import db as sa_db
+            sa_db.session.rollback()
             flash(f'Error al actualizar usuario: {str(e)}', 'error')
     
     # GET request
@@ -561,6 +563,8 @@ def delete_user(user_id):
         
         flash('Usuario eliminado correctamente', 'success')
     except Exception as e:
+        from extensions import db as sa_db
+        sa_db.session.rollback()
         flash(f'Error al eliminar usuario: {str(e)}', 'error')
     
     return redirect(url_for('auth.list_users'))
