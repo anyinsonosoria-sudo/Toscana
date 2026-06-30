@@ -107,6 +107,11 @@ def send_email(to_email, subject: str, html: str, attach_pdf=None, attachments=N
     """
     host = os.getenv("SMTP_HOST") or os.getenv("SMTP_SERVER")
     port = int(os.getenv("SMTP_PORT", "587"))
+    
+    # PythonAnywhere bloquea el puerto 465. Para smtp.gmail.com debe ser 587.
+    if host == "smtp.gmail.com":
+        port = 587
+        
     user = os.getenv("SMTP_USER")
     passwd = os.getenv("SMTP_PASSWORD")
     from_addr = os.getenv("SMTP_FROM", user or "no-reply@example.com")
