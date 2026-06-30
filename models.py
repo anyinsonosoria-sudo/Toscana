@@ -494,8 +494,8 @@ def _get_client_contact_info(invoice: Dict) -> Dict:
     
     apt = get_apartment(invoice.get('unit_id'))
     
-    client_email = apt.get('resident_email') if apt else None
-    client_phone = apt.get('resident_phone') if apt else None
+    client_email = apt.get('resident_email').strip() if apt and apt.get('resident_email') else None
+    client_phone = apt.get('resident_phone').strip() if apt and apt.get('resident_phone') else None
     
     # Si no hay email en apartments, buscar en residents
     if not client_email and apt and apt.get('id'):
@@ -505,7 +505,7 @@ def _get_client_contact_info(invoice: Dict) -> Dict:
                 cur.execute("SELECT email FROM residents WHERE unit_id=? LIMIT 1", (apt['id'],))
                 res_row = cur.fetchone()
                 if res_row and res_row['email']:
-                    client_email = res_row['email']
+                    client_email = res_row['email'].strip()
         except Exception as e:
             _log(f"Error buscando email en residents: {e}")
     
@@ -571,7 +571,7 @@ def _send_payment_notifications(payment_id: int, invoice: Dict, amount: float,
         def is_valid_email(email):
             if not email or not isinstance(email, str):
                 return False
-            return re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) is not None
+            return re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email.strip()) is not None
         
         try:
             from flask import has_request_context, flash

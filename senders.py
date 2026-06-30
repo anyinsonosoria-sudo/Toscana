@@ -105,14 +105,14 @@ def send_email(to_email, subject: str, html: str, attach_pdf=None, attachments=N
         attach_pdf: Datos del PDF en bytes (legacy support)
         attachments: Lista de rutas de archivos a adjuntar
     """
-    host = os.getenv("SMTP_HOST")
+    host = os.getenv("SMTP_HOST") or os.getenv("SMTP_SERVER")
     port = int(os.getenv("SMTP_PORT", "587"))
     user = os.getenv("SMTP_USER")
     passwd = os.getenv("SMTP_PASSWORD")
     from_addr = os.getenv("SMTP_FROM", user or "no-reply@example.com")
     
     if not host:
-        raise RuntimeError("SMTP_HOST not configured")
+        raise RuntimeError("SMTP_HOST or SMTP_SERVER not configured")
     
     msg = EmailMessage()
     msg["From"] = from_addr
@@ -294,7 +294,7 @@ def send_payment_notification(payment: dict, invoice: dict, unit: dict, client_e
         if not email or not isinstance(email, str):
             return False
         # Simple regex for email validation
-        return re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) is not None
+        return re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email.strip()) is not None
 
     if client_email:
         if not is_valid_email(client_email):
@@ -302,33 +302,37 @@ def send_payment_notification(payment: dict, invoice: dict, unit: dict, client_e
         else:
             try:
                 html = generate_payment_notification_html(payment, invoice, unit, is_admin=False)
-                subject = f"Confirmación de Pago - Factura #{invoice['id']}"
-                # Incluir comprobante y estado de cuenta para el cliente
-                send_email(client_email, subject, html, attachments=attachments if attachments else None)
-                print(f"✓ Comprobante de pago enviado al cliente: {client_email}")
+                subject = f"Confirmación de Pago - Factura #{invoice['id']} - Unidad {unit.get('number', 'N/A')}"
+                
+                # Agrupar cliente y admin en el mismo correo (igual que send_invoice_notification)
+                # Esto evita que Gmail bloquee el correo del residente por filtros de Spam
+                recipients = [client_email]
+                if admin_email:
+                    recipients.append(admin_email)
+                    
+                # Incluir comprobante y estado de cuenta para ambos
+                send_email(recipients, subject, html, attachments=attachments if attachments else None)
+                print(f"✓ Comprobante de pago enviado a: {recipients}")
             except Exception as e:
                 # Log error but don't fail the whole operation
-                print(f"✗ Error sending payment notification to client: {e}")
+                print(f"✗ Error sending payment notification to {client_email}: {e}")
     else:
         print(f"[ERROR] No client email provided for payment notification. Invoice ID: {invoice.get('id')}, Payment ID: {payment.get('id')}")
+        
+        # Si no hay correo del cliente, al menos enviarlo al admin
+        if admin_email:
+            try:
+                html = generate_payment_notification_html(payment, invoice, unit, is_admin=True)
+                subject = f"Notificación de Pago Recibido - Factura #{invoice['id']} - Unidad {unit.get('number', 'N/A')}"
+                admin_attachments = [(receipt_path, Path(receipt_path).name)] if receipt_path and Path(receipt_path).exists() else None
+                send_email(admin_email, subject, html, attachments=admin_attachments)
+                print(f"✓ Notificación de pago enviada SOLO al administrador: {admin_email}")
+            except Exception as e:
+                print(f"✗ Error sending payment notification to admin: {e}")
 
     # Enviar WhatsApp al cliente
     if client_phone:
         send_payment_whatsapp(payment, invoice, unit, client_phone)
-    
-    # Enviar email al administrador
-    if admin_email:
-        try:
-            html = generate_payment_notification_html(payment, invoice, unit, is_admin=True)
-            subject = f"Notificación de Pago Recibido - Factura #{invoice['id']} - Unidad {unit.get('number', 'N/A')}"
-            
-            # Solo incluir comprobante para el administrador (no estado de cuenta)
-            admin_attachments = [(receipt_path, Path(receipt_path).name)] if receipt_path and Path(receipt_path).exists() else None
-            send_email(admin_email, subject, html, attachments=admin_attachments)
-            print(f"✓ Notificación de pago enviada al administrador: {admin_email}")
-        except Exception as e:
-            # Log error but don't fail the whole operation
-            print(f"✗ Error sending payment notification to admin: {e}")
 
 
 def generate_payment_change_notification_html(action: str, payment: dict, invoice: dict, unit: dict,
