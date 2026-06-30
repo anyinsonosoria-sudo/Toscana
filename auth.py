@@ -466,7 +466,16 @@ def edit_user(user_id):
         
         try:
             # Actualizar usuario
-            conn = user_model.get_conn()
+            user_orm = user_model.get_user_by_id(user_id)
+            if user_orm:
+                user_orm.full_name = full_name
+                user_orm.email = email
+                user_orm.role = role
+                from extensions import db as sa_db
+                sa_db.session.commit()
+                
+            import db as legacy_db
+            conn = legacy_db.get_conn()
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE users
@@ -533,7 +542,14 @@ def delete_user(user_id):
         return redirect(url_for('auth.list_users'))
     
     try:
-        conn = user_model.get_conn()
+        user_orm = user_model.get_user_by_id(user_id)
+        if user_orm:
+            from extensions import db as sa_db
+            sa_db.session.delete(user_orm)
+            sa_db.session.commit()
+            
+        import db as legacy_db
+        conn = legacy_db.get_conn()
         cursor = conn.cursor()
         # Eliminar explícitamente registros relacionados para evitar huérfanos
         cursor.execute("DELETE FROM user_permissions WHERE user_id = ?", (user_id,))
